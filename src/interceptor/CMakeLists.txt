@@ -6,10 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Create the DLL
 add_library(go-mapi SHARED
-    src/main.cpp
-    src/mapi_impl.cpp
-    src/json_writer.cpp
-    src/fs_utils.cpp
+    main.cpp
+    mapi_impl.cpp
+    json_writer.cpp
+    fs_utils.cpp
 )
 
 # Set DLL output directory

@@ -24,12 +24,9 @@ jobs:
         uses: lukka/get-cmake@latest
 
       # Build C++ DLL
-      - name: Configure and Build DLL
-        run: |
-          cmake -S . -B build-${{ matrix.platform }} `
-            -A ${{ matrix.platform == 'x86' && 'Win32' || 'x64' }} `
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-${{ matrix.platform }} --config Release
+      - name: Build Interceptor DLL
+        working-directory: src/interceptor
+        run: .\build.ps1 -Config Release -Platform ${{ matrix.platform == 'x86' && 'Win32' || 'x64' }}
 
       # Setup Node.js
       - name: Setup Node.js

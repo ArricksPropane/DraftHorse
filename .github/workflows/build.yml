@@ -18,15 +18,9 @@ jobs:
         uses: lukka/get-cmake@latest
 
       # Build C++ Interceptor and Tests
-      - name: Configure CMake
-        run: |
-          cmake -S . -B build `
-            -A ${{ matrix.platform == 'x86' && 'Win32' || 'x64' }} `
-            -DCMAKE_BUILD_TYPE=${{ matrix.config }} `
-            -DBUILD_TESTS=ON
-
       - name: Build Interceptor and Test Harness
-        run: cmake --build build --config ${{ matrix.config }}
+        working-directory: src/interceptor
+        run: .\build.ps1 -Config ${{ matrix.config }} -Platform ${{ matrix.platform == 'x86' && 'Win32' || 'x64' }} -Tests
 
       # Setup Node.js for Electron client
       - name: Setup Node.js
