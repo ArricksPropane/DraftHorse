@@ -45,14 +45,14 @@ jobs:
 
       # Upload artifacts
       - name: Upload DLL Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: go-mapi-dll-${{ matrix.platform }}-${{ matrix.config }}
           path: build/bin/go-mapi.dll
           if-no-files-found: warn
 
       - name: Upload Test Harness Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: go-mapi-tests-${{ matrix.platform }}-${{ matrix.config }}
           path: build/bin/go-mapi-test-harness.exe
