@@ -1,0 +1,35 @@
+name: Build and Release
+
+on: [push, pull_request]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Build C++ Interceptor
+      - name: Configure CMake
+        run: cmake -S src/interceptor -B src/interceptor/build
+
+      - name: Build Interceptor DLL
+        run: cmake --build src/interceptor/build --config Release
+
+      # 2. Build Electron Client
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: src/client/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd src/client
+          npm install
+
+      - name: Build/Package Electron App
+        run: |
+          cd src/client
+          npm run build # Replace with your build command
