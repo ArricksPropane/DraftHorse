@@ -137,13 +137,17 @@ Output JSON format:
   ```bash
   npm init
   npm install electron typescript @types/node
-  npm install --save-dev electron-builder
+  npm install --save-dev electron-builder vite vitest @vitest/coverage-v8
   ```
 
 - [ ] Create `src/client/tsconfig.json`
   - Target: ES2020
-  - Module: CommonJS
+  - Module: ESNext (for Vite compatibility)
   - Strict mode enabled
+
+- [ ] Create `src/client/vite.config.ts`
+  - Configure for Electron main/renderer builds
+  - Set up Vitest for testing
 
 - [ ] Create `src/client/package.json` scripts:
   - `dev`: run Electron with Vite dev server
@@ -339,7 +343,7 @@ Output JSON format:
 - [ ] Add test step to `.github/workflows/build.yml`
   - Run C++ unit tests
   - Run MAPI test harness
-  - Run Electron unit tests
+  - Run Electron unit tests with Vitest (`npm run test`)
 - [ ] Create `.github/workflows/test.yml` for PR checks
   - Run full test suite
   - Report coverage
