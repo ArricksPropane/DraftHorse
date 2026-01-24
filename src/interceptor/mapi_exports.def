@@ -1,0 +1,9 @@
+LIBRARY go-mapi.dll
+
+EXPORTS
+    MAPISendMail
+    MAPISendMailW
+    MAPILogon
+    MAPILogoff
+    MAPIFreeBuffer
+    MAPISendDocuments

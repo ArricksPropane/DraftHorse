@@ -1,0 +1,7 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Clients\Mail\go-mapi]
+@="go-mapi"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Clients\Mail\go-mapi\DLLPath]
+@="C:\\Program Files\\go-mapi\\go-mapi.dll"

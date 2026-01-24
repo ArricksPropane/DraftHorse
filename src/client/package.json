@@ -1,0 +1,52 @@
+{
+  "name": "go-mapi-client",
+  "version": "0.1.0",
+  "description": "Electron client for go-mapi MAPI interceptor",
+  "main": "out/src/main.js",
+  "homepage": "./",
+  "author": "go-mapi team",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tsc && electron .",
+    "watch": "tsc --watch",
+    "build": "tsc",
+    "pack": "electron-builder --publish never",
+    "dist": "electron-builder",
+    "clean": "rm -rf out dist"
+  },
+  "dependencies": {
+    "chokidar": "^3.5.3",
+    "electron-store": "^8.0.0",
+    "@googleapis/gmail": "^1.0.0",
+    "googleapis": "^118.0.0"
+  },
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.0.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^18.0.0",
+    "@types/electron": "^1.6.10"
+  },
+  "build": {
+    "appId": "com.gomapi.client",
+    "productName": "go-mapi Client",
+    "files": [
+      "out/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "certificateFile": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

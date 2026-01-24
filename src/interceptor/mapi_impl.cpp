@@ -1,0 +1,175 @@
+#include "mapi_impl.h"
+#include <windows.h>
+#include <psapi.h>
+#include <string>
+#include <vector>
+
+#pragma comment(lib, "psapi.lib")
+
+namespace go_mapi {
+
+std::string MapiImpl::GetOriginApplicationName() {
+    wchar_t processPath[MAX_PATH];
+    HANDLE hProcess = GetCurrentProcess();
+
+    if (GetModuleFileNameExW(hProcess, nullptr, processPath, MAX_PATH)) {
+        // Get just the filename from the full path
+        wchar_t* filename = wcsrchr(processPath, L'\\');
+        if (filename) {
+            filename++;  // Move past the backslash
+        } else {
+            filename = processPath;
+        }
+
+        // Convert to UTF-8
+        int size_needed = WideCharToMultiByte(CP_UTF8, 0, filename, -1, NULL, 0, NULL, NULL);
+        std::string result(size_needed - 1, 0);
+        WideCharToMultiByte(CP_UTF8, 0, filename, -1, &result[0], size_needed, NULL, NULL);
+        return result;
+    }
+
+    return "unknown.exe";
+}
+
+MailMessage MapiImpl::ConvertAnsiMessage(const MapiMessage& msg) {
+    MailMessage result;
+    result.originApp = GetOriginApplicationName();
+    result.bodyFormat = "plain";
+
+    // Subject
+    if (msg.lpszSubject) {
+        result.subject = msg.lpszSubject;
+    }
+
+    // Body
+    if (msg.lpszNoteText) {
+        result.body = msg.lpszNoteText;
+    }
+
+    // Recipients
+    if (msg.lpRecips && msg.nRecipCount > 0) {
+        for (ULONG i = 0; i < msg.nRecipCount; ++i) {
+            const MapiRecipDesc& recip = msg.lpRecips[i];
+            Recipient r;
+            if (recip.lpszName) {
+                r.name = recip.lpszName;
+            }
+            if (recip.lpszAddress) {
+                r.address = recip.lpszAddress;
+            }
+
+            switch (recip.ulRecipClass) {
+            case MAPI_TO:
+                result.toRecipients.push_back(r);
+                break;
+            case MAPI_CC:
+                result.ccRecipients.push_back(r);
+                break;
+            case MAPI_BCC:
+                result.bccRecipients.push_back(r);
+                break;
+            default:
+                result.toRecipients.push_back(r);
+                break;
+            }
+        }
+    }
+
+    // Attachments
+    if (msg.lpFiles && msg.nFileCount > 0) {
+        for (ULONG i = 0; i < msg.nFileCount; ++i) {
+            const MapiFileDesc& file = msg.lpFiles[i];
+            Attachment attach;
+            if (file.lpszFileName) {
+                attach.filename = file.lpszFileName;
+            }
+            if (file.lpszPathName) {
+                attach.path = file.lpszPathName;
+            }
+            attach.size = 0;  // We could try to get the actual file size, but this is safe default
+
+            result.attachments.push_back(attach);
+        }
+    }
+
+    return result;
+}
+
+ULONG MapiImpl::MAPISendMailA(
+    LHANDLE lhSession,
+    ULONG_PTR ulUIParam,
+    LPMapiMessage lpMessage,
+    FLAGS flFlags,
+    ULONG ulReserved
+) {
+    if (!lpMessage) {
+        return MAPI_E_INVALID_MESSAGE;
+    }
+
+    try {
+        MailMessage msg = ConvertAnsiMessage(*lpMessage);
+        std::wstring filePath = JsonWriter::WriteMailToFile(msg);
+
+        if (filePath.empty()) {
+            return MAPI_E_FAILURE;
+        }
+
+        return SUCCESS_SUCCESS;
+    } catch (...) {
+        return MAPI_E_FAILURE;
+    }
+}
+
+ULONG MapiImpl::MAPISendMailW(
+    LHANDLE lhSession,
+    ULONG_PTR ulUIParam,
+    LPMapiMessage lpMessage,
+    FLAGS flFlags,
+    ULONG ulReserved
+) {
+    // For now, treat as ANSI (would need wide string conversions for full Unicode support)
+    return MAPISendMailA(lhSession, ulUIParam, lpMessage, flFlags, ulReserved);
+}
+
+ULONG MapiImpl::MAPILogon(
+    ULONG_PTR ulUIParam,
+    LPSTR lpszProfileName,
+    LPSTR lpszPassword,
+    FLAGS flFlags,
+    ULONG ulReserved,
+    LPLHANDLE lphSession
+) {
+    // Stub: just return success
+    if (lphSession) {
+        *lphSession = 1;  // Return a dummy session handle
+    }
+    return SUCCESS_SUCCESS;
+}
+
+ULONG MapiImpl::MAPILogoff(
+    LHANDLE lhSession,
+    ULONG_PTR ulUIParam,
+    FLAGS flFlags,
+    ULONG ulReserved
+) {
+    // Stub: just return success
+    return SUCCESS_SUCCESS;
+}
+
+ULONG MapiImpl::MAPIFreeBuffer(LPVOID pv) {
+    // Stub: nothing to free in our implementation
+    return SUCCESS_SUCCESS;
+}
+
+ULONG MapiImpl::MAPISendDocuments(
+    ULONG_PTR ulUIParam,
+    LPSTR lpszDelimChar,
+    LPSTR lpszFilePaths,
+    LPSTR lpszFileNames,
+    ULONG ulReserved
+) {
+    // Stub: not implemented yet
+    return SUCCESS_SUCCESS;
+}
+
+} // namespace go_mapi
