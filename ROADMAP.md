@@ -40,7 +40,7 @@
 - [ ] Comprehensive error handling and user-friendly messages
 - [ ] Logging system for debugging
 - [ ] Security hardening (token storage, IPC)
-- [ ] Testing suite
+- [ ] Testing suite (Vite + Vitest for Electron client)
 
 ### Distribution
 - [ ] Professional `.msi` installer for Windows

@@ -146,9 +146,10 @@ Output JSON format:
   - Strict mode enabled
 
 - [ ] Create `src/client/package.json` scripts:
-  - `dev`: electron .
-  - `build`: tsc && electron-builder
-  - `watch`: tsc --watch
+  - `dev`: run Electron with Vite dev server
+  - `build`: vite build && electron-builder
+  - `test`: vitest
+  - `test:coverage`: vitest --coverage
 
 ### 4.2 Main Process
 
@@ -278,7 +279,9 @@ Output JSON format:
 
 ### 6.4 Electron Client Unit Tests
 
-- [ ] Set up Jest or Vitest in `src/client/`
+- [ ] Set up Vite + Vitest in `src/client/`
+  - Use Vite as build tool for faster dev experience
+  - Configure Vitest for unit testing (Jest-compatible API)
 - [ ] Create `src/client/tests/` directory
 - [ ] Create `mail-queue.test.ts`
   - Test add/remove/getAll/getById
