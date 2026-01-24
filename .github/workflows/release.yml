@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x86, x64]
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      # Install CMake
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+
+      # Build C++ DLL
+      - name: Configure and Build DLL
+        run: |
+          cmake -S . -B build-${{ matrix.platform }} `
+            -A ${{ matrix.platform == 'x86' && 'Win32' || 'x64' }} `
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-${{ matrix.platform }} --config Release
+
+      # Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Build Electron Client
+      - name: Build Client
+        working-directory: src/client
+        run: |
+          npm install
+          npm run build
+
+      # Package installers
+      - name: Package Electron App
+        working-directory: src/client
+        run: npm run dist
+
+      # Upload to Release
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            build-${{ matrix.platform }}/bin/go-mapi.dll
+            src/client/dist/*.exe
+            src/client/dist/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

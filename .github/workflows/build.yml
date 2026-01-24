@@ -1,35 +1,59 @@
-name: Build and Release
+name: Build and Test
 
 on: [push, pull_request]
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x86, x64]
+        config: [Debug, Release]
     
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Build C++ Interceptor
+      # Install CMake
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+
+      # Build C++ Interceptor and Tests
       - name: Configure CMake
-        run: cmake -S src/interceptor -B src/interceptor/build
+        run: |
+          cmake -S . -B build `
+            -A ${{ matrix.platform == 'x86' && 'Win32' || 'x64' }} `
+            -DCMAKE_BUILD_TYPE=${{ matrix.config }} `
+            -DBUILD_TESTS=ON
 
-      - name: Build Interceptor DLL
-        run: cmake --build src/interceptor/build --config Release
+      - name: Build Interceptor and Test Harness
+        run: cmake --build build --config ${{ matrix.config }}
 
-      # 2. Build Electron Client
+      # Setup Node.js for Electron client
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: src/client/package-lock.json
 
-      - name: Install dependencies
-        run: |
-          cd src/client
-          npm install
+      # Build Electron Client
+      - name: Install Client Dependencies
+        working-directory: src/client
+        run: npm install
 
-      - name: Build/Package Electron App
-        run: |
-          cd src/client
-          npm run build # Replace with your build command
+      - name: Build Client TypeScript
+        working-directory: src/client
+        run: npm run build
+
+      # Upload artifacts
+      - name: Upload DLL Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: go-mapi-dll-${{ matrix.platform }}-${{ matrix.config }}
+          path: build/bin/go-mapi.dll
+          if-no-files-found: warn
+
+      - name: Upload Test Harness Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: go-mapi-tests-${{ matrix.platform }}-${{ matrix.config }}
+          path: build/bin/go-mapi-test-harness.exe
+          if-no-files-found: warn
