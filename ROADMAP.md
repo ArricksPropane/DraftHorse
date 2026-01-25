@@ -2,28 +2,48 @@
 
 This document outlines the strategic direction for go-mapi. We use phases rather than timelines - development pace depends on contributor availability.
 
-## Current Phase: Core Functionality
+## Phase 1: End-to-End Validation (Current)
 
-**Goal:** Complete the basic MAPI-to-Gmail flow
+**Goal:** Functional (not usable) product that validates our architecture
 
-### In Progress
-- [ ] Gmail API integration (draft creation, sending)
-- [ ] Basic extension UI refinements
-- [ ] Error handling and user feedback
+This phase proves the design works before investing in features. We don't process the email yet - we just verify data flows through all components.
 
-### Recently Completed
+### The Flow
+1. User triggers **File → Send to → Mail Recipient** from Windows Explorer
+2. Interceptor DLL captures the call and drops JSON in the dropbox folder
+3. Native messaging host detects the file and reads it
+4. Message arrives at the browser extension
+
+### Edge Cases
+- [ ] **Startup recovery** - Extension/browser/native-host was offline when interceptor ran; check dropbox on startup
+
+### Foundation (Complete)
 - [x] MAPI interceptor DLL (captures MAPISendMail)
 - [x] JSON-based IPC between DLL and native host
 - [x] Native messaging host (Go)
 - [x] Browser extension scaffold (React)
 - [x] Build system (npm scripts for all components)
 
-## Phase 2: Production Ready
+### Success Criteria
+- [ ] Can trigger send-to-mail from Explorer and see the message arrive in extension
+- [ ] Extension logs show the file path that was "sent"
+- [ ] Works even if extension was started after the send
+
+## Phase 2: Core Functionality
+
+**Goal:** Complete the basic MAPI-to-Gmail flow
+
+### Features
+- [ ] Gmail API integration (draft creation, sending)
+- [ ] Basic extension UI for composing/reviewing email
+- [ ] Error handling and user feedback
+- [ ] Attachment support
+
+## Phase 3: Production Ready
 
 **Goal:** Make go-mapi ready for daily use
 
 ### Features
-- [ ] **Attachment support** - Upload files to Gmail via extension
 - [ ] **Settings UI** - Configure behavior in extension popup
 - [ ] **MSI installer** - One-click installation for Windows
 - [ ] **Auto-update** - Native host version checking
@@ -38,7 +58,7 @@ This document outlines the strategic direction for go-mapi. We use phases rather
 - [ ] Edge Add-ons listing
 - [ ] GitHub Releases with MSI
 
-## Phase 3: Enterprise Features
+## Phase 4: Enterprise Features
 
 **Goal:** Support enterprise deployment scenarios
 
@@ -53,7 +73,7 @@ This document outlines the strategic direction for go-mapi. We use phases rather
 - [ ] Enterprise extension deployment guide
 - [ ] Intune/SCCM deployment documentation
 
-## Phase 4: Extended Compatibility
+## Phase 5: Extended Compatibility
 
 **Goal:** Broader Windows and email provider support
 
@@ -79,16 +99,19 @@ Good ideas that aren't priorities yet:
 ## Dependencies
 
 ### Phase 2 requires:
-- Core flow working end-to-end
-- Gmail API authentication stable
+- Phase 1 complete (end-to-end data flow validated)
 
 ### Phase 3 requires:
-- Phase 2 complete
+- Phase 2 complete (core Gmail flow working)
+- Gmail API authentication stable
+
+### Phase 4 requires:
+- Phase 3 complete
 - User feedback from production use
 - Enterprise testing environment
 
-### Phase 4 requires:
-- Stable Phase 3
+### Phase 5 requires:
+- Stable Phase 4
 - Community interest in additional providers
 
 ## Contributing
