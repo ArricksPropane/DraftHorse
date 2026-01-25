@@ -20,3 +20,6 @@ CMakeUserPresets.json
 .user
 *.log
 .claude/settings.local.json
+
+
+PLANNING_AGENT.md
