@@ -8,24 +8,54 @@ on:
   pull_request:
 
 jobs:
-  build-windows:
+  build-interceptor:
     runs-on: windows-latest
     strategy:
       matrix:
-        platform: [x86, x64]
         config: [Debug, Release]
-    
+
     steps:
       - uses: actions/checkout@v4
 
-      # Install CMake
-      - name: Install CMake
-        uses: lukka/get-cmake@latest
+      # Install MinGW and Ninja
+      - name: Install MinGW and Ninja
+        run: |
+          choco install mingw ninja cmake --no-progress -y
+          echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
 
       # Build C++ Interceptor and Tests
       - name: Build Interceptor and Test Harness
         working-directory: src/interceptor
-        run: .\build.ps1 -Config ${{ matrix.config }} -Platform ${{ matrix.platform == 'x86' && 'Win32' || 'x64' }} -Tests
+        run: |
+          .\build.ps1 -Config ${{ matrix.config }} -Tests -Clean
+
+      # Run Tests
+      - name: Run Test Harness
+        working-directory: src/interceptor
+        run: |
+          .\build\bin\go-mapi-test-harness.exe .\build\bin\go-mapi.dll
+        continue-on-error: true
+
+      # Upload artifacts
+      - name: Upload DLL Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-mapi-dll-${{ matrix.config }}
+          path: src/interceptor/build/bin/go-mapi.dll
+          if-no-files-found: warn
+
+      - name: Upload Test Harness Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-mapi-tests-${{ matrix.config }}
+          path: src/interceptor/build/bin/go-mapi-test-harness.exe
+          if-no-files-found: warn
+
+  build-client:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
 
       # Setup Node.js for Electron client
       - name: Setup Node.js
@@ -41,18 +71,3 @@ jobs:
       - name: Build Client TypeScript
         working-directory: src/client
         run: npm run build
-
-      # Upload artifacts
-      - name: Upload DLL Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-mapi-dll-${{ matrix.platform }}-${{ matrix.config }}
-          path: build/bin/go-mapi.dll
-          if-no-files-found: warn
-
-      - name: Upload Test Harness Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-mapi-tests-${{ matrix.platform }}-${{ matrix.config }}
-          path: build/bin/go-mapi-test-harness.exe
-          if-no-files-found: warn

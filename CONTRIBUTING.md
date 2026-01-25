@@ -11,10 +11,16 @@ Please be respectful and inclusive in all interactions.
 ### Prerequisites
 
 - Windows 10/11
-- Visual Studio 2022 with C++17 support
+- MinGW toolchain (GCC 13+), CMake, Ninja
 - Node.js 18+
-- CMake 3.20+
 - Git
+
+**Install build tools via [Scoop](https://scoop.sh):**
+```powershell
+scoop install mingw-winlibs-ucrt cmake ninja
+```
+
+> **Note**: We use MinGW instead of MSVC for lighter tooling and easier CI/CD. The `mingw-winlibs-ucrt` package uses the modern Universal C Runtime (ucrt).
 
 ### Setup Development Environment
 
@@ -23,14 +29,27 @@ Please be respectful and inclusive in all interactions.
 git clone https://github.com/yourusername/go-mapi.git
 cd go-mapi
 
-# Build C++ components
-.\build.ps1 -Config Debug -Platform x64 -Tests
+# Build C++ interceptor and tests
+cd src/interceptor
+.\build.ps1 -Tests
 
 # Install and test Electron client
-cd src/client
+cd ../client
 npm install
 npm test
 ```
+
+### Build System Overview
+
+The interceptor uses **CMake + Ninja + MinGW**:
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| `mingw-winlibs-ucrt` | GCC compiler for Windows | `scoop install mingw-winlibs-ucrt` |
+| `cmake` | Build configuration | `scoop install cmake` |
+| `ninja` | Fast build system | `scoop install ninja` |
+
+The build script (`src/interceptor/build.ps1`) auto-detects these tools from common paths.
 
 ## Development Workflow
 
@@ -51,9 +70,9 @@ Follow the guidelines below for code style and structure.
 Always include tests for new functionality:
 
 **For C++**:
-- Add test to `src/test-harness/src/test_*.cpp`
+- Add test to `src/interceptor/test-harness/src/test_*.cpp`
 - Update `test_utils.h` if adding new test utilities
-- Ensure tests pass: `build\bin\go-mapi-test-harness.exe`
+- Ensure tests pass: `.\build\bin\go-mapi-test-harness.exe .\build\bin\go-mapi.dll`
 
 **For TypeScript**:
 - Add test to `src/client/src/__tests__/*.test.ts`
@@ -63,11 +82,13 @@ Always include tests for new functionality:
 ### 4. Run Full Test Suite
 
 ```powershell
-# Build and run all tests
-.\build.ps1 -Config Debug -Platform x64 -Tests
+# Build and run C++ tests
+cd src/interceptor
+.\build.ps1 -Tests
+.\build\bin\go-mapi-test-harness.exe .\build\bin\go-mapi.dll
 
 # TypeScript tests
-cd src/client
+cd ../client
 npm test
 ```
 
@@ -108,13 +129,20 @@ Then create a pull request on GitHub. Include:
 ### C++
 
 - **Standard**: C++17
-- **Naming**: 
+- **Compiler**: MinGW GCC (not MSVC)
+- **Naming**:
   - Classes: `PascalCase` (e.g., `MapiImpl`)
   - Functions: `PascalCase` (e.g., `WriteMailToFile`)
   - Constants: `UPPER_SNAKE_CASE` (e.g., `MAPI_TO`)
   - Variables: `camelCase` (e.g., `recipCount`)
 - **Spacing**: 4 spaces (no tabs)
 - **Comments**: Use `//` for single-line, `/* */` for multi-line
+
+**MinGW Considerations**:
+- Avoid `#pragma comment(lib, ...)` - use CMake `target_link_libraries` instead
+- Define Windows types not in MinGW headers (e.g., `LHANDLE`, `FLAGS`) in `mapi_types.h`
+- Use `::FunctionName` to disambiguate Windows API calls from class methods (e.g., `::WriteFile`)
+- Include `<cstdint>` explicitly for fixed-width types like `uint32_t`
 
 **Example**:
 ```cpp

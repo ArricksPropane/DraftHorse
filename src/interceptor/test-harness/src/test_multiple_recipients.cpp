@@ -4,49 +4,7 @@
 #include <filesystem>
 #include "../test_utils.h"
 
-// Define MAPI structures (simplified versions)
-struct MapiRecipDesc {
-    unsigned long ulReserved;
-    unsigned long ulRecipClass;
-    char* lpszName;
-    char* lpszAddress;
-    unsigned long ulEIDSize;
-    void* lpEntryID;
-};
-
-struct MapiFileDesc {
-    unsigned long ulReserved;
-    unsigned long flFlags;
-    unsigned long nPosition;
-    char* lpszPathName;
-    char* lpszFileName;
-    void* lpFileType;
-};
-
-struct MapiMessage {
-    unsigned long ulReserved;
-    char* lpszSubject;
-    char* lpszNoteText;
-    char* lpszMessageType;
-    char* lpszDateReceived;
-    char* lpszConversationID;
-    unsigned long flFlags;
-    MapiRecipDesc* lpOriginator;
-    unsigned long nRecipCount;
-    MapiRecipDesc* lpRecips;
-    unsigned long nFileCount;
-    MapiFileDesc* lpFiles;
-};
-
 using namespace mapi_test;
-
-typedef unsigned long (__stdcall *MAPISendMailFunc)(
-    unsigned long lhSession,
-    unsigned long long ulUIParam,
-    MapiMessage* lpMessage,
-    unsigned long flFlags,
-    unsigned long ulReserved
-);
 
 int test_multiple_recipients() {
     std::cout << "\nTest: Multiple Recipients (TO, CC, BCC)" << std::endl;
@@ -86,15 +44,15 @@ int test_multiple_recipients() {
 
     MapiRecipDesc recipients[3] = {};
 
-    recipients[0].ulRecipClass = 1;  // MAPI_TO
+    recipients[0].ulRecipClass = MAPI_TO;
     recipients[0].lpszName = toName;
     recipients[0].lpszAddress = toAddress;
 
-    recipients[1].ulRecipClass = 2;  // MAPI_CC
+    recipients[1].ulRecipClass = MAPI_CC;
     recipients[1].lpszName = ccName;
     recipients[1].lpszAddress = ccAddress;
 
-    recipients[2].ulRecipClass = 3;  // MAPI_BCC
+    recipients[2].ulRecipClass = MAPI_BCC;
     recipients[2].lpszName = bccName;
     recipients[2].lpszAddress = bccAddress;
 
@@ -107,7 +65,7 @@ int test_multiple_recipients() {
     message.lpFiles = nullptr;
 
     // Send the message
-    unsigned long result = MAPISendMail(0, 0, &message, 0, 0);
+    ULONG result = MAPISendMail(0, 0, &message, 0, 0);
 
     std::cout << "MAPISendMail returned: " << result << std::endl;
 

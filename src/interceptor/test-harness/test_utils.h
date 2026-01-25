@@ -3,17 +3,19 @@
 #include <windows.h>
 #include <string>
 #include <vector>
+#include "../mapi_types.h"  // For LHANDLE and other MAPI types
 
 namespace mapi_test {
 
 // Test utilities for loading and testing the go-mapi DLL
 
-typedef unsigned long (__stdcall *MAPISendMailFunc)(
+// Function pointer type for MAPISendMail
+typedef ULONG (WINAPI *MAPISendMailFunc)(
     LHANDLE lhSession,
     ULONG_PTR ulUIParam,
     void* lpMessage,
-    unsigned long flFlags,
-    unsigned long ulReserved
+    ULONG flFlags,
+    ULONG ulReserved
 );
 
 class TestUtilities {

@@ -4,49 +4,7 @@
 #include <filesystem>
 #include "../test_utils.h"
 
-// Define MAPI structures (simplified versions)
-struct MapiRecipDesc {
-    unsigned long ulReserved;
-    unsigned long ulRecipClass;
-    char* lpszName;
-    char* lpszAddress;
-    unsigned long ulEIDSize;
-    void* lpEntryID;
-};
-
-struct MapiFileDesc {
-    unsigned long ulReserved;
-    unsigned long flFlags;
-    unsigned long nPosition;
-    char* lpszPathName;
-    char* lpszFileName;
-    void* lpFileType;
-};
-
-struct MapiMessage {
-    unsigned long ulReserved;
-    char* lpszSubject;
-    char* lpszNoteText;
-    char* lpszMessageType;
-    char* lpszDateReceived;
-    char* lpszConversationID;
-    unsigned long flFlags;
-    MapiRecipDesc* lpOriginator;
-    unsigned long nRecipCount;
-    MapiRecipDesc* lpRecips;
-    unsigned long nFileCount;
-    MapiFileDesc* lpFiles;
-};
-
 using namespace mapi_test;
-
-typedef unsigned long (__stdcall *MAPISendMailFunc)(
-    unsigned long lhSession,
-    unsigned long long ulUIParam,
-    MapiMessage* lpMessage,
-    unsigned long flFlags,
-    unsigned long ulReserved
-);
 
 int test_simple_send() {
     std::cout << "\nTest: Simple Send (basic email)" << std::endl;
@@ -75,7 +33,7 @@ int test_simple_send() {
     char toName[] = "Test User";
 
     MapiRecipDesc recipient = {};
-    recipient.ulRecipClass = 1;  // MAPI_TO
+    recipient.ulRecipClass = MAPI_TO;
     recipient.lpszName = toName;
     recipient.lpszAddress = toAddress;
 
@@ -88,7 +46,7 @@ int test_simple_send() {
     message.lpFiles = nullptr;
 
     // Send the message
-    unsigned long result = MAPISendMail(0, 0, &message, 0, 0);
+    ULONG result = MAPISendMail(0, 0, &message, 0, 0);
 
     std::cout << "MAPISendMail returned: " << result << std::endl;
 

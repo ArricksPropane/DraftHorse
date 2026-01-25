@@ -14,20 +14,18 @@ add_executable(go-mapi-test-harness
     src/test_multiple_recipients.cpp
 )
 
-# Link against Windows libraries
-target_link_libraries(go-mapi-test-harness PRIVATE
-    kernel32.lib
-    user32.lib
-)
-
-# Include directories
+# Include directories (interceptor is now parent directory)
 target_include_directories(go-mapi-test-harness PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../interceptor"
+    "${CMAKE_CURRENT_SOURCE_DIR}/.."
 )
 
-# MSVC specific options
+# Platform-specific settings
 if(MSVC)
     target_compile_options(go-mapi-test-harness PRIVATE /W4 /WX-)
+    target_link_libraries(go-mapi-test-harness PRIVATE kernel32.lib user32.lib)
+elseif(MINGW)
+    target_compile_options(go-mapi-test-harness PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(go-mapi-test-harness PRIVATE kernel32 user32)
 endif()
 
 # Set output directory

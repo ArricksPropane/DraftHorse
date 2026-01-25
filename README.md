@@ -74,41 +74,31 @@ go-mapi/
 
 - Windows 10/11
 - Node.js 18+
-- CMake 3.20+
-- Visual Studio 2022 with MSVC
+- MinGW toolchain (GCC), CMake, Ninja
 
-### Building the Project
+**Using [Scoop](https://scoop.sh) (recommended):**
+```powershell
+scoop install mingw-winlibs-ucrt cmake ninja
+```
 
-#### Option 1: Using PowerShell Build Script (Recommended)
+### Building the Interceptor
 
 ```powershell
-# Clone or navigate to the project directory
-cd c:\dev\go-mapi
+cd src/interceptor
 
 # Build debug version with tests
-.\build.ps1 -Config Debug -Platform x64 -Tests
+.\build.ps1 -Tests
 
 # Build release version
-.\build.ps1 -Config Release -Platform x64
+.\build.ps1 -Config Release
 
-# Clean build
-.\build.ps1 -Config Release -Platform x64 -Clean
+# Clean and rebuild
+.\build.ps1 -Config Release -Tests -Clean
 ```
 
-#### Option 2: Manual CMake Build
+The build script auto-detects MinGW from common scoop/system paths.
 
-```bash
-# Create build directory
-mkdir build && cd build
-
-# Configure (x64 Release)
-cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON ..
-
-# Build
-cmake --build . --config Release
-```
-
-#### Building the Electron Client
+### Building the Electron Client
 
 ```bash
 cd src/client
@@ -131,41 +121,27 @@ npm run pack
 ```
 go-mapi/
 ├── src/
-│   ├── interceptor/       # C++ MAPI DLL
-│   │   ├── CMakeLists.txt
-│   │   ├── main.cpp       # DLL entry point
-│   │   ├── mapi_impl.*    # MAPI function implementations
-│   │   ├── json_writer.*  # JSON serialization
-│   │   ├── fs_utils.*     # File system operations
-│   │   └── mapi_types.h   # MAPI structure definitions
-│   ├── client/            # Electron/TypeScript app
-│   │   ├── src/
-│   │   │   ├── main.ts              # Main process
-│   │   │   ├── mail-queue.ts        # Email queue management
-│   │   │   ├── json-parser.ts       # JSON validation
-│   │   │   ├── watcher.ts           # File watcher
-│   │   │   ├── gmail-sender.ts      # Gmail API integration
-│   │   │   ├── preload.ts           # IPC bridge
-│   │   │   └── renderer/            # UI code
-│   │   └── package.json
-│   └── test-harness/      # C++ test harness
-│       ├── CMakeLists.txt
-│       ├── test_utils.*
-│       └── src/
-│           ├── main.cpp
-│           ├── test_simple_send.cpp
-│           ├── test_with_attachments.cpp
-│           ├── test_unicode.cpp
-│           └── test_multiple_recipients.cpp
-├── scripts/
-│   ├── register-mapi.reg        # Registry registration
-│   ├── register-dev.ps1         # Dev registration script
-│   └── unregister-mapi.reg      # Registry cleanup
-├── docs/
-│   └── json-schema.json         # Message format schema
-├── build.ps1                    # Build script
-├── CMakeLists.txt               # Root CMake config
-├── .gitignore
+│   ├── interceptor/           # C++ MAPI DLL + build system
+│   │   ├── CMakeLists.txt     # Main CMake config
+│   │   ├── build.ps1          # Build script (MinGW + Ninja)
+│   │   ├── main.cpp           # DLL entry point
+│   │   ├── mapi_impl.*        # MAPI function implementations
+│   │   ├── json_writer.*      # JSON serialization
+│   │   ├── fs_utils.*         # File system operations
+│   │   ├── mapi_types.h       # MAPI structure definitions
+│   │   └── test-harness/      # C++ test harness
+│   │       ├── CMakeLists.txt
+│   │       ├── test_utils.*
+│   │       └── src/*.cpp
+│   └── client/                # Electron/TypeScript app
+│       ├── src/
+│       │   ├── main.ts        # Main process
+│       │   ├── mail-queue.ts  # Email queue management
+│       │   ├── watcher.ts     # File watcher
+│       │   └── renderer/      # UI code
+│       └── package.json
+├── scripts/                   # Registry scripts
+├── .github/workflows/         # CI/CD (MinGW builds)
 ├── README.md
 ├── ROADMAP.md
 └── TODO.md
@@ -174,15 +150,16 @@ go-mapi/
 ### Output Artifacts
 
 After building, output files are located in:
-- **DLL**: `build/bin/go-mapi.dll`
-- **Test Harness**: `build/bin/go-mapi-test-harness.exe`
-- **Electron App**: `src/client/dist/go-mapi Client Setup *.exe` (packaged installer)
+- **DLL**: `src/interceptor/build/bin/go-mapi.dll`
+- **Test Harness**: `src/interceptor/build/bin/go-mapi-test-harness.exe`
+- **Electron App**: `src/client/dist/go-mapi Client Setup *.exe`
 
 ### Testing
 
 ```bash
-# Run C++ test harness
-build\bin\go-mapi-test-harness.exe
+# Run C++ test harness (from interceptor directory)
+cd src/interceptor
+.\build\bin\go-mapi-test-harness.exe .\build\bin\go-mapi.dll
 
 # Run Electron unit tests
 cd src/client
@@ -195,7 +172,7 @@ To register the DLL as your default MAPI handler:
 
 ```powershell
 # For development builds (from build output)
-.\scripts\register-dev.ps1 -BuildPath "C:\dev\go-mapi\build\bin"
+.\scripts\register-dev.ps1 -BuildPath "C:\dev\go-mapi\src\interceptor\build\bin"
 
 # Or manually import the registry file
 regedit /s .\scripts\register-mapi.reg

@@ -6,6 +6,17 @@
 // MAPI Types and Structures
 // Reference: https://learn.microsoft.com/en-us/windows/win32/api/mapi/ns-mapi-mapimessage
 
+// MAPI handle types (not defined in MinGW headers)
+#ifndef LHANDLE
+typedef ULONG_PTR LHANDLE;
+typedef LHANDLE* LPLHANDLE;
+#endif
+
+// FLAGS type (MSVC-specific, not in MinGW)
+#ifndef FLAGS
+typedef ULONG FLAGS;
+#endif
+
 // Recipient types
 #define MAPI_TO       1
 #define MAPI_CC       2
