@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Alert, Spinner } from 'react-bootstrap';
 import EmailList from './EmailList';
 import EmailDetail from './EmailDetail';

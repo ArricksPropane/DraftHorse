@@ -1,4 +1,3 @@
-import React from 'react';
 import type { EmailWithId } from '../types/messages';
 
 interface EmailListProps {
