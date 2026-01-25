@@ -25,7 +25,8 @@ if(MSVC)
     target_link_libraries(go-mapi-test-harness PRIVATE kernel32.lib user32.lib)
 elseif(MINGW)
     target_compile_options(go-mapi-test-harness PRIVATE -Wall -Wextra -Wno-unused-parameter)
-    target_link_libraries(go-mapi-test-harness PRIVATE kernel32 user32)
+    target_link_libraries(go-mapi-test-harness PRIVATE kernel32 user32 -static-libgcc -static-libstdc++)
+    target_link_options(go-mapi-test-harness PRIVATE -static)
 endif()
 
 # Set output directory

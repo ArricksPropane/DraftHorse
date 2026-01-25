@@ -38,9 +38,9 @@ if(MSVC)
 elseif(MINGW)
     # MinGW specific options
     target_compile_options(go-mapi PRIVATE -Wall -Wextra -Wno-unused-parameter)
-    target_link_libraries(go-mapi PRIVATE kernel32 user32)
+    target_link_libraries(go-mapi PRIVATE kernel32 user32 -static-libgcc -static-libstdc++)
     set_target_properties(go-mapi PROPERTIES
-        LINK_FLAGS "-Wl,--output-def,${CMAKE_BINARY_DIR}/bin/go-mapi.def"
+        LINK_FLAGS "-Wl,--output-def,${CMAKE_BINARY_DIR}/bin/go-mapi.def -static"
     )
     # Export symbols using the .def file
     target_sources(go-mapi PRIVATE mapi_exports.def)
