@@ -61,8 +61,11 @@
 
 ## To consider
 
-- Add telemetry, 
+- Add telemetry,
   - opt-out on free/personal, opt-in on pro/enterprise?
+- Full Unicode (W) variants for all Simple MAPI exports
+  - `MAPISendDocumentsW` - some apps may use this instead of ANSI version
+  - Ensure Unicode structures (MapiMessageW, etc.) are properly defined
 
 ---
 
