@@ -1,0 +1,4 @@
+{
+  "type": "error",
+  "error": "Failed to process email: invalid JSON format"
+}

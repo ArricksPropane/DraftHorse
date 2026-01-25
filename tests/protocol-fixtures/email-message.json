@@ -1,0 +1,28 @@
+{
+  "type": "email",
+  "id": "abc123def456",
+  "data": {
+    "version": 1,
+    "timestamp": "2024-01-15T10:30:00Z",
+    "subject": "Test Email Subject",
+    "body": "This is the email body content.",
+    "bodyFormat": "plain",
+    "recipients": {
+      "to": [
+        { "name": "John Doe", "address": "john@example.com" }
+      ],
+      "cc": [
+        { "name": "Jane Smith", "address": "jane@example.com" }
+      ],
+      "bcc": []
+    },
+    "attachments": [
+      {
+        "filename": "document.pdf",
+        "path": "C:\\Users\\test\\Documents\\document.pdf",
+        "size": 102400
+      }
+    ],
+    "originApp": "Windows Explorer"
+  }
+}

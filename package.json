@@ -14,8 +14,12 @@
     "build:native-host:debug": "powershell -ExecutionPolicy Bypass -Command \"cd src/native-host; go build -o build/go-mapi-host.exe .\"",
     "build:extension": "npm run -w go-mapi-extension build",
     "dev:extension": "npm run -w go-mapi-extension dev",
-    "test": "npm run test:interceptor",
+    "test": "npm run test:native-host && npm run test:extension",
+    "test:native-host": "cd src/native-host && go test -v ./...",
+    "test:extension": "npm run -w go-mapi-extension test:run",
     "test:interceptor": "powershell -ExecutionPolicy Bypass -Command \"src/interceptor/build/bin/go-mapi-test-harness.exe src/interceptor/build/bin/go-mapi.dll\"",
+    "test:e2e": "npx playwright test --config tests/e2e/playwright.config.ts",
+    "test:coverage": "npm run -w go-mapi-extension test:coverage",
     "clean": "npm run clean:interceptor && npm run clean:native-host && npm run clean:extension",
     "clean:interceptor": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/interceptor/build -ErrorAction SilentlyContinue\"",
     "clean:native-host": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/native-host/build -ErrorAction SilentlyContinue\"",
@@ -39,5 +43,8 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.41.0"
   }
 }
