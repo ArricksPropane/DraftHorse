@@ -19,3 +19,4 @@ CMakeUserPresets.json
 .idea/
 .user
 *.log
+.claude/settings.local.json
