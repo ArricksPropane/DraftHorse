@@ -71,8 +71,12 @@ go-mapi/
 │       │   ├── popup/         # React UI
 │       │   └── types/         # TypeScript types
 │       └── package.json
-├── scripts/               # Registry and install scripts
-├── tests/                 # Integration tests
+├── scripts/               # Registration scripts
+│   ├── register-mapi-dll.ps1    # Register DLL as mail client
+│   └── register-native-host.ps1 # Register native messaging host
+├── tests/
+│   ├── e2e/               # Playwright E2E tests
+│   └── sandbox/           # Windows Sandbox DLL tests
 ├── docs/                  # Additional documentation
 │   └── json-schema.json   # IPC message schema
 └── .github/workflows/     # CI/CD pipelines
@@ -94,8 +98,10 @@ npm run build:extension        # Browser extension
 npm run dev:extension
 
 # Run tests
-npm run test
-npm run test:interceptor       # C++ tests only
+npm run test                   # Unit tests (Go + Extension)
+npm run test:interceptor       # C++ test harness
+npm run test:e2e               # Playwright E2E tests
+npm run test:dll:sandbox       # Windows Sandbox DLL test (requires Win11 24H2+)
 
 # Clean build artifacts
 npm run clean
@@ -233,11 +239,24 @@ Then open a pull request against `main`.
 
 ## Testing Your Changes
 
+### Automated Tests
+
+```powershell
+# Unit tests
+npm run test                   # All unit tests
+npm run test:interceptor       # C++ test harness
+npm run test:e2e               # Playwright browser tests
+
+# Windows Sandbox tests (requires Windows 11 24H2+)
+npm run test:dll:sandbox -- -RegistrationOnly  # Test DLL registration
+npm run test:dll:sandbox -- -KeepRunning       # Keep sandbox open for inspection
+```
+
 ### Manual Testing Workflow
 
 1. Build the component you changed
 2. If testing the full flow:
-   - Register the DLL (admin required)
+   - Register the DLL: `npm run register:mapi` (admin required)
    - Start the native host
    - Load the extension
 3. Right-click a file → "Send to" → "Mail recipient"

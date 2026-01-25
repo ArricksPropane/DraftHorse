@@ -1,0 +1,148 @@
+# run-sandbox-test.ps1 - Orchestrate Windows Sandbox DLL test via CLI
+# Usage: .\run-sandbox-test.ps1 [-SetupOnly] [-RegistrationOnly] [-FullTest]
+
+param(
+    [switch]$SetupOnly,        # Just run setup (install WinAppDriver)
+    [switch]$RegistrationOnly, # Just test DLL registration
+    [switch]$FullTest,         # Run full test with UI automation
+    [switch]$KeepRunning       # Don't stop sandbox when done
+)
+
+$ErrorActionPreference = "Stop"
+$ProjectRoot = $PSScriptRoot | Split-Path | Split-Path  # Go up to project root
+
+Write-Host "=== Windows Sandbox DLL Test ===" -ForegroundColor Cyan
+Write-Host "Project root: $ProjectRoot"
+
+# Check if WSB CLI is available
+$wsbPath = Get-Command wsb -ErrorAction SilentlyContinue
+if (-not $wsbPath) {
+    Write-Host "ERROR: wsb CLI not found. Requires Windows 11 24H2+" -ForegroundColor Red
+    exit 1
+}
+
+# Check for existing sandbox
+$existing = wsb list --raw 2>&1 | ConvertFrom-Json
+if ($existing.WindowsSandboxEnvironments.Count -gt 0) {
+    Write-Host "WARNING: Existing sandbox found. Stopping it..." -ForegroundColor Yellow
+    foreach ($sb in $existing.WindowsSandboxEnvironments) {
+        wsb stop --id $sb.Id 2>&1 | Out-Null
+    }
+    Start-Sleep -Seconds 2
+}
+
+# Start sandbox (no config - we'll share folder separately)
+Write-Host "`n[1/4] Starting Windows Sandbox..."
+$startResult = wsb start --raw 2>&1 | ConvertFrom-Json
+if (-not $startResult.Id) {
+    Write-Host "ERROR: Failed to start sandbox" -ForegroundColor Red
+    Write-Host $startResult
+    exit 1
+}
+$sandboxId = $startResult.Id
+Write-Host "OK: Sandbox started with ID: $sandboxId" -ForegroundColor Green
+
+# Share project folder (read-only)
+Write-Host "`n[2/4] Sharing project folder..."
+wsb share --id $sandboxId --host-path $ProjectRoot --sandbox-path "C:\go-mapi" 2>&1 | Out-Null
+Write-Host "OK: Shared $ProjectRoot -> C:\go-mapi (read-only)" -ForegroundColor Green
+
+# Create and share output folder (writable)
+$OutputFolder = Join-Path $env:TEMP "go-mapi-sandbox-output"
+if (-not (Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFolder | Out-Null }
+wsb share --id $sandboxId --host-path $OutputFolder --sandbox-path "C:\output" --allow-write 2>&1 | Out-Null
+Write-Host "OK: Shared $OutputFolder -> C:\output (writable)" -ForegroundColor Green
+
+# Wait for sandbox to be ready
+Write-Host "Waiting for sandbox to initialize..."
+Start-Sleep -Seconds 5
+
+# Function to execute command in sandbox
+function Invoke-SandboxCommand {
+    param(
+        [string]$Command,
+        [string]$Description,
+        [switch]$AllowFailure
+    )
+    Write-Host "`n> $Description"
+    $result = wsb exec --id $sandboxId --command $Command --run-as System --raw 2>&1 | ConvertFrom-Json
+    if ($result.ExitCode -ne 0 -and -not $AllowFailure) {
+        Write-Host "FAILED: Exit code $($result.ExitCode)" -ForegroundColor Red
+        return $false
+    }
+    Write-Host "OK: Exit code $($result.ExitCode)" -ForegroundColor Green
+    return $true
+}
+
+# Test DLL registration
+Write-Host "`n[3/4] Testing DLL registration..."
+$regSuccess = Invoke-SandboxCommand `
+    -Command "powershell -ExecutionPolicy Bypass -File C:\go-mapi\tests\sandbox\test-dll-registration.ps1" `
+    -Description "DLL registration test"
+
+# Retrieve and display the test output from writable share
+$logFile = Join-Path $OutputFolder "registration-test.log"
+Write-Host "`n--- Test Output ---"
+if (Test-Path $logFile) {
+    Get-Content $logFile
+} else {
+    Write-Host "(No output file found at $logFile)"
+}
+Write-Host "--- End Output ---"
+
+if (-not $regSuccess) {
+    Write-Host "`n=== DLL REGISTRATION TEST FAILED ===" -ForegroundColor Red
+    if (-not $KeepRunning) {
+        wsb stop --id $sandboxId 2>&1 | Out-Null
+    }
+    exit 1
+}
+
+if ($RegistrationOnly) {
+    Write-Host "`n=== DLL REGISTRATION TEST PASSED ===" -ForegroundColor Green
+    if (-not $KeepRunning) {
+        Write-Host "Stopping sandbox..."
+        wsb stop --id $sandboxId 2>&1 | Out-Null
+    } else {
+        Write-Host "Sandbox left running. ID: $sandboxId"
+    }
+    exit 0
+}
+
+# Run setup (WinAppDriver install)
+if ($SetupOnly -or $FullTest) {
+    Write-Host "`n[4/4] Running setup (WinAppDriver)..."
+    $setupSuccess = Invoke-SandboxCommand `
+        -Command "powershell -ExecutionPolicy Bypass -File C:\go-mapi\tests\sandbox\setup.ps1" `
+        -Description "WinAppDriver setup"
+}
+
+if ($SetupOnly) {
+    Write-Host "`n=== SETUP COMPLETE ===" -ForegroundColor Cyan
+    if (-not $KeepRunning) {
+        Write-Host "Stopping sandbox..."
+        wsb stop --id $sandboxId 2>&1 | Out-Null
+    } else {
+        Write-Host "Sandbox left running. ID: $sandboxId"
+    }
+    exit 0
+}
+
+# Full test with UI automation
+if ($FullTest) {
+    Write-Host "`n=== FULL TEST (WinAppDriver) ===" -ForegroundColor Yellow
+    Write-Host "TODO: Implement WinAppDriver-based UI automation"
+}
+
+# Cleanup
+if (-not $KeepRunning) {
+    Write-Host "`nStopping sandbox..."
+    wsb stop --id $sandboxId 2>&1 | Out-Null
+    Write-Host "OK: Sandbox stopped" -ForegroundColor Green
+} else {
+    Write-Host "`nSandbox left running. ID: $sandboxId"
+    Write-Host "To stop: wsb stop --id $sandboxId"
+    Write-Host "To connect: wsb connect --id $sandboxId"
+}
+
+Write-Host "`n=== TEST COMPLETE ===" -ForegroundColor Green

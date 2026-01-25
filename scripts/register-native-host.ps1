@@ -1,6 +1,6 @@
-# install-dev-host.ps1
-# Installs native messaging host for development (points to build directory)
-# Usage: .\install-dev-host.ps1 -ExtensionId "your-extension-id"
+# register-native-host.ps1
+# Registers the native messaging host with Chrome/Edge (dev mode, points to build directory)
+# Usage: .\register-native-host.ps1 -ExtensionId "your-extension-id"
 
 param(
     [Parameter(Mandatory=$true)]

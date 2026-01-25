@@ -17,6 +17,18 @@ This phase proves the design works before investing in features. We don't proces
 ### Edge Cases
 - [ ] **Startup recovery** - Extension/browser/native-host was offline when interceptor ran; check dropbox on startup
 
+### Testing Infrastructure
+- [ ] **Playwright E2E enhancements** - Expand test coverage:
+  - [ ] Multiple files sent rapidly (stress test)
+  - [ ] Unicode filenames and content
+  - [ ] Large attachments (mock paths)
+  - [ ] Error recovery (corrupt JSON files)
+- [ ] **Windows Sandbox for DLL testing** - Manual release gate:
+  - [ ] Create `.wsb` configuration file
+  - [ ] Setup script: register DLL, install extension, start native host
+  - [ ] Test script: trigger "Send to → Mail recipient" via UI automation (AutoHotkey/PowerShell)
+  - [ ] Document test matrix (Windows versions × scenarios)
+
 ### Foundation (Complete)
 - [x] MAPI interceptor DLL (captures MAPISendMail)
 - [x] JSON-based IPC between DLL and native host

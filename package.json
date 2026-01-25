@@ -24,9 +24,10 @@
     "clean:interceptor": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/interceptor/build -ErrorAction SilentlyContinue\"",
     "clean:native-host": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/native-host/build -ErrorAction SilentlyContinue\"",
     "clean:extension": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/extension/dist -ErrorAction SilentlyContinue\"",
-    "register:mapi": "powershell -ExecutionPolicy Bypass -File scripts/register-dev.ps1",
+    "register:mapi": "powershell -ExecutionPolicy Bypass -File scripts/register-mapi-dll.ps1",
     "unregister:mapi": "regedit /s scripts/unregister-mapi.reg",
-    "register:native-host": "powershell -ExecutionPolicy Bypass -File src/native-host/manifests/install-host.ps1"
+    "register:native-host": "powershell -ExecutionPolicy Bypass -File src/native-host/manifests/install-host.ps1",
+    "test:dll:sandbox": "powershell -ExecutionPolicy Bypass -File tests/sandbox/run-sandbox-test.ps1"
   },
   "repository": {
     "type": "git",
