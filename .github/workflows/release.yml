@@ -17,43 +17,55 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      # Install MinGW and Ninja
+      # Build C++ Interceptor
       - name: Install MinGW and Ninja
         run: |
           choco install mingw ninja cmake --no-progress -y
           echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
 
-      # Build C++ DLL
       - name: Build Interceptor DLL
         working-directory: src/interceptor
         run: .\build.ps1 -Config Release -Clean
 
-      # Setup Node.js
+      # Build Go Native Host
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build Native Messaging Host
+        working-directory: src/native-host
+        run: |
+          go mod tidy
+          go build -ldflags "-s -w" -o build/go-mapi-host.exe .
+
+      # Build Browser Extension
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # Build Electron Client
-      - name: Build Client
-        working-directory: src/client
+      - name: Build Extension
+        working-directory: src/extension
         run: |
           npm install
           npm run build
 
-      # Package installers
-      - name: Package Electron App
-        working-directory: src/client
-        run: npm run dist
+      # Package extension as zip
+      - name: Package Extension
+        shell: bash
+        run: |
+          cd src/extension/dist
+          7z a -tzip ../../../go-mapi-extension-${{ steps.version.outputs.VERSION }}.zip .
 
-      # Upload to Release
+      # Create Release
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             src/interceptor/build/bin/go-mapi.dll
-            src/client/dist/*.exe
-            src/client/dist/*.msi
+            src/native-host/build/go-mapi-host.exe
+            go-mapi-extension-${{ steps.version.outputs.VERSION }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

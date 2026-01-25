@@ -1,6 +1,6 @@
 # Contributing to go-mapi
 
-Thank you for your interest in contributing to go-mapi! This guide will help you get started.
+Thank you for your interest in contributing to go-mapi!
 
 ## Code of Conduct
 
@@ -12,44 +12,38 @@ Please be respectful and inclusive in all interactions.
 
 - Windows 10/11
 - MinGW toolchain (GCC 13+), CMake, Ninja
+- Go 1.21+
 - Node.js 18+
 - Git
 
 **Install build tools via [Scoop](https://scoop.sh):**
 ```powershell
-scoop install mingw-winlibs-ucrt cmake ninja
+scoop install mingw-winlibs-ucrt cmake ninja go nodejs
 ```
-
-> **Note**: We use MinGW instead of MSVC for lighter tooling and easier CI/CD. The `mingw-winlibs-ucrt` package uses the modern Universal C Runtime (ucrt).
 
 ### Setup Development Environment
 
-```bash
+```powershell
 # Clone the repository
-git clone https://github.com/yourusername/go-mapi.git
+git clone https://github.com/anthropics/go-mapi.git
 cd go-mapi
 
-# Build C++ interceptor and tests
-cd src/interceptor
-.\build.ps1 -Tests
+# Build all components
+npm run build
 
-# Install and test Electron client
-cd ../client
-npm install
-npm test
+# Or build individually:
+npm run build:interceptor      # C++ DLL
+npm run build:native-host      # Go binary
+npm run build:extension        # Browser extension
 ```
 
-### Build System Overview
+### Project Components
 
-The interceptor uses **CMake + Ninja + MinGW**:
-
-| Tool | Purpose | Install |
-|------|---------|---------|
-| `mingw-winlibs-ucrt` | GCC compiler for Windows | `scoop install mingw-winlibs-ucrt` |
-| `cmake` | Build configuration | `scoop install cmake` |
-| `ninja` | Fast build system | `scoop install ninja` |
-
-The build script (`src/interceptor/build.ps1`) auto-detects these tools from common paths.
+| Component | Language | Location | Build Command |
+|-----------|----------|----------|---------------|
+| Interceptor DLL | C++ (MinGW) | `src/interceptor/` | `npm run build:interceptor` |
+| Native Host | Go | `src/native-host/` | `npm run build:native-host` |
+| Browser Extension | TypeScript/React | `src/extension/` | `npm run build:extension` |
 
 ## Development Workflow
 
@@ -63,239 +57,71 @@ git checkout -b fix/your-bug-fix
 
 ### 2. Make Your Changes
 
-Follow the guidelines below for code style and structure.
+Follow the code style guidelines below.
 
 ### 3. Write Tests
 
-Always include tests for new functionality:
-
 **For C++**:
-- Add test to `src/interceptor/test-harness/src/test_*.cpp`
-- Update `test_utils.h` if adding new test utilities
-- Ensure tests pass: `.\build\bin\go-mapi-test-harness.exe .\build\bin\go-mapi.dll`
+- Add tests to `src/interceptor/test-harness/src/`
+- Run: `npm run test:interceptor`
 
-**For TypeScript**:
-- Add test to `src/client/src/__tests__/*.test.ts`
-- Ensure tests pass: `npm test`
-- Aim for > 80% code coverage
+**For TypeScript/Extension**:
+- Add tests alongside source files
+- Run: `npm run --prefix src/extension test`
 
-### 4. Run Full Test Suite
-
-```powershell
-# Build and run C++ tests
-cd src/interceptor
-.\build.ps1 -Tests
-.\build\bin\go-mapi-test-harness.exe .\build\bin\go-mapi.dll
-
-# TypeScript tests
-cd ../client
-npm test
-```
-
-### 5. Commit Your Changes
+### 4. Commit Your Changes
 
 ```bash
 git add .
-git commit -m "feat: add feature description
-
-- Detailed explanation of what was added
-- Why this change was necessary
-- Any breaking changes or gotchas"
+git commit -m "feat: add feature description"
 ```
 
-**Commit Message Format**:
-- `feat:` - New feature
-- `fix:` - Bug fix
-- `docs:` - Documentation
-- `test:` - Tests
-- `refactor:` - Code refactoring
-- `perf:` - Performance improvement
-- `chore:` - Build/tooling changes
+**Commit prefixes**: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`
 
-### 6. Push and Create Pull Request
+### 5. Push and Create Pull Request
 
 ```bash
 git push origin feature/your-feature-name
 ```
 
-Then create a pull request on GitHub. Include:
-- Description of changes
-- Why this change is needed
-- How to test the changes
-- Any related issues
-
 ## Code Style Guide
 
-### C++
+### C++ (Interceptor)
 
 - **Standard**: C++17
-- **Compiler**: MinGW GCC (not MSVC)
-- **Naming**:
-  - Classes: `PascalCase` (e.g., `MapiImpl`)
-  - Functions: `PascalCase` (e.g., `WriteMailToFile`)
-  - Constants: `UPPER_SNAKE_CASE` (e.g., `MAPI_TO`)
-  - Variables: `camelCase` (e.g., `recipCount`)
+- **Compiler**: MinGW GCC
+- **Naming**: `PascalCase` for classes/functions, `camelCase` for variables
 - **Spacing**: 4 spaces (no tabs)
-- **Comments**: Use `//` for single-line, `/* */` for multi-line
 
-**MinGW Considerations**:
-- Avoid `#pragma comment(lib, ...)` - use CMake `target_link_libraries` instead
-- Define Windows types not in MinGW headers (e.g., `LHANDLE`, `FLAGS`) in `mapi_types.h`
-- Use `::FunctionName` to disambiguate Windows API calls from class methods (e.g., `::WriteFile`)
-- Include `<cstdint>` explicitly for fixed-width types like `uint32_t`
+### Go (Native Host)
 
-**Example**:
-```cpp
-class FileWriter {
-public:
-    // Write data to file with UTF-8 encoding
-    static bool WriteFile(const std::wstring& filePath, const std::string& content);
+- **Standard**: Go 1.21+
+- **Naming**: Follow Go conventions (`PascalCase` for exports, `camelCase` for private)
+- **Format**: Use `gofmt`
 
-private:
-    // Helper to ensure directory exists
-    static bool EnsureDirectory(const std::wstring& dirPath);
-};
-```
+### TypeScript (Extension)
 
-### TypeScript
-
-- **Lint**: ESLint (configured via tsconfig)
-- **Naming**:
-  - Classes: `PascalCase` (e.g., `MailQueue`)
-  - Functions: `camelCase` (e.g., `getQueue`)
-  - Constants: `UPPER_SNAKE_CASE` (e.g., `MAX_MESSAGE_SIZE`)
-  - Variables: `camelCase` (e.g., `messageCount`)
-  - Interfaces: `PascalCase` with `I` prefix optional (e.g., `MailMessage`)
+- **Naming**: `PascalCase` for components/types, `camelCase` for functions/variables
 - **Spacing**: 2 spaces
 - **Semicolons**: Required
 - **Strict Mode**: Always enabled
 
-**Example**:
-```typescript
-interface MailMessage {
-  id: string;
-  subject: string;
-  // ...
-}
-
-class MailQueue {
-  private queue: Map<string, MailMessage> = new Map();
-
-  /**
-   * Add a message to the queue
-   */
-  add(message: MailMessage): void {
-    this.queue.set(message.id, message);
-  }
-}
-```
-
-### Comments & Documentation
-
-**C++**:
-```cpp
-// Brief description
-unsigned long MAPISendMail(...) {
-    // Implementation
-}
-```
-
-**TypeScript**:
-```typescript
-/**
- * Brief description with more detail
- * @param message The message to send
- * @returns True if successful
- */
-function sendMessage(message: MailMessage): boolean {
-  // Implementation
-}
-```
-
-## Testing Requirements
-
-### For C++ Changes
-- New code must have unit tests
-- All tests must pass locally
-- `test_harness` should exit with code 0
-
-### For TypeScript Changes
-- New code must have unit tests
-- Minimum 80% code coverage
-- All tests must pass: `npm test`
-
-### Test Writing Tips
-- Use descriptive test names: `test("should add message to queue")`
-- Test both success and failure cases
-- Use fixtures for test data
-- Clean up after tests (delete temp files)
-
-## Documentation
-
-### When to Update Docs
-
-- Adding a new feature → Update README.md
-- Changing architecture → Update ARCHITECTURE.md
-- Adding tests → Update TESTING.md
-- Adding build steps → Update README.md or build.ps1
-
-### Documentation Standards
-
-- Keep explanations clear and concise
-- Include code examples where helpful
-- Link to relevant references
-- Update table of contents if adding sections
-
-## Commit Best Practices
-
-1. **Atomic commits**: Each commit should be a single logical change
-2. **Test before commit**: Ensure all tests pass
-3. **Meaningful messages**: Describe WHAT and WHY, not HOW
-4. **Reference issues**: Use "Fixes #123" in commit body
-
-**Good commit message**:
-```
-feat: add Unicode support to JSON serialization
-
-Properly escape Unicode characters in JSON output to support
-international character sets in email subjects and bodies.
-
-Fixes #42
-```
-
-**Bad commit message**:
-```
-fix stuff
-```
-
-## Pull Request Process
-
-1. Ensure all tests pass
-2. Update documentation if needed
-3. Add tests for new code
-4. Request review from maintainers
-5. Address feedback promptly
-6. Ensure clean commit history (rebase if needed)
-
 ## Areas for Contribution
 
 ### High Priority
-- [ ] Gmail API integration (Phase 2)
-- [ ] OAuth2 flow implementation
-- [ ] Error handling improvements
-- [ ] Performance optimization
+- [ ] Attachment support (file upload to Gmail)
+- [ ] Settings UI in extension
+- [ ] MSI installer creation
+- [ ] Comprehensive test coverage
 
 ### Medium Priority
 - [ ] Additional MAPI function support
 - [ ] UI/UX improvements
-- [ ] Configuration management
-- [ ] Logging system
+- [ ] Error handling improvements
 
 ### Lower Priority
 - [ ] Documentation improvements
-- [ ] Code refactoring
-- [ ] Build system optimization
-- [ ] Test coverage expansion
+- [ ] Performance optimization
 
 ## Getting Help
 
@@ -305,14 +131,4 @@ fix stuff
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the project's license (TBD).
-
-## Recognition
-
-Contributors will be recognized in:
-- CONTRIBUTORS.md
-- GitHub contributors page
-- Release notes
-
-Thank you for helping make go-mapi better! 🚀
-
+By contributing, you agree that your contributions will be licensed under the MIT license.

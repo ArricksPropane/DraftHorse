@@ -1,0 +1,41 @@
+{
+  "name": "go-mapi",
+  "version": "1.0.0",
+  "description": "MAPI to Gmail bridge for Windows - send emails via Gmail from any Windows application",
+  "private": true,
+  "scripts": {
+    "build": "npm run build:interceptor && npm run build:native-host && npm run build:extension",
+    "build:interceptor": "powershell -ExecutionPolicy Bypass -File src/interceptor/build.ps1 -Config Release",
+    "build:interceptor:debug": "powershell -ExecutionPolicy Bypass -File src/interceptor/build.ps1 -Config Debug -Tests",
+    "build:native-host": "powershell -ExecutionPolicy Bypass -Command \"cd src/native-host; go build -ldflags '-s -w' -o build/go-mapi-host.exe .\"",
+    "build:native-host:debug": "powershell -ExecutionPolicy Bypass -Command \"cd src/native-host; go build -o build/go-mapi-host.exe .\"",
+    "build:extension": "npm run --prefix src/extension build",
+    "dev:extension": "npm run --prefix src/extension dev",
+    "install:extension": "npm install --prefix src/extension",
+    "test": "npm run test:interceptor",
+    "test:interceptor": "powershell -ExecutionPolicy Bypass -Command \"src/interceptor/build/bin/go-mapi-test-harness.exe src/interceptor/build/bin/go-mapi.dll\"",
+    "clean": "npm run clean:interceptor && npm run clean:native-host && npm run clean:extension",
+    "clean:interceptor": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/interceptor/build -ErrorAction SilentlyContinue\"",
+    "clean:native-host": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/native-host/build -ErrorAction SilentlyContinue\"",
+    "clean:extension": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/extension/dist -ErrorAction SilentlyContinue\"",
+    "register:mapi": "powershell -ExecutionPolicy Bypass -File scripts/register-dev.ps1",
+    "unregister:mapi": "regedit /s scripts/unregister-mapi.reg",
+    "register:native-host": "powershell -ExecutionPolicy Bypass -File src/native-host/manifests/install-host.ps1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anthropics/go-mapi.git"
+  },
+  "keywords": [
+    "mapi",
+    "gmail",
+    "windows",
+    "email",
+    "google-workspace"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

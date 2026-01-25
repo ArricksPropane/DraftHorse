@@ -1,10 +1,10 @@
 # go-mapi
 
-**The MAPI to Google Workspace bridge you always wanted.**
+**The MAPI to Gmail bridge you always wanted.**
 
 ## The Problem
 
-[MAPI](https://en.wikipedia.org/wiki/MAPI) (Messaging Application Programming Interface) is a Microsoft Windows API that allows programs to become email-aware. In practical terms, it enables the "Send by Email" feature found in many Windows applications - from right-clicking a file in Explorer to printing to PDF and emailing it.
+[MAPI](https://en.wikipedia.org/wiki/MAPI) (Messaging Application Programming Interface) is a Microsoft Windows API that allows programs to become email-aware. It enables the "Send by Email" feature found in many Windows applications - from right-clicking a file in Explorer to printing to PDF and emailing it.
 
 **Gmail and Google Workspace have no native MAPI support.** Despite Google Workspace being a major enterprise email solution, there has never been an official MAPI-to-Gmail bridge.
 
@@ -12,212 +12,184 @@ A few third-party tools have filled this gap over the years. The most notable, [
 
 **go-mapi** aims to be the open-source replacement.
 
-## How It Works
+## Architecture
 
-go-mapi uses a two-component architecture to keep things simple and maintainable:
-
-### 1. The Interceptor (C++ DLL)
-
-A minimal, zero-dependency Windows DLL that registers as the system's default mail client. When any application calls `MAPISendMail`, the DLL:
-
-- Captures the message data (subject, body, recipients, attachments)
-- Serializes it to a JSON file in `%TEMP%\go-mapi\`
-- Returns immediately (non-blocking)
-
-This keeps the native component as simple as possible - it just bridges MAPI calls to the filesystem.
-
-### 2. The Client (Electron/TypeScript)
-
-A background system tray application that:
-
-- Watches the `%TEMP%\go-mapi\` directory for new messages
-- Handles OAuth2 authentication with Google
-- Uses the Gmail API to create drafts or send emails
-- Opens the user's browser to the composed draft ("The Pop")
+go-mapi uses a three-component architecture optimized for enterprise deployment:
 
 ```
-┌─────────────────────┐     JSON file      ┌─────────────────────┐
-│   Windows App       │                    │   Electron Client   │
-│   (Explorer, etc.)  │                    │   (System Tray)     │
-│         │           │                    │         │           │
-│    MAPISendMail()   │                    │   Folder Watcher    │
-│         ▼           │                    │         ▼           │
-│  ┌─────────────┐    │  %TEMP%\go-mapi\   │   ┌───────────┐     │
-│  │ go-mapi.dll │────┼───────────────────►│   │ Gmail API │     │
-│  └─────────────┘    │                    │   └───────────┘     │
-└─────────────────────┘                    └─────────────────────┘
+┌─────────────────────┐                      ┌─────────────────────┐
+│   Windows App       │                      │  Browser Extension  │
+│   (Explorer, etc.)  │                      │  (Chrome / Edge)    │
+│         │           │                      │         │           │
+│    MAPISendMail()   │                      │   React Popup UI    │
+│         ▼           │                      │         │           │
+│  ┌─────────────┐    │   %TEMP%\go-mapi\    │   ┌───────────┐     │
+│  │ go-mapi.dll │────┼──────────────────────┤   │ Gmail API │     │
+│  └─────────────┘    │         ▲            │   └───────────┘     │
+└─────────────────────┘         │            └─────────────────────┘
+                                │
+                     ┌──────────┴──────────┐
+                     │  Native Messaging   │
+                     │  Host (Go binary)   │
+                     │  Watches folder     │
+                     └─────────────────────┘
 ```
 
-## Tech Stack
+| Component | Technology | Deployment | Update Frequency |
+|-----------|------------|------------|------------------|
+| Interceptor DLL | C++ (MinGW) | MSI/Admin | Rare |
+| Native Host | Go | MSI/Admin | Rare |
+| Browser Extension | React + TypeScript | Chrome Web Store / Edge Add-ons | Frequent |
 
-| Component     | Technology                        |
-|---------------|-----------------------------------|
-| Interceptor   | C++ (MinGW/MSVC), CMake           |
-| Client        | Electron, TypeScript, Node.js     |
-| API           | Google Workspace Gmail API, OAuth2|
-| Build/CI      | GitHub Actions                    |
+### Why This Architecture?
+
+- **Enterprise-friendly**: DLL and native host are stable, deployed via MSI with admin rights
+- **Easy updates**: Extension updates arrive via browser extension management - no admin needed
+- **Simple OAuth**: Extension uses Chrome Identity API - no separate auth flow
+- **Cross-browser**: Same extension works in Chrome and Edge
+
+## Quick Start
+
+### Prerequisites
+
+- Windows 10/11
+- Chrome or Edge browser
+- Node.js 18+ and Go 1.21+ (for building)
+
+**Install build tools via [Scoop](https://scoop.sh):**
+```powershell
+scoop install mingw-winlibs-ucrt cmake ninja go nodejs
+```
+
+### Building
+
+```powershell
+# Build everything
+npm run build
+
+# Or build components individually
+npm run build:interceptor      # C++ DLL
+npm run build:native-host      # Go binary
+npm run build:extension        # Browser extension
+```
+
+### Installation
+
+1. **Register the DLL** (run as admin):
+   ```powershell
+   npm run register:mapi
+   ```
+
+2. **Install native messaging host**:
+   ```powershell
+   npm run register:native-host -- -ExtensionId YOUR_EXTENSION_ID
+   ```
+
+3. **Load the extension**:
+   - Open Chrome/Edge → Extensions → Enable Developer Mode
+   - Click "Load unpacked" → Select `src/extension/dist/`
+
+### Usage
+
+1. Right-click any file in Windows Explorer → "Send to" → "Mail recipient"
+2. The email appears in the go-mapi extension popup
+3. Click "Save as Draft" or "Send Now"
 
 ## Project Structure
 
 ```
 go-mapi/
 ├── src/
-│   ├── interceptor/    # C++ MAPI DLL
-│   └── client/         # Electron/TypeScript app
-├── scripts/            # Registry scripts, build helpers
-└── .github/workflows/  # CI/CD pipelines
-```
-
-## Development Setup
-
-### Prerequisites
-
-- Windows 10/11
-- Node.js 18+
-- MinGW toolchain (GCC), CMake, Ninja
-
-**Using [Scoop](https://scoop.sh) (recommended):**
-```powershell
-scoop install mingw-winlibs-ucrt cmake ninja
-```
-
-### Building the Interceptor
-
-```powershell
-cd src/interceptor
-
-# Build debug version with tests
-.\build.ps1 -Tests
-
-# Build release version
-.\build.ps1 -Config Release
-
-# Clean and rebuild
-.\build.ps1 -Config Release -Tests -Clean
-```
-
-The build script auto-detects MinGW from common scoop/system paths.
-
-### Building the Electron Client
-
-```bash
-cd src/client
-
-# Install dependencies
-npm install
-
-# Build TypeScript
-npm run build
-
-# Run in development mode
-npm run dev
-
-# Package for distribution
-npm run pack
-```
-
-### Project Layout
-
-```
-go-mapi/
-├── src/
-│   ├── interceptor/           # C++ MAPI DLL + build system
-│   │   ├── CMakeLists.txt     # Main CMake config
-│   │   ├── build.ps1          # Build script (MinGW + Ninja)
-│   │   ├── main.cpp           # DLL entry point
-│   │   ├── mapi_impl.*        # MAPI function implementations
-│   │   ├── json_writer.*      # JSON serialization
-│   │   ├── fs_utils.*         # File system operations
-│   │   ├── mapi_types.h       # MAPI structure definitions
-│   │   └── test-harness/      # C++ test harness
-│   │       ├── CMakeLists.txt
-│   │       ├── test_utils.*
-│   │       └── src/*.cpp
-│   └── client/                # Electron/TypeScript app
+│   ├── interceptor/       # C++ MAPI DLL
+│   │   ├── build.ps1      # Build script
+│   │   ├── main.cpp       # DLL entry point
+│   │   └── test-harness/  # C++ tests
+│   ├── native-host/       # Go native messaging host
+│   │   ├── main.go        # Entry point
+│   │   ├── watcher.go     # File system watcher
+│   │   ├── protocol.go    # Native messaging protocol
+│   │   └── manifests/     # Chrome/Edge host manifests
+│   └── extension/         # Browser extension (React)
+│       ├── manifest.json  # Extension manifest v3
 │       ├── src/
-│       │   ├── main.ts        # Main process
-│       │   ├── mail-queue.ts  # Email queue management
-│       │   ├── watcher.ts     # File watcher
-│       │   └── renderer/      # UI code
+│       │   ├── background/    # Service worker
+│       │   ├── popup/         # React UI
+│       │   └── types/         # TypeScript types
 │       └── package.json
-├── scripts/                   # Registry scripts
-├── .github/workflows/         # CI/CD (MinGW builds)
-├── README.md
-├── ROADMAP.md
-└── TODO.md
+├── scripts/               # Registry scripts
+├── package.json           # Root build scripts
+└── .github/workflows/     # CI/CD
 ```
 
-### Output Artifacts
+## Development
 
-After building, output files are located in:
-- **DLL**: `src/interceptor/build/bin/go-mapi.dll`
-- **Test Harness**: `src/interceptor/build/bin/go-mapi-test-harness.exe`
-- **Electron App**: `src/client/dist/go-mapi Client Setup *.exe`
-
-### Testing
-
-```bash
-# Run C++ test harness (from interceptor directory)
-cd src/interceptor
-.\build\bin\go-mapi-test-harness.exe .\build\bin\go-mapi.dll
-
-# Run Electron unit tests
-cd src/client
-npm test
-```
-
-### Registering the DLL (Development)
-
-To register the DLL as your default MAPI handler:
+### Build Scripts
 
 ```powershell
-# For development builds (from build output)
-.\scripts\register-dev.ps1 -BuildPath "C:\dev\go-mapi\src\interceptor\build\bin"
+npm run build              # Build all components
+npm run build:interceptor  # Build C++ DLL (Release)
+npm run build:native-host  # Build Go native host
+npm run build:extension    # Build browser extension
 
-# Or manually import the registry file
-regedit /s .\scripts\register-mapi.reg
+npm run dev:extension      # Watch mode for extension
+
+npm run test               # Run tests
+npm run clean              # Clean all build artifacts
 ```
 
-To unregister:
-
-```
-regedit /s .\scripts\unregister-mapi.reg
-```
-
-### Environment Variables
-
-For development, you may want to set:
+### Extension Development
 
 ```powershell
-$env:GO_MAPI_DEBUG=1           # Enable debug logging in DLL
-$env:NODE_ENV=development       # Electron development mode
+cd src/extension
+npm install
+npm run dev    # Watch mode - rebuilds on changes
 ```
 
-## Roadmap
+Then reload the extension in Chrome/Edge after each change.
 
-See [ROADMAP.md](ROADMAP.md) for detailed development phases:
+### Testing the DLL
 
-1. **Phase 1** - Local Bridge MVP (interceptor + basic client)
-2. **Phase 2** - Gmail Integration (OAuth, drafts, send)
-3. **Phase 3** - Polish & Release (installer, docs, testing)
-4. **Phase 4** - Pro & Enterprise (multi-account, centralized management)
+```powershell
+npm run build:interceptor:debug
+npm run test:interceptor
+```
+
+## Configuration
+
+### OAuth Setup
+
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable Gmail API
+3. Create OAuth 2.0 credentials (Chrome Extension type)
+4. Update `src/extension/manifest.json` with your client ID
+
+### Enterprise Deployment
+
+For enterprise deployment, create an MSI that includes:
+- `go-mapi.dll` → `C:\Program Files\go-mapi\`
+- `go-mapi-host.exe` → `C:\Program Files\go-mapi\`
+- Registry entries for MAPI client and native messaging host
+
+The extension can be deployed via:
+- Chrome Web Store (public or unlisted)
+- Edge Add-ons
+- Enterprise policy (`ExtensionInstallForcelist`)
 
 ## Why "go-mapi"?
 
-The name is a nod to "Go(ogle)" and get going / let's go. The project started as a pragmatic solution to the Affixa shutdown.
+The name is a nod to "Go(ogle)" and "let's go". The project started as a pragmatic solution to the Affixa shutdown.
 
 ## License
 
-[TBD]
+MIT
 
 ## Contributing
 
-Contributions welcome! This project exists because the community needs an open-source MAPI-to-Gmail bridge.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## References
 
 - [Simple MAPI Documentation](https://learn.microsoft.com/en-us/previous-versions/dd296734(v=vs.85))
-- [MAPI Stub Library](https://github.com/microsoft/MAPIStubLibrary)
-- [MFCMAPI](https://github.com/microsoft/mfcmapi)
+- [Chrome Native Messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging)
 - [Gmail API](https://developers.google.com/gmail/api)
 - [Affixa Sunset Announcement](https://help.affixa.com/article/100-sunsetting-and-retirement-of-affixa)

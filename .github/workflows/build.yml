@@ -9,6 +9,7 @@ on:
 
 jobs:
   build-interceptor:
+    name: Build Interceptor (C++)
     runs-on: windows-latest
     strategy:
       matrix:
@@ -17,26 +18,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install MinGW and Ninja
       - name: Install MinGW and Ninja
         run: |
           choco install mingw ninja cmake --no-progress -y
           echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
 
-      # Build C++ Interceptor and Tests
       - name: Build Interceptor and Test Harness
         working-directory: src/interceptor
-        run: |
-          .\build.ps1 -Config ${{ matrix.config }} -Tests -Clean
+        run: .\build.ps1 -Config ${{ matrix.config }} -Tests -Clean
 
-      # Run Tests
       - name: Run Test Harness
         working-directory: src/interceptor
-        run: |
-          .\build\bin\go-mapi-test-harness.exe .\build\bin\go-mapi.dll
+        run: .\build\bin\go-mapi-test-harness.exe .\build\bin\go-mapi.dll
         continue-on-error: true
 
-      # Upload artifacts
       - name: Upload DLL Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -51,23 +46,58 @@ jobs:
           path: src/interceptor/build/bin/go-mapi-test-harness.exe
           if-no-files-found: warn
 
-  build-client:
+  build-native-host:
+    name: Build Native Host (Go)
     runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      # Setup Node.js for Electron client
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build Native Messaging Host
+        working-directory: src/native-host
+        run: |
+          go mod tidy
+          go build -ldflags "-s -w" -o build/go-mapi-host.exe .
+
+      - name: Upload Native Host Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-mapi-native-host
+          path: src/native-host/build/go-mapi-host.exe
+          if-no-files-found: warn
+
+  build-extension:
+    name: Build Extension (React)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # Build Electron Client
-      - name: Install Client Dependencies
-        working-directory: src/client
+      - name: Install Dependencies
+        working-directory: src/extension
         run: npm install
 
-      - name: Build Client TypeScript
-        working-directory: src/client
+      - name: Type Check
+        working-directory: src/extension
+        run: npm run typecheck
+
+      - name: Build Extension
+        working-directory: src/extension
         run: npm run build
+
+      - name: Upload Extension Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-mapi-extension
+          path: src/extension/dist/
+          if-no-files-found: warn
