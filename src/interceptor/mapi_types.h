@@ -39,6 +39,8 @@ typedef ULONG FLAGS;
 extern "C" {
 #endif
 
+// --- ANSI versions (MAPISendMail / MAPISendMailA) ---
+
 // File descriptor for attachments
 typedef struct
 {
@@ -77,6 +79,44 @@ typedef struct
     ULONG nFileCount;
     LPMapiFileDesc lpFiles;
 } MapiMessage, *LPMapiMessage;
+
+// --- Wide (Unicode) versions (MAPISendMailW) ---
+
+typedef struct
+{
+    ULONG ulReserved;
+    ULONG flFlags;
+    ULONG nPosition;
+    LPWSTR lpszPathName;
+    LPWSTR lpszFileName;
+    LPVOID lpFileType;
+} MapiFileDescW, *LPMapiFileDescW;
+
+typedef struct
+{
+    ULONG ulReserved;
+    ULONG ulRecipClass;
+    LPWSTR lpszName;
+    LPWSTR lpszAddress;
+    ULONG ulEIDSize;
+    LPVOID lpEntryID;
+} MapiRecipDescW, *LPMapiRecipDescW;
+
+typedef struct
+{
+    ULONG ulReserved;
+    LPWSTR lpszSubject;
+    LPWSTR lpszNoteText;
+    LPWSTR lpszMessageType;
+    LPWSTR lpszDateReceived;
+    LPWSTR lpszConversationID;
+    FLAGS flFlags;
+    LPMapiRecipDescW lpOriginator;
+    ULONG nRecipCount;
+    LPMapiRecipDescW lpRecips;
+    ULONG nFileCount;
+    LPMapiFileDescW lpFiles;
+} MapiMessageW, *LPMapiMessageW;
 
 #ifdef __cplusplus
 }

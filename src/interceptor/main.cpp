@@ -19,7 +19,7 @@ ULONG STDAPICALLTYPE MAPISendMail(
 ULONG STDAPICALLTYPE MAPISendMailW(
     LHANDLE lhSession,
     ULONG_PTR ulUIParam,
-    LPMapiMessage lpMessage,
+    LPMapiMessageW lpMessage,
     FLAGS flFlags,
     ULONG ulReserved
 ) {

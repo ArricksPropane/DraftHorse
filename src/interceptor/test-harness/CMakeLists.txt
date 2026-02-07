@@ -11,6 +11,7 @@ add_executable(go-mapi-test-harness
     src/test_simple_send.cpp
     src/test_with_attachments.cpp
     src/test_unicode.cpp
+    src/test_unicode_wide.cpp
     src/test_multiple_recipients.cpp
 )
 

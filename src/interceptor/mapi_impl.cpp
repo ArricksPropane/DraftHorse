@@ -31,6 +31,15 @@ std::string MapiImpl::GetOriginApplicationName() {
     return "unknown.exe";
 }
 
+std::string MapiImpl::WideToUtf8(const wchar_t* wide) {
+    if (!wide || !wide[0]) return "";
+    int size = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    if (size <= 0) return "";
+    std::string result(size - 1, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wide, -1, &result[0], size, NULL, NULL);
+    return result;
+}
+
 MailMessage MapiImpl::ConvertAnsiMessage(const MapiMessage& msg) {
     MailMessage result;
     result.originApp = GetOriginApplicationName();
@@ -95,6 +104,70 @@ MailMessage MapiImpl::ConvertAnsiMessage(const MapiMessage& msg) {
     return result;
 }
 
+MailMessage MapiImpl::ConvertWideMessage(const MapiMessageW& msg) {
+    MailMessage result;
+    result.originApp = GetOriginApplicationName();
+    result.bodyFormat = "plain";
+
+    // Subject
+    if (msg.lpszSubject) {
+        result.subject = WideToUtf8(msg.lpszSubject);
+    }
+
+    // Body
+    if (msg.lpszNoteText) {
+        result.body = WideToUtf8(msg.lpszNoteText);
+    }
+
+    // Recipients
+    if (msg.lpRecips && msg.nRecipCount > 0) {
+        for (ULONG i = 0; i < msg.nRecipCount; ++i) {
+            const MapiRecipDescW& recip = msg.lpRecips[i];
+            Recipient r;
+            if (recip.lpszName) {
+                r.name = WideToUtf8(recip.lpszName);
+            }
+            if (recip.lpszAddress) {
+                r.address = WideToUtf8(recip.lpszAddress);
+            }
+
+            switch (recip.ulRecipClass) {
+            case MAPI_TO:
+                result.toRecipients.push_back(r);
+                break;
+            case MAPI_CC:
+                result.ccRecipients.push_back(r);
+                break;
+            case MAPI_BCC:
+                result.bccRecipients.push_back(r);
+                break;
+            default:
+                result.toRecipients.push_back(r);
+                break;
+            }
+        }
+    }
+
+    // Attachments
+    if (msg.lpFiles && msg.nFileCount > 0) {
+        for (ULONG i = 0; i < msg.nFileCount; ++i) {
+            const MapiFileDescW& file = msg.lpFiles[i];
+            Attachment attach;
+            if (file.lpszFileName) {
+                attach.filename = WideToUtf8(file.lpszFileName);
+            }
+            if (file.lpszPathName) {
+                attach.path = WideToUtf8(file.lpszPathName);
+            }
+            attach.size = 0;
+
+            result.attachments.push_back(attach);
+        }
+    }
+
+    return result;
+}
+
 ULONG MapiImpl::MAPISendMailA(
     LHANDLE lhSession,
     ULONG_PTR ulUIParam,
@@ -123,12 +196,26 @@ ULONG MapiImpl::MAPISendMailA(
 ULONG MapiImpl::MAPISendMailW(
     LHANDLE lhSession,
     ULONG_PTR ulUIParam,
-    LPMapiMessage lpMessage,
+    LPMapiMessageW lpMessage,
     FLAGS flFlags,
     ULONG ulReserved
 ) {
-    // For now, treat as ANSI (would need wide string conversions for full Unicode support)
-    return MAPISendMailA(lhSession, ulUIParam, lpMessage, flFlags, ulReserved);
+    if (!lpMessage) {
+        return MAPI_E_INVALID_MESSAGE;
+    }
+
+    try {
+        MailMessage msg = ConvertWideMessage(*lpMessage);
+        std::wstring filePath = JsonWriter::WriteMailToFile(msg);
+
+        if (filePath.empty()) {
+            return MAPI_E_FAILURE;
+        }
+
+        return SUCCESS_SUCCESS;
+    } catch (...) {
+        return MAPI_E_FAILURE;
+    }
 }
 
 ULONG MapiImpl::MAPILogon(

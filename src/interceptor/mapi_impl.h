@@ -20,7 +20,7 @@ public:
     static ULONG MAPISendMailW(
         LHANDLE lhSession,
         ULONG_PTR ulUIParam,
-        LPMapiMessage lpMessage,
+        LPMapiMessageW lpMessage,
         FLAGS flFlags,
         ULONG ulReserved
     );
@@ -55,6 +55,12 @@ public:
 private:
     // Convert ANSI MapiMessage to MailMessage struct
     static MailMessage ConvertAnsiMessage(const MapiMessage& msg);
+
+    // Convert Unicode (wide) MapiMessageW to MailMessage struct
+    static MailMessage ConvertWideMessage(const MapiMessageW& msg);
+
+    // Convert wide string (UTF-16) to UTF-8
+    static std::string WideToUtf8(const wchar_t* wide);
 
     // Get application name (for originApp field)
     static std::string GetOriginApplicationName();

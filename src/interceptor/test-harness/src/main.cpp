@@ -8,6 +8,7 @@ extern int test_simple_send();
 extern int test_with_attachments();
 extern int test_unicode();
 extern int test_multiple_recipients();
+extern int test_unicode_wide();
 
 using namespace mapi_test;
 
@@ -43,7 +44,8 @@ int main(int argc, char* argv[]) {
     std::vector<std::pair<std::string, int(*)()>> tests = {
         { "Simple Send", test_simple_send },
         { "With Attachments", test_with_attachments },
-        { "Unicode", test_unicode },
+        { "Unicode (ANSI)", test_unicode },
+        { "Unicode (Wide/MAPISendMailW)", test_unicode_wide },
         { "Multiple Recipients", test_multiple_recipients },
     };
 
