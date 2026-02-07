@@ -6,11 +6,15 @@ export const MSG_TYPE = {
   REMOVED: 'removed',
   READY: 'ready',
   ERROR: 'error',
+  UPLOAD_COMPLETE: 'upload-complete',
+  UPLOAD_ERROR: 'upload-error',
+  UPLOAD_PROGRESS: 'upload-progress',
   // Extension → Host
   PROCESS: 'process',
   DELETE: 'delete',
   LIST: 'list',
   SHUTDOWN: 'shutdown',
+  UPLOAD_ATTACHMENTS: 'upload-attachments',
 } as const;
 
 export interface Recipient {
@@ -67,11 +71,33 @@ export interface NativeErrorMessage {
   error: string;
 }
 
+export interface NativeUploadCompleteMessage {
+  type: typeof MSG_TYPE.UPLOAD_COMPLETE;
+  draftId: string;
+}
+
+export interface NativeUploadErrorMessage {
+  type: typeof MSG_TYPE.UPLOAD_ERROR;
+  draftId: string;
+  error: string;
+}
+
+export interface NativeUploadProgressMessage {
+  type: typeof MSG_TYPE.UPLOAD_PROGRESS;
+  draftId: string;
+  current: number;
+  total: number;
+  filename: string;
+}
+
 export type NativeIncomingMessage =
   | NativeEmailMessage
   | NativeRemovedMessage
   | NativeReadyMessage
-  | NativeErrorMessage;
+  | NativeErrorMessage
+  | NativeUploadCompleteMessage
+  | NativeUploadErrorMessage
+  | NativeUploadProgressMessage;
 
 // Messages to native host
 export interface NativeProcessMessage {
@@ -92,18 +118,31 @@ export interface NativeShutdownMessage {
   type: typeof MSG_TYPE.SHUTDOWN;
 }
 
+export interface NativeUploadAttachmentsMessage {
+  type: typeof MSG_TYPE.UPLOAD_ATTACHMENTS;
+  draftId: string;
+  messageId: string;
+  token: string;
+  attachments: { path: string; filename: string }[];
+}
+
 export type NativeOutgoingMessage =
   | NativeProcessMessage
   | NativeDeleteMessage
   | NativeListMessage
-  | NativeShutdownMessage;
+  | NativeShutdownMessage
+  | NativeUploadAttachmentsMessage;
 
 // Internal extension messages (between service worker and popup)
 export interface ExtensionMessage {
-  type: 'QUEUE_UPDATE' | 'CONNECTION_STATUS' | 'ERROR';
+  type: 'QUEUE_UPDATE' | 'CONNECTION_STATUS' | 'ERROR' | 'UPLOAD_PROGRESS';
   emails?: EmailWithId[];
   connected?: boolean;
   error?: string;
+  draftId?: string;
+  current?: number;
+  total?: number;
+  filename?: string;
 }
 
 // User settings

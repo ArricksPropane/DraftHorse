@@ -18,6 +18,12 @@ const (
 	MsgTypeDelete   = "delete"   // Extension → Host: delete email
 	MsgTypeList     = "list"     // Extension → Host: request current emails
 	MsgTypeShutdown = "shutdown" // Extension → Host: graceful shutdown
+
+	// Attachment upload flow
+	MsgTypeUploadAttachments = "upload-attachments" // Extension → Host: upload files to draft
+	MsgTypeUploadComplete    = "upload-complete"    // Host → Extension: upload succeeded
+	MsgTypeUploadError       = "upload-error"       // Host → Extension: upload failed
+	MsgTypeUploadProgress    = "upload-progress"    // Host → Extension: upload progress
 )
 
 // OutgoingMessage is sent from host to extension
@@ -27,12 +33,30 @@ type OutgoingMessage struct {
 	Data    *MailMessage `json:"data,omitempty"`
 	Error   string       `json:"error,omitempty"`
 	Version string       `json:"version,omitempty"`
+
+	// Upload fields
+	DraftID  string `json:"draftId,omitempty"`
+	Current  int    `json:"current,omitempty"`
+	Total    int    `json:"total,omitempty"`
+	Filename string `json:"filename,omitempty"`
 }
 
 // IncomingMessage is received from extension
 type IncomingMessage struct {
 	Type string `json:"type"`
 	ID   string `json:"id,omitempty"`
+
+	// Upload-attachments fields
+	DraftID     string             `json:"draftId,omitempty"`
+	MessageID   string             `json:"messageId,omitempty"`
+	Token       string             `json:"token,omitempty"`
+	Attachments []AttachmentUpload `json:"attachments,omitempty"`
+}
+
+// AttachmentUpload describes a file to upload to a Gmail draft
+type AttachmentUpload struct {
+	Path     string `json:"path"`
+	Filename string `json:"filename"`
 }
 
 // MailMessage represents an intercepted email
@@ -165,5 +189,33 @@ func (nm *NativeMessaging) SendError(errMsg string) error {
 	return nm.Write(&OutgoingMessage{
 		Type:  MsgTypeError,
 		Error: errMsg,
+	})
+}
+
+// SendUploadComplete notifies extension that attachment upload succeeded
+func (nm *NativeMessaging) SendUploadComplete(draftID string) error {
+	return nm.Write(&OutgoingMessage{
+		Type:    MsgTypeUploadComplete,
+		DraftID: draftID,
+	})
+}
+
+// SendUploadError notifies extension that attachment upload failed
+func (nm *NativeMessaging) SendUploadError(draftID string, errMsg string) error {
+	return nm.Write(&OutgoingMessage{
+		Type:    MsgTypeUploadError,
+		DraftID: draftID,
+		Error:   errMsg,
+	})
+}
+
+// SendUploadProgress sends upload progress to extension
+func (nm *NativeMessaging) SendUploadProgress(draftID string, current, total int, filename string) error {
+	return nm.Write(&OutgoingMessage{
+		Type:     MsgTypeUploadProgress,
+		DraftID:  draftID,
+		Current:  current,
+		Total:    total,
+		Filename: filename,
 	})
 }

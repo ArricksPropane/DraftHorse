@@ -5,7 +5,7 @@ import {
   type EmailWithId,
   type ExtensionMessage,
 } from '../types/messages';
-import { createDraft } from '../lib/gmail';
+import { createDraft, getAuthToken } from '../lib/gmail';
 
 const NATIVE_HOST = 'com.gomapi.host';
 const RECONNECT_ALARM = 'reconnect';
@@ -15,6 +15,13 @@ let nativePort: chrome.runtime.Port | null = null;
 let emails: Map<string, EmailWithId> = new Map();
 let isConnected = false;
 let hostVersion = '';
+
+// Track pending uploads: draftId -> { resolve, reject, emailId }
+const pendingUploads: Map<string, {
+  resolve: (draftId: string) => void;
+  reject: (error: string) => void;
+  emailId: string;
+}> = new Map();
 
 // --- Persistence helpers ---
 
@@ -69,6 +76,12 @@ function connectToNativeHost() {
       nativePort = null;
       isConnected = false;
       broadcastToPopup({ type: 'CONNECTION_STATUS', connected: false, error });
+
+      // Reject any pending uploads
+      for (const [draftId, pending] of pendingUploads) {
+        pending.reject('Native host disconnected');
+        pendingUploads.delete(draftId);
+      }
 
       // Use chrome.alarms for reconnection — survives MV3 worker termination
       chrome.alarms.create(RECONNECT_ALARM, { delayInMinutes: 0.1 }); // ~6 seconds
@@ -126,6 +139,35 @@ function handleNativeMessage(message: NativeIncomingMessage) {
       console.error('[go-mapi] Host error:', message.error);
       broadcastToPopup({ type: 'ERROR', error: message.error });
       break;
+
+    case MSG_TYPE.UPLOAD_COMPLETE: {
+      const pending = pendingUploads.get(message.draftId);
+      if (pending) {
+        pendingUploads.delete(message.draftId);
+        pending.resolve(message.draftId);
+      }
+      break;
+    }
+
+    case MSG_TYPE.UPLOAD_ERROR: {
+      const pending = pendingUploads.get(message.draftId);
+      if (pending) {
+        pendingUploads.delete(message.draftId);
+        pending.reject(message.error);
+      }
+      break;
+    }
+
+    case MSG_TYPE.UPLOAD_PROGRESS:
+      console.log(`[go-mapi] Upload progress: ${message.current}/${message.total} — ${message.filename}`);
+      broadcastToPopup({
+        type: 'UPLOAD_PROGRESS',
+        draftId: message.draftId,
+        current: message.current,
+        total: message.total,
+        filename: message.filename,
+      });
+      break;
   }
 }
 
@@ -137,6 +179,27 @@ function sendToNativeHost(message: NativeOutgoingMessage) {
   }
   console.log('[go-mapi] Sending:', message);
   nativePort.postMessage(message);
+}
+
+// Upload attachments to a Gmail draft via the Go host
+function uploadAttachments(
+  draftId: string,
+  messageId: string,
+  token: string,
+  attachments: { path: string; filename: string }[],
+  emailId: string,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    pendingUploads.set(draftId, { resolve, reject, emailId });
+
+    sendToNativeHost({
+      type: MSG_TYPE.UPLOAD_ATTACHMENTS,
+      draftId,
+      messageId,
+      token,
+      attachments: attachments.map(a => ({ path: a.path, filename: a.filename })),
+    });
+  });
 }
 
 // Message handlers from popup
@@ -160,13 +223,42 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
             sendResponse({ success: false, error: 'Email not found' });
             return;
           }
+
+          // Create text-only draft first
           const draftId = await createDraft(email);
-          // Mark as processed
+
+          // Mark as processed in the file watcher
           sendToNativeHost({ type: MSG_TYPE.PROCESS, id: request.id });
           emails.delete(request.id);
           await persistEmails();
           updateBadge();
           broadcastToPopup({ type: 'QUEUE_UPDATE', emails: Array.from(emails.values()) });
+
+          // If email has attachments, upload them via the Go host
+          if (email.attachments && email.attachments.length > 0) {
+            try {
+              const token = await getAuthToken();
+              // draftId from createDraft is the draft resource ID
+              // We need the message ID too — re-fetch isn't needed,
+              // the Go host will GET the draft to get the raw message
+              await uploadAttachments(
+                draftId,
+                '', // messageId not needed — host fetches draft by draftId
+                token,
+                email.attachments,
+                request.id,
+              );
+            } catch (uploadError) {
+              // Draft was created but attachments failed
+              // Still open Gmail so user can manually attach
+              console.error('[go-mapi] Attachment upload failed:', uploadError);
+              broadcastToPopup({
+                type: 'ERROR',
+                error: `Draft created but attachment upload failed: ${uploadError}. You can manually attach files in Gmail.`,
+              });
+            }
+          }
+
           // Open Gmail to the draft
           chrome.tabs.create({
             url: `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`,
