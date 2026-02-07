@@ -98,25 +98,6 @@ export default function App() {
     );
   }, [state.selectedEmail]);
 
-  const handleSend = useCallback(async () => {
-    if (!state.selectedEmail) return;
-
-    setState((s) => ({ ...s, sending: true, error: null }));
-
-    chrome.runtime.sendMessage(
-      { action: 'sendEmail', id: state.selectedEmail.id },
-      (response) => {
-        setState((s) => ({ ...s, sending: false }));
-        if (response?.success) {
-          // Show success briefly
-          setState((s) => ({ ...s, selectedEmail: null }));
-        } else {
-          setState((s) => ({ ...s, error: response?.error || 'Failed to send email' }));
-        }
-      }
-    );
-  }, [state.selectedEmail]);
-
   const handleDelete = useCallback(async () => {
     if (!state.selectedEmail) return;
 
@@ -177,7 +158,6 @@ export default function App() {
             email={state.selectedEmail}
             onBack={handleBack}
             onCreateDraft={handleCreateDraft}
-            onSend={handleSend}
             onDelete={handleDelete}
             sending={state.sending}
           />

@@ -233,39 +233,6 @@ describe('App', () => {
     });
   });
 
-  it('should call sendEmail action when Send Now is clicked', async () => {
-    vi.mocked(chrome.runtime.sendMessage).mockImplementation((msg, callback) => {
-      if (callback) {
-        if (msg.action === 'getEmails') {
-          callback({ success: true, emails: mockEmails, connected: true });
-        } else if (msg.action === 'sendEmail') {
-          callback({ success: true, messageId: 'msg-123' });
-        }
-      }
-    });
-
-    render(<App />);
-
-    await waitFor(() => {
-      expect(screen.getByText('First Email')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText('First Email'));
-
-    await waitFor(() => {
-      expect(screen.getByText('Send Now')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText('Send Now'));
-
-    await waitFor(() => {
-      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'sendEmail', id: 'email-1' },
-        expect.any(Function)
-      );
-    });
-  });
-
   it('should call deleteEmail action when Delete is clicked', async () => {
     vi.mocked(chrome.runtime.sendMessage).mockImplementation((msg, callback) => {
       if (callback) {

@@ -5,7 +5,7 @@ import {
   type EmailWithId,
   type ExtensionMessage,
 } from '../types/messages';
-import { createDraft, sendEmail } from '../lib/gmail';
+import { createDraft } from '../lib/gmail';
 
 const NATIVE_HOST = 'com.gomapi.host';
 const RECONNECT_ALARM = 'reconnect';
@@ -172,23 +172,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
             url: `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`,
           });
           sendResponse({ success: true, draftId });
-          break;
-        }
-
-        case 'sendEmail': {
-          const email = emails.get(request.id);
-          if (!email) {
-            sendResponse({ success: false, error: 'Email not found' });
-            return;
-          }
-          const messageId = await sendEmail(email);
-          // Mark as processed
-          sendToNativeHost({ type: MSG_TYPE.PROCESS, id: request.id });
-          emails.delete(request.id);
-          await persistEmails();
-          updateBadge();
-          broadcastToPopup({ type: 'QUEUE_UPDATE', emails: Array.from(emails.values()) });
-          sendResponse({ success: true, messageId });
           break;
         }
 

@@ -5,7 +5,6 @@ interface EmailDetailProps {
   email: EmailWithId;
   onBack: () => void;
   onCreateDraft: () => void;
-  onSend: () => void;
   onDelete: () => void;
   sending: boolean;
 }
@@ -14,7 +13,6 @@ export default function EmailDetail({
   email,
   onBack,
   onCreateDraft,
-  onSend,
   onDelete,
   sending,
 }: EmailDetailProps) {
@@ -85,7 +83,7 @@ export default function EmailDetail({
           Delete
         </Button>
         <Button
-          variant="outline-primary"
+          variant="primary"
           onClick={onCreateDraft}
           disabled={sending}
           size="sm"
@@ -94,18 +92,6 @@ export default function EmailDetail({
             <Spinner animation="border" size="sm" />
           ) : (
             'Save as Draft'
-          )}
-        </Button>
-        <Button
-          variant="primary"
-          onClick={onSend}
-          disabled={sending}
-          size="sm"
-        >
-          {sending ? (
-            <Spinner animation="border" size="sm" />
-          ) : (
-            'Send Now'
           )}
         </Button>
       </div>

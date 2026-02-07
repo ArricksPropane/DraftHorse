@@ -94,7 +94,7 @@ func (ew *EmailWatcher) GetEmails() map[string]*MailMessage {
 	return result
 }
 
-// MarkProcessed moves a file to the processed directory
+// MarkProcessed deletes a processed email file (privacy-first: no retention)
 func (ew *EmailWatcher) MarkProcessed(id string) error {
 	ew.mu.Lock()
 	defer ew.mu.Unlock()
@@ -113,10 +113,9 @@ func (ew *EmailWatcher) MarkProcessed(id string) error {
 	}
 
 	srcPath := filepath.Join(ew.watchDir, filename)
-	dstPath := filepath.Join(ew.processedDir, filename)
 
-	if err := os.Rename(srcPath, dstPath); err != nil {
-		return fmt.Errorf("failed to move file: %w", err)
+	if err := os.Remove(srcPath); err != nil {
+		return fmt.Errorf("failed to delete file: %w", err)
 	}
 
 	delete(ew.emails, id)
@@ -227,10 +226,19 @@ func (ew *EmailWatcher) watchLoop() {
 func (ew *EmailWatcher) processFile(filename string) {
 	fullPath := filepath.Join(ew.watchDir, filename)
 
-	// Read file
-	data, err := os.ReadFile(fullPath)
+	// Retry with backoff (handles AV file locking)
+	var data []byte
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		data, err = os.ReadFile(fullPath)
+		if err == nil {
+			break
+		}
+		logInfo("retry %d reading %s: %v", attempt, filename, err)
+		time.Sleep(200 * time.Millisecond)
+	}
 	if err != nil {
-		logError("failed to read file %s: %v", filename, err)
+		logError("failed to read file %s after retries: %v", filename, err)
 		ew.moveToErrors(filename, fmt.Sprintf("read error: %v", err))
 		return
 	}
@@ -242,6 +250,11 @@ func (ew *EmailWatcher) processFile(filename string) {
 		ew.moveToErrors(filename, fmt.Sprintf("parse error: %v", err))
 		return
 	}
+
+	// Normalize recipient addresses (strip MAPI prefixes like SMTP:, mailto:)
+	normalizeRecipients(mail.Recipients.To)
+	normalizeRecipients(mail.Recipients.CC)
+	normalizeRecipients(mail.Recipients.BCC)
 
 	// Validate required fields
 	if err := validateMailMessage(&mail); err != nil {
@@ -324,6 +337,24 @@ func validateMailMessage(mail *MailMessage) error {
 		}
 	}
 	return nil
+}
+
+// normalizeAddress strips common MAPI address prefixes (SMTP:, mailto:)
+func normalizeAddress(addr string) string {
+	prefixes := []string{"SMTP:", "smtp:", "MAILTO:", "mailto:"}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(addr, prefix) {
+			return strings.TrimPrefix(addr, prefix)
+		}
+	}
+	return addr
+}
+
+// normalizeRecipients applies address normalization to a slice of recipients
+func normalizeRecipients(recipients []Recipient) {
+	for i := range recipients {
+		recipients[i].Address = normalizeAddress(recipients[i].Address)
+	}
 }
 
 func generateID(data []byte, filename string) string {

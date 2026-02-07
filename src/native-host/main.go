@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const (
@@ -136,12 +137,16 @@ func closeLogging() {
 
 func logInfo(format string, args ...interface{}) {
 	if logFile != nil {
-		fmt.Fprintf(logFile, "[INFO] "+format+"\n", args...)
+		ts := time.Now().Format(time.RFC3339)
+		fmt.Fprintf(logFile, "[%s] [INFO] "+format+"\n", append([]interface{}{ts}, args...)...)
+		logFile.Sync()
 	}
 }
 
 func logError(format string, args ...interface{}) {
 	if logFile != nil {
-		fmt.Fprintf(logFile, "[ERROR] "+format+"\n", args...)
+		ts := time.Now().Format(time.RFC3339)
+		fmt.Fprintf(logFile, "[%s] [ERROR] "+format+"\n", append([]interface{}{ts}, args...)...)
+		logFile.Sync()
 	}
 }

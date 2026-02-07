@@ -196,10 +196,19 @@ func TestGenerateID_SameContentDifferentFilename(t *testing.T) {
 	id1 := generateID(data, "file1.json")
 	id2 := generateID(data, "file2.json")
 
-	// Note: generateID includes time.Now() so IDs will always differ
-	// This test just verifies it doesn't crash
-	if id1 == "" || id2 == "" {
-		t.Error("generateID() should not return empty string")
+	if id1 == id2 {
+		t.Error("generateID() should produce different IDs for different filenames")
+	}
+}
+
+func TestGenerateID_Deterministic(t *testing.T) {
+	data := []byte(`{"subject": "test"}`)
+
+	id1 := generateID(data, "file.json")
+	id2 := generateID(data, "file.json")
+
+	if id1 != id2 {
+		t.Error("generateID() should return same ID for same content + filename")
 	}
 }
 
@@ -216,6 +225,46 @@ func TestGenerateID_Format(t *testing.T) {
 	for _, c := range id {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
 			t.Errorf("generateID() contains non-hex character: %c", c)
+		}
+	}
+}
+
+func TestNormalizeAddress(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"SMTP:user@example.com", "user@example.com"},
+		{"smtp:user@example.com", "user@example.com"},
+		{"MAILTO:user@example.com", "user@example.com"},
+		{"mailto:user@example.com", "user@example.com"},
+		{"user@example.com", "user@example.com"},
+		{"", ""},
+		{"SMTP:", ""},
+		{"OTHER:user@example.com", "OTHER:user@example.com"},
+	}
+
+	for _, tt := range tests {
+		result := normalizeAddress(tt.input)
+		if result != tt.expected {
+			t.Errorf("normalizeAddress(%q) = %q, want %q", tt.input, result, tt.expected)
+		}
+	}
+}
+
+func TestNormalizeRecipients(t *testing.T) {
+	recipients := []Recipient{
+		{Name: "John", Address: "SMTP:john@example.com"},
+		{Name: "Jane", Address: "mailto:jane@example.com"},
+		{Name: "Bob", Address: "bob@example.com"},
+	}
+
+	normalizeRecipients(recipients)
+
+	expected := []string{"john@example.com", "jane@example.com", "bob@example.com"}
+	for i, r := range recipients {
+		if r.Address != expected[i] {
+			t.Errorf("normalizeRecipients[%d].Address = %q, want %q", i, r.Address, expected[i])
 		}
 	}
 }
@@ -403,10 +452,9 @@ func TestEmailWatcher_MarkProcessed(t *testing.T) {
 		t.Fatalf("MarkProcessed() error = %v", err)
 	}
 
-	// Should be moved to processed directory
-	processedDir := filepath.Join(watchDir, "processed")
-	if _, err := os.Stat(filepath.Join(processedDir, "process-me.json")); os.IsNotExist(err) {
-		t.Error("file was not moved to processed directory")
+	// File should be deleted (privacy-first: no retention)
+	if _, err := os.Stat(filepath.Join(watchDir, "process-me.json")); !os.IsNotExist(err) {
+		t.Error("file was not deleted after MarkProcessed")
 	}
 
 	// Email should be removed from map

@@ -24,7 +24,6 @@ describe('EmailDetail', () => {
     email: mockEmail,
     onBack: vi.fn(),
     onCreateDraft: vi.fn(),
-    onSend: vi.fn(),
     onDelete: vi.fn(),
     sending: false,
   };
@@ -168,28 +167,23 @@ describe('EmailDetail', () => {
     expect(onCreateDraft).toHaveBeenCalled();
   });
 
-  it('should call onSend when Send Now button is clicked', () => {
-    const onSend = vi.fn();
-    render(<EmailDetail {...defaultProps} onSend={onSend} />);
+  it('should not have Send Now button (draft-only MVP)', () => {
+    render(<EmailDetail {...defaultProps} />);
 
-    fireEvent.click(screen.getByText('Send Now'));
-
-    expect(onSend).toHaveBeenCalled();
+    expect(screen.queryByText('Send Now')).not.toBeInTheDocument();
   });
 
   it('should disable buttons when sending is true', () => {
     render(<EmailDetail {...defaultProps} sending={true} />);
 
     expect(screen.getByText('Delete').closest('button')).toBeDisabled();
-    // Save as Draft and Send Now are replaced with spinners when sending
   });
 
-  it('should show spinners when sending', () => {
+  it('should show spinner when sending', () => {
     render(<EmailDetail {...defaultProps} sending={true} />);
 
-    // Spinners replace the button text
     const spinners = document.querySelectorAll('.spinner-border');
-    expect(spinners.length).toBeGreaterThan(0);
+    expect(spinners.length).toBe(1); // Only Save as Draft spinner
   });
 
   it('should format bytes correctly', () => {
