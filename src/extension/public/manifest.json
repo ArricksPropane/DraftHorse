@@ -6,7 +6,8 @@
   "permissions": [
     "nativeMessaging",
     "identity",
-    "storage"
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "https://www.googleapis.com/*"

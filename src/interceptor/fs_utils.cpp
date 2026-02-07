@@ -43,9 +43,9 @@ bool FsUtils::EnsureOutputDirectory() {
 }
 
 std::string FsUtils::GetRandomSuffix() {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    static std::uniform_int_distribution<> dis(0, 15);
+    thread_local std::random_device rd;
+    thread_local std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 15);
 
     std::ostringstream oss;
     for (int i = 0; i < 6; ++i) {
@@ -57,10 +57,11 @@ std::string FsUtils::GetRandomSuffix() {
 std::wstring FsUtils::GenerateUniqueFilename() {
     // Get current time
     auto now = std::time(nullptr);
-    auto tm = std::localtime(&now);
+    struct tm tm_buf;
+    localtime_s(&tm_buf, &now);
 
     std::ostringstream oss;
-    oss << std::put_time(tm, "%Y%m%d_%H%M%S");
+    oss << std::put_time(&tm_buf, "%Y%m%d_%H%M%S");
     std::string timestamp = oss.str();
 
     // Add random suffix

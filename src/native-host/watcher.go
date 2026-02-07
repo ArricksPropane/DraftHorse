@@ -225,10 +225,10 @@ func (ew *EmailWatcher) watchLoop() {
 }
 
 func (ew *EmailWatcher) processFile(filename string) {
-	filepath := filepath.Join(ew.watchDir, filename)
+	fullPath := filepath.Join(ew.watchDir, filename)
 
 	// Read file
-	data, err := os.ReadFile(filepath)
+	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		logError("failed to read file %s: %v", filename, err)
 		ew.moveToErrors(filename, fmt.Sprintf("read error: %v", err))
@@ -330,6 +330,5 @@ func generateID(data []byte, filename string) string {
 	hash := sha256.New()
 	hash.Write(data)
 	hash.Write([]byte(filename))
-	hash.Write([]byte(time.Now().String()))
 	return hex.EncodeToString(hash.Sum(nil))
 }

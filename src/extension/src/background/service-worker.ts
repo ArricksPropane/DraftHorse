@@ -8,12 +8,30 @@ import {
 import { createDraft, sendEmail } from '../lib/gmail';
 
 const NATIVE_HOST = 'com.gomapi.host';
+const RECONNECT_ALARM = 'reconnect';
 
 // State
 let nativePort: chrome.runtime.Port | null = null;
 let emails: Map<string, EmailWithId> = new Map();
 let isConnected = false;
 let hostVersion = '';
+
+// --- Persistence helpers ---
+
+async function persistEmails() {
+  const obj: Record<string, EmailWithId> = {};
+  for (const [k, v] of emails) {
+    obj[k] = v;
+  }
+  await chrome.storage.session.set({ emails: obj });
+}
+
+async function loadEmails() {
+  const result = await chrome.storage.session.get('emails');
+  if (result.emails) {
+    emails = new Map(Object.entries(result.emails as Record<string, EmailWithId>));
+  }
+}
 
 // Badge update
 function updateBadge() {
@@ -52,8 +70,8 @@ function connectToNativeHost() {
       isConnected = false;
       broadcastToPopup({ type: 'CONNECTION_STATUS', connected: false, error });
 
-      // Retry connection after delay
-      setTimeout(connectToNativeHost, 5000);
+      // Use chrome.alarms for reconnection — survives MV3 worker termination
+      chrome.alarms.create(RECONNECT_ALARM, { delayInMinutes: 0.1 }); // ~6 seconds
     });
   } catch (error) {
     console.error('[go-mapi] Failed to connect:', error);
@@ -65,6 +83,13 @@ function connectToNativeHost() {
     });
   }
 }
+
+// Alarm listener for reconnection
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === RECONNECT_ALARM && !nativePort) {
+    connectToNativeHost();
+  }
+});
 
 // Handle messages from native host
 function handleNativeMessage(message: NativeIncomingMessage) {
@@ -78,18 +103,21 @@ function handleNativeMessage(message: NativeIncomingMessage) {
       sendToNativeHost({ type: MSG_TYPE.LIST });
       break;
 
-    case MSG_TYPE.EMAIL:
+    case MSG_TYPE.EMAIL: {
       const emailWithId: EmailWithId = {
         ...message.data,
         id: message.id,
       };
       emails.set(message.id, emailWithId);
+      persistEmails();
       updateBadge();
       broadcastToPopup({ type: 'QUEUE_UPDATE', emails: Array.from(emails.values()) });
       break;
+    }
 
     case MSG_TYPE.REMOVED:
       emails.delete(message.id);
+      persistEmails();
       updateBadge();
       broadcastToPopup({ type: 'QUEUE_UPDATE', emails: Array.from(emails.values()) });
       break;
@@ -136,6 +164,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
           // Mark as processed
           sendToNativeHost({ type: MSG_TYPE.PROCESS, id: request.id });
           emails.delete(request.id);
+          await persistEmails();
           updateBadge();
           broadcastToPopup({ type: 'QUEUE_UPDATE', emails: Array.from(emails.values()) });
           // Open Gmail to the draft
@@ -156,6 +185,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
           // Mark as processed
           sendToNativeHost({ type: MSG_TYPE.PROCESS, id: request.id });
           emails.delete(request.id);
+          await persistEmails();
           updateBadge();
           broadcastToPopup({ type: 'QUEUE_UPDATE', emails: Array.from(emails.values()) });
           sendResponse({ success: true, messageId });
@@ -186,7 +216,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   return true; // Keep channel open for async response
 });
 
-// Initialize
+// Initialize — restore persisted state, then connect
 console.log('[go-mapi] Service worker starting');
-connectToNativeHost();
-updateBadge();
+loadEmails().then(() => {
+  updateBadge();
+  connectToNativeHost();
+});
