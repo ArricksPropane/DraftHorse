@@ -19,11 +19,10 @@ const (
 	MsgTypeList     = "list"     // Extension → Host: request current emails
 	MsgTypeShutdown = "shutdown" // Extension → Host: graceful shutdown
 
-	// Attachment upload flow
-	MsgTypeUploadAttachments = "upload-attachments" // Extension → Host: upload files to draft
-	MsgTypeUploadComplete    = "upload-complete"    // Host → Extension: upload succeeded
-	MsgTypeUploadError       = "upload-error"       // Host → Extension: upload failed
-	MsgTypeUploadProgress    = "upload-progress"    // Host → Extension: upload progress
+	// Draft creation — Go builds full MIME (with attachments) and creates via Gmail API
+	MsgTypeCreateDraft  = "create-draft"  // Extension → Host: create draft
+	MsgTypeDraftCreated = "draft-created" // Host → Extension: draft created
+	MsgTypeDraftError   = "draft-error"   // Host → Extension: draft creation failed
 )
 
 // OutgoingMessage is sent from host to extension
@@ -34,11 +33,9 @@ type OutgoingMessage struct {
 	Error   string       `json:"error,omitempty"`
 	Version string       `json:"version,omitempty"`
 
-	// Upload fields
+	// Draft creation response
 	DraftID  string `json:"draftId,omitempty"`
-	Current  int    `json:"current,omitempty"`
-	Total    int    `json:"total,omitempty"`
-	Filename string `json:"filename,omitempty"`
+	GmailURL string `json:"gmailUrl,omitempty"`
 }
 
 // IncomingMessage is received from extension
@@ -46,17 +43,9 @@ type IncomingMessage struct {
 	Type string `json:"type"`
 	ID   string `json:"id,omitempty"`
 
-	// Upload-attachments fields
-	DraftID     string             `json:"draftId,omitempty"`
-	MessageID   string             `json:"messageId,omitempty"`
-	Token       string             `json:"token,omitempty"`
-	Attachments []AttachmentUpload `json:"attachments,omitempty"`
-}
-
-// AttachmentUpload describes a file to upload to a Gmail draft
-type AttachmentUpload struct {
-	Path     string `json:"path"`
-	Filename string `json:"filename"`
+	// create-draft fields
+	Token string       `json:"token,omitempty"`
+	Email *MailMessage `json:"email,omitempty"`
 }
 
 // MailMessage represents an intercepted email
@@ -194,30 +183,21 @@ func (nm *NativeMessaging) SendError(errMsg string) error {
 	})
 }
 
-// SendUploadComplete notifies extension that attachment upload succeeded
-func (nm *NativeMessaging) SendUploadComplete(draftID string) error {
+// SendDraftCreated notifies extension that a draft was created
+func (nm *NativeMessaging) SendDraftCreated(emailID string, draftID string, gmailURL string) error {
 	return nm.Write(&OutgoingMessage{
-		Type:    MsgTypeUploadComplete,
-		DraftID: draftID,
-	})
-}
-
-// SendUploadError notifies extension that attachment upload failed
-func (nm *NativeMessaging) SendUploadError(draftID string, errMsg string) error {
-	return nm.Write(&OutgoingMessage{
-		Type:    MsgTypeUploadError,
-		DraftID: draftID,
-		Error:   errMsg,
-	})
-}
-
-// SendUploadProgress sends upload progress to extension
-func (nm *NativeMessaging) SendUploadProgress(draftID string, current, total int, filename string) error {
-	return nm.Write(&OutgoingMessage{
-		Type:     MsgTypeUploadProgress,
+		Type:     MsgTypeDraftCreated,
+		ID:       emailID,
 		DraftID:  draftID,
-		Current:  current,
-		Total:    total,
-		Filename: filename,
+		GmailURL: gmailURL,
+	})
+}
+
+// SendDraftError notifies extension that draft creation failed
+func (nm *NativeMessaging) SendDraftError(emailID string, errMsg string) error {
+	return nm.Write(&OutgoingMessage{
+		Type:  MsgTypeDraftError,
+		ID:    emailID,
+		Error: errMsg,
 	})
 }

@@ -6,15 +6,14 @@ export const MSG_TYPE = {
   REMOVED: 'removed',
   READY: 'ready',
   ERROR: 'error',
-  UPLOAD_COMPLETE: 'upload-complete',
-  UPLOAD_ERROR: 'upload-error',
-  UPLOAD_PROGRESS: 'upload-progress',
+  DRAFT_CREATED: 'draft-created',
+  DRAFT_ERROR: 'draft-error',
   // Extension → Host
   PROCESS: 'process',
   DELETE: 'delete',
   LIST: 'list',
   SHUTDOWN: 'shutdown',
-  UPLOAD_ATTACHMENTS: 'upload-attachments',
+  CREATE_DRAFT: 'create-draft',
 } as const;
 
 export interface Recipient {
@@ -36,6 +35,8 @@ export interface Recipients {
 
 export interface MailMessage {
   version: number;
+  interceptorVersion?: string;
+  hostVersion?: string;
   timestamp: string;
   subject: string;
   body: string;
@@ -71,23 +72,17 @@ export interface NativeErrorMessage {
   error: string;
 }
 
-export interface NativeUploadCompleteMessage {
-  type: typeof MSG_TYPE.UPLOAD_COMPLETE;
+export interface NativeDraftCreatedMessage {
+  type: typeof MSG_TYPE.DRAFT_CREATED;
+  id: string;
   draftId: string;
+  gmailUrl: string;
 }
 
-export interface NativeUploadErrorMessage {
-  type: typeof MSG_TYPE.UPLOAD_ERROR;
-  draftId: string;
+export interface NativeDraftErrorMessage {
+  type: typeof MSG_TYPE.DRAFT_ERROR;
+  id: string;
   error: string;
-}
-
-export interface NativeUploadProgressMessage {
-  type: typeof MSG_TYPE.UPLOAD_PROGRESS;
-  draftId: string;
-  current: number;
-  total: number;
-  filename: string;
 }
 
 export type NativeIncomingMessage =
@@ -95,9 +90,8 @@ export type NativeIncomingMessage =
   | NativeRemovedMessage
   | NativeReadyMessage
   | NativeErrorMessage
-  | NativeUploadCompleteMessage
-  | NativeUploadErrorMessage
-  | NativeUploadProgressMessage;
+  | NativeDraftCreatedMessage
+  | NativeDraftErrorMessage;
 
 // Messages to native host
 export interface NativeProcessMessage {
@@ -118,12 +112,11 @@ export interface NativeShutdownMessage {
   type: typeof MSG_TYPE.SHUTDOWN;
 }
 
-export interface NativeUploadAttachmentsMessage {
-  type: typeof MSG_TYPE.UPLOAD_ATTACHMENTS;
-  draftId: string;
-  messageId: string;
+export interface NativeCreateDraftMessage {
+  type: typeof MSG_TYPE.CREATE_DRAFT;
+  id: string;
   token: string;
-  attachments: { path: string; filename: string }[];
+  email: MailMessage;
 }
 
 export type NativeOutgoingMessage =
@@ -131,7 +124,7 @@ export type NativeOutgoingMessage =
   | NativeDeleteMessage
   | NativeListMessage
   | NativeShutdownMessage
-  | NativeUploadAttachmentsMessage;
+  | NativeCreateDraftMessage;
 
 // Internal extension messages (between service worker and popup)
 export interface RecentDraft {
@@ -143,14 +136,10 @@ export interface RecentDraft {
 }
 
 export interface ExtensionMessage {
-  type: 'QUEUE_UPDATE' | 'CONNECTION_STATUS' | 'ERROR' | 'UPLOAD_PROGRESS' | 'DRAFTS_UPDATE';
+  type: 'QUEUE_UPDATE' | 'CONNECTION_STATUS' | 'ERROR' | 'DRAFTS_UPDATE';
   emails?: EmailWithId[];
   connected?: boolean;
   error?: string;
-  draftId?: string;
-  current?: number;
-  total?: number;
-  filename?: string;
   recentDrafts?: RecentDraft[];
 }
 

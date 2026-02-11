@@ -95,10 +95,10 @@ func main() {
 				messaging.SendRemoved(msg.ID)
 			}
 
-		case MsgTypeUploadAttachments:
-			logInfo("upload-attachments request: draftId=%s, %d files", msg.DraftID, len(msg.Attachments))
-			// Run upload in goroutine to not block the message loop
-			go handleUploadAttachments(messaging, msg)
+		case MsgTypeCreateDraft:
+			logInfo("create-draft request: emailId=%s, %d attachments",
+				msg.ID, len(msg.Email.Attachments))
+			go handleCreateDraft(messaging, msg)
 
 		case MsgTypeShutdown:
 			logInfo("shutdown requested")
@@ -112,50 +112,31 @@ func main() {
 	logInfo("native host exiting")
 }
 
-func handleUploadAttachments(messaging *NativeMessaging, msg *IncomingMessage) {
+func handleCreateDraft(messaging *NativeMessaging, msg *IncomingMessage) {
 	if msg.Token == "" {
-		logError("upload-attachments: missing OAuth token")
-		messaging.SendUploadError(msg.DraftID, "Missing OAuth token")
+		logError("create-draft: missing OAuth token")
+		messaging.SendDraftError(msg.ID, "Missing OAuth token")
 		return
 	}
-	if msg.DraftID == "" {
-		logError("upload-attachments: missing draftId")
-		messaging.SendUploadError(msg.DraftID, "Missing draft ID")
-		return
-	}
-	if len(msg.Attachments) == 0 {
-		logInfo("upload-attachments: no attachments, sending complete")
-		messaging.SendUploadComplete(msg.DraftID)
+	if msg.Email == nil {
+		logError("create-draft: missing email data")
+		messaging.SendDraftError(msg.ID, "Missing email data")
 		return
 	}
 
 	client := NewGmailClient(msg.Token)
 
-	// Get the current draft to retrieve the raw message
-	logInfo("fetching draft %s", msg.DraftID)
-	draft, err := client.GetDraft(msg.DraftID)
+	logInfo("creating draft with %d attachments", len(msg.Email.Attachments))
+	draftID, err := client.CreateDraft(msg.Email)
 	if err != nil {
-		logError("failed to get draft: %v", err)
-		messaging.SendUploadError(msg.DraftID, fmt.Sprintf("Failed to get draft: %v", err))
+		logError("failed to create draft: %v", err)
+		messaging.SendDraftError(msg.ID, fmt.Sprintf("Failed to create draft: %v", err))
 		return
 	}
 
-	// Progress callback
-	progressFn := func(current, total int, filename string) {
-		logInfo("uploading attachment %d/%d: %s", current, total, filename)
-		messaging.SendUploadProgress(msg.DraftID, current, total, filename)
-	}
-
-	// Update draft with attachments
-	logInfo("updating draft %s with %d attachments", msg.DraftID, len(msg.Attachments))
-	if err := client.UpdateDraftWithAttachments(msg.DraftID, draft.Message.Raw, msg.Attachments, progressFn); err != nil {
-		logError("failed to upload attachments: %v", err)
-		messaging.SendUploadError(msg.DraftID, fmt.Sprintf("Upload failed: %v", err))
-		return
-	}
-
-	logInfo("upload complete for draft %s", msg.DraftID)
-	messaging.SendUploadComplete(msg.DraftID)
+	gmailURL := fmt.Sprintf("https://mail.google.com/mail/u/0/#drafts?compose=%s", draftID)
+	logInfo("draft created: %s", draftID)
+	messaging.SendDraftCreated(msg.ID, draftID, gmailURL)
 }
 
 func getWatchDir() string {
