@@ -134,8 +134,16 @@ export type NativeOutgoingMessage =
   | NativeUploadAttachmentsMessage;
 
 // Internal extension messages (between service worker and popup)
+export interface RecentDraft {
+  draftId: string;
+  subject: string;
+  timestamp: string;
+  attachmentCount: number;
+  gmailUrl: string;
+}
+
 export interface ExtensionMessage {
-  type: 'QUEUE_UPDATE' | 'CONNECTION_STATUS' | 'ERROR' | 'UPLOAD_PROGRESS';
+  type: 'QUEUE_UPDATE' | 'CONNECTION_STATUS' | 'ERROR' | 'UPLOAD_PROGRESS' | 'DRAFTS_UPDATE';
   emails?: EmailWithId[];
   connected?: boolean;
   error?: string;
@@ -143,6 +151,7 @@ export interface ExtensionMessage {
   current?: number;
   total?: number;
   filename?: string;
+  recentDrafts?: RecentDraft[];
 }
 
 // User settings

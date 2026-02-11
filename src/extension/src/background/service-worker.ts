@@ -4,6 +4,7 @@ import {
   type NativeOutgoingMessage,
   type EmailWithId,
   type ExtensionMessage,
+  type RecentDraft,
 } from '../types/messages';
 import { createDraft, getAuthToken } from '../lib/gmail';
 
@@ -15,6 +16,9 @@ let nativePort: chrome.runtime.Port | null = null;
 let emails: Map<string, EmailWithId> = new Map();
 let isConnected = false;
 let hostVersion = '';
+
+// Recent drafts shown in popup
+let recentDrafts: RecentDraft[] = [];
 
 // Track pending uploads: draftId -> { resolve, reject, emailId }
 const pendingUploads: Map<string, {
@@ -33,18 +37,36 @@ async function persistEmails() {
   await chrome.storage.session.set({ emails: obj });
 }
 
+async function persistDrafts() {
+  // Keep last 20 drafts max
+  if (recentDrafts.length > 20) {
+    recentDrafts = recentDrafts.slice(0, 20);
+  }
+  await chrome.storage.session.set({ recentDrafts });
+}
+
 async function loadEmails() {
-  const result = await chrome.storage.session.get('emails');
+  const result = await chrome.storage.session.get(['emails', 'recentDrafts']);
   if (result.emails) {
     emails = new Map(Object.entries(result.emails as Record<string, EmailWithId>));
   }
+  if (result.recentDrafts) {
+    recentDrafts = result.recentDrafts as RecentDraft[];
+  }
 }
 
-// Badge update
+// Badge update — show pending emails count (red) or drafts count (blue)
 function updateBadge() {
-  const count = emails.size;
-  chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
-  chrome.action.setBadgeBackgroundColor({ color: '#0d6efd' });
+  const pending = emails.size;
+  if (pending > 0) {
+    chrome.action.setBadgeText({ text: String(pending) });
+    chrome.action.setBadgeBackgroundColor({ color: '#dc3545' }); // red = needs attention
+  } else if (recentDrafts.length > 0) {
+    chrome.action.setBadgeText({ text: String(recentDrafts.length) });
+    chrome.action.setBadgeBackgroundColor({ color: '#0d6efd' }); // blue = drafts ready
+  } else {
+    chrome.action.setBadgeText({ text: '' });
+  }
 }
 
 // Broadcast to popup
@@ -209,6 +231,29 @@ function uploadAttachments(
 
 async function autoCreateDraft(email: EmailWithId) {
   try {
+    // Try non-interactive auth first — don't force browser sign-in
+    try {
+      await new Promise<string>((resolve, reject) => {
+        chrome.identity.getAuthToken({ interactive: false }, (t) => {
+          if (chrome.runtime.lastError || !t) {
+            reject(new Error(chrome.runtime.lastError?.message || 'Not signed in'));
+          } else {
+            resolve(t);
+          }
+        });
+      });
+    } catch {
+      // Auth not available — show notification to sign in manually
+      chrome.notifications.create(`auth:${email.id}`, {
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'go-mapi: Sign in required',
+        message: `Click to sign in and create draft for: ${email.subject || '(No Subject)'}`,
+        priority: 2,
+      });
+      return; // Keep email in queue
+    }
+
     const draftId = await createDraft(email);
 
     // Tell host to move JSON to processed
@@ -228,8 +273,22 @@ async function autoCreateDraft(email: EmailWithId) {
       }
     }
 
-    // Show clickable notification
+    // Record draft for popup
+    const gmailUrl = `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`;
     const attachCount = email.attachments?.length || 0;
+
+    recentDrafts.unshift({
+      draftId,
+      subject: email.subject || '(No Subject)',
+      timestamp: new Date().toISOString(),
+      attachmentCount: attachCount,
+      gmailUrl,
+    });
+    await persistDrafts();
+    updateBadge();
+    broadcastToPopup({ type: 'DRAFTS_UPDATE', recentDrafts });
+
+    // Show clickable notification
     const attachText = attachCount > 0 ? ` (${attachCount} attachment${attachCount > 1 ? 's' : ''})` : '';
 
     chrome.notifications.create(`draft:${draftId}`, {
@@ -253,12 +312,23 @@ async function autoCreateDraft(email: EmailWithId) {
   }
 }
 
-// Click notification → open Gmail draft
+// Click notification → open Gmail draft or trigger sign-in
 chrome.notifications.onClicked.addListener((notificationId) => {
   if (notificationId.startsWith('draft:')) {
     const draftId = notificationId.slice('draft:'.length);
     chrome.tabs.create({
       url: `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`,
+    });
+    chrome.notifications.clear(notificationId);
+  } else if (notificationId.startsWith('auth:')) {
+    // Trigger interactive sign-in, then retry all pending emails
+    chrome.identity.getAuthToken({ interactive: true }, (token) => {
+      if (token) {
+        // Retry all queued emails
+        for (const email of emails.values()) {
+          autoCreateDraft(email);
+        }
+      }
     });
     chrome.notifications.clear(notificationId);
   }
@@ -276,7 +346,15 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
             success: true,
             emails: Array.from(emails.values()),
             connected: isConnected,
+            recentDrafts,
           });
+          break;
+
+        case 'clearDrafts':
+          recentDrafts = [];
+          persistDrafts();
+          updateBadge();
+          sendResponse({ success: true });
           break;
 
         case 'createDraft': {

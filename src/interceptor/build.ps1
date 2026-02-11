@@ -95,6 +95,16 @@ Write-Host ""
 # Configure CMake with Ninja generator
 Write-Host "Configuring CMake..."
 
+# Read version from package.json
+$repoRoot = Split-Path -Parent (Split-Path -Parent $interceptorRoot)
+$packageJson = Join-Path $repoRoot "package.json"
+$goMapiVersion = "0.0.0-dev"
+if (Test-Path $packageJson) {
+    $pkg = Get-Content $packageJson -Raw | ConvertFrom-Json
+    $goMapiVersion = $pkg.version
+}
+Write-Host "Version: $goMapiVersion"
+
 $cmakeArgs = @(
     "-G", "Ninja",
     "-DCMAKE_BUILD_TYPE=$Config",
@@ -102,6 +112,7 @@ $cmakeArgs = @(
     "-DCMAKE_CXX_COMPILER=$gxxPath",
     "-DCMAKE_MAKE_PROGRAM=$ninjaPath",
     "-DBUILD_TESTS=$(if ($Tests) { 'ON' } else { 'OFF' })",
+    "-DGO_MAPI_VERSION=$goMapiVersion",
     "-S", $interceptorRoot,
     "-B", $buildDir
 )

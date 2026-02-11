@@ -10,6 +10,14 @@
       "description": "Schema version number",
       "minimum": 1
     },
+    "interceptorVersion": {
+      "type": "string",
+      "description": "Version of the go-mapi DLL that captured this message (e.g., '1.0.0')"
+    },
+    "hostVersion": {
+      "type": "string",
+      "description": "Version of the native messaging host that relayed this message (e.g., '1.0.0'). Added by the host, not present in the original JSON file."
+    },
     "timestamp": {
       "type": "string",
       "description": "ISO 8601 timestamp when the message was captured",

@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { Alert, Spinner } from 'react-bootstrap';
 import EmailList from './EmailList';
 import EmailDetail from './EmailDetail';
-import type { EmailWithId, ExtensionMessage } from '../types/messages';
+import type { EmailWithId, ExtensionMessage, RecentDraft } from '../types/messages';
 
 interface AppState {
   emails: EmailWithId[];
+  recentDrafts: RecentDraft[];
   selectedEmail: EmailWithId | null;
   connected: boolean;
   loading: boolean;
@@ -16,6 +17,7 @@ interface AppState {
 export default function App() {
   const [state, setState] = useState<AppState>({
     emails: [],
+    recentDrafts: [],
     selectedEmail: null,
     connected: false,
     loading: true,
@@ -30,6 +32,7 @@ export default function App() {
         setState((s) => ({
           ...s,
           emails: response.emails || [],
+          recentDrafts: response.recentDrafts || [],
           connected: response.connected || false,
           loading: false,
         }));
@@ -50,12 +53,14 @@ export default function App() {
         case 'QUEUE_UPDATE':
           setState((s) => {
             const newState = { ...s, emails: message.emails || [] };
-            // Clear selection if selected email was removed
             if (s.selectedEmail && !message.emails?.find((e) => e.id === s.selectedEmail?.id)) {
               newState.selectedEmail = null;
             }
             return newState;
           });
+          break;
+        case 'DRAFTS_UPDATE':
+          setState((s) => ({ ...s, recentDrafts: message.recentDrafts || [] }));
           break;
         case 'CONNECTION_STATUS':
           setState((s) => ({
@@ -84,9 +89,7 @@ export default function App() {
 
   const handleCreateDraft = useCallback(async () => {
     if (!state.selectedEmail) return;
-
     setState((s) => ({ ...s, sending: true, error: null }));
-
     chrome.runtime.sendMessage(
       { action: 'createDraft', id: state.selectedEmail.id },
       (response) => {
@@ -100,7 +103,6 @@ export default function App() {
 
   const handleDelete = useCallback(async () => {
     if (!state.selectedEmail) return;
-
     chrome.runtime.sendMessage(
       { action: 'deleteEmail', id: state.selectedEmail.id },
       (response) => {
@@ -118,6 +120,15 @@ export default function App() {
     chrome.runtime.sendMessage({ action: 'reconnect' });
   }, []);
 
+  const handleClearDrafts = useCallback(() => {
+    chrome.runtime.sendMessage({ action: 'clearDrafts' });
+    setState((s) => ({ ...s, recentDrafts: [] }));
+  }, []);
+
+  const handleOpenDraft = useCallback((gmailUrl: string) => {
+    chrome.tabs.create({ url: gmailUrl });
+  }, []);
+
   return (
     <div className="app-container">
       <header className="app-header">
@@ -125,7 +136,6 @@ export default function App() {
         <div className="status">
           <span className={`status-dot ${state.connected ? 'connected' : 'disconnected'}`} />
           {state.connected ? 'Connected' : 'Disconnected'}
-          {state.emails.length > 0 && ` • ${state.emails.length} pending`}
         </div>
       </header>
 
@@ -138,10 +148,7 @@ export default function App() {
         >
           {state.error}
           {!state.connected && (
-            <button
-              className="btn btn-link btn-sm p-0 ms-2"
-              onClick={handleReconnect}
-            >
+            <button className="btn btn-link btn-sm p-0 ms-2" onClick={handleReconnect}>
               Retry
             </button>
           )}
@@ -161,10 +168,81 @@ export default function App() {
             onDelete={handleDelete}
             sending={state.sending}
           />
-        ) : (
-          <EmailList emails={state.emails} onSelect={handleSelect} />
+        ) : state.emails.length > 0 ? (
+          <>
+            <div className="section-label">Pending</div>
+            <EmailList emails={state.emails} onSelect={handleSelect} />
+          </>
+        ) : null}
+
+        {/* Recent drafts */}
+        {!state.selectedEmail && state.recentDrafts.length > 0 && (
+          <>
+            <div className="section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Recent Drafts</span>
+              <button
+                className="btn btn-link btn-sm p-0"
+                onClick={handleClearDrafts}
+                style={{ fontSize: '0.7rem' }}
+              >
+                Clear
+              </button>
+            </div>
+            <ul className="email-list">
+              {state.recentDrafts.map((draft) => (
+                <li
+                  key={draft.draftId}
+                  className="email-item"
+                  onClick={() => handleOpenDraft(draft.gmailUrl)}
+                >
+                  <div className="email-subject">{draft.subject}</div>
+                  <div className="email-meta">
+                    <span>{formatTime(draft.timestamp)}</span>
+                    {draft.attachmentCount > 0 && (
+                      <span className="attachment-badge">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                        </svg>
+                        {draft.attachmentCount}
+                      </span>
+                    )}
+                    <span style={{ color: '#198754', fontSize: '0.75rem' }}>Open in Gmail ↗</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {/* Empty state */}
+        {!state.selectedEmail && state.emails.length === 0 && state.recentDrafts.length === 0 && (
+          <div className="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <h3>No pending emails</h3>
+            <p>
+              Use "Send to → Mail recipient" in Windows Explorer
+              <br />
+              to create Gmail drafts
+            </p>
+          </div>
         )}
       </div>
     </div>
   );
+}
+
+function formatTime(timestamp: string): string {
+  try {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
 }

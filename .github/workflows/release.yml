@@ -26,6 +26,7 @@ jobs:
       - name: Build Interceptor DLL
         working-directory: src/interceptor
         run: .\build.ps1 -Config Release -Clean
+        # Version is read from package.json by build.ps1 automatically
 
       # Build Go Native Host
       - name: Setup Go
@@ -37,7 +38,7 @@ jobs:
         working-directory: src/native-host
         run: |
           go mod tidy
-          go build -ldflags "-s -w" -o build/go-mapi-host.exe .
+          go build -ldflags "-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" -o build/go-mapi-host.exe .
 
       # Build Browser Extension
       - name: Setup Node.js

@@ -61,14 +61,16 @@ type AttachmentUpload struct {
 
 // MailMessage represents an intercepted email
 type MailMessage struct {
-	Version    int         `json:"version"`
-	Timestamp  string      `json:"timestamp"`
-	Subject    string      `json:"subject"`
-	Body       string      `json:"body"`
-	BodyFormat string      `json:"bodyFormat"`
-	Recipients Recipients  `json:"recipients"`
-	Attachments []Attachment `json:"attachments"`
-	OriginApp  string      `json:"originApp"`
+	Version            int          `json:"version"`
+	InterceptorVersion string       `json:"interceptorVersion,omitempty"`
+	HostVersion        string       `json:"hostVersion,omitempty"`
+	Timestamp          string       `json:"timestamp"`
+	Subject            string       `json:"subject"`
+	Body               string       `json:"body"`
+	BodyFormat         string       `json:"bodyFormat"`
+	Recipients         Recipients   `json:"recipients"`
+	Attachments        []Attachment `json:"attachments"`
+	OriginApp          string       `json:"originApp"`
 }
 
 // Recipients contains email recipients by type

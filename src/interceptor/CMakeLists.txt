@@ -4,6 +4,11 @@ project(go-mapi-interceptor)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Version — injected at build time (default if not passed via -D)
+if(NOT DEFINED GO_MAPI_VERSION)
+    set(GO_MAPI_VERSION "0.0.0-dev")
+endif()
+
 # Build options
 option(BUILD_TESTS "Build test harness" ON)
 
@@ -25,6 +30,11 @@ set_target_properties(go-mapi PROPERTIES
 # Include directories
 target_include_directories(go-mapi PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+# Inject version as compile definition
+target_compile_definitions(go-mapi PRIVATE
+    GO_MAPI_VERSION="${GO_MAPI_VERSION}"
 )
 
 # Platform-specific settings

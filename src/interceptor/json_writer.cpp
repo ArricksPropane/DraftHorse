@@ -93,11 +93,16 @@ std::string JsonWriter::GetIso8601Timestamp() {
     return oss.str();
 }
 
+#ifndef GO_MAPI_VERSION
+#define GO_MAPI_VERSION "0.0.0-dev"
+#endif
+
 std::string JsonWriter::MessageToJson(const MailMessage& msg) {
     std::ostringstream oss;
 
     oss << "{"
         << "\"version\":1,"
+        << "\"interceptorVersion\":\"" << GO_MAPI_VERSION << "\","
         << "\"timestamp\":\"" << GetIso8601Timestamp() << "\","
         << "\"subject\":\"" << EscapeJsonString(msg.subject) << "\","
         << "\"body\":\"" << EscapeJsonString(msg.body) << "\","

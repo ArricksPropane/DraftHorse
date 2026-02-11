@@ -272,6 +272,9 @@ func (ew *EmailWatcher) processFile(filename string) {
 	ew.fileToID[filename] = id
 	ew.mu.Unlock()
 
+	// Stamp host version so the extension knows which versions produced this
+	mail.HostVersion = Version
+
 	// Notify extension
 	if err := ew.messaging.SendEmail(id, &mail); err != nil {
 		logError("failed to send email to extension: %v", err)
