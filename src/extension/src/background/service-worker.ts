@@ -125,6 +125,9 @@ function handleNativeMessage(message: NativeIncomingMessage) {
       persistEmails();
       updateBadge();
       broadcastToPopup({ type: 'QUEUE_UPDATE', emails: Array.from(emails.values()) });
+
+      // Auto-create Gmail draft and show notification
+      autoCreateDraft(emailWithId);
       break;
     }
 
@@ -201,6 +204,65 @@ function uploadAttachments(
     });
   });
 }
+
+// --- Auto-draft and notification ---
+
+async function autoCreateDraft(email: EmailWithId) {
+  try {
+    const draftId = await createDraft(email);
+
+    // Tell host to move JSON to processed
+    sendToNativeHost({ type: MSG_TYPE.PROCESS, id: email.id });
+    emails.delete(email.id);
+    await persistEmails();
+    updateBadge();
+    broadcastToPopup({ type: 'QUEUE_UPDATE', emails: Array.from(emails.values()) });
+
+    // Upload attachments if any
+    if (email.attachments && email.attachments.length > 0) {
+      try {
+        const token = await getAuthToken();
+        await uploadAttachments(draftId, '', token, email.attachments, email.id);
+      } catch (uploadError) {
+        console.error('[go-mapi] Attachment upload failed:', uploadError);
+      }
+    }
+
+    // Show clickable notification
+    const attachCount = email.attachments?.length || 0;
+    const attachText = attachCount > 0 ? ` (${attachCount} attachment${attachCount > 1 ? 's' : ''})` : '';
+
+    chrome.notifications.create(`draft:${draftId}`, {
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: 'go-mapi: Draft created',
+      message: `${email.subject || '(No Subject)'}${attachText}`,
+      priority: 2,
+    });
+  } catch (error) {
+    console.error('[go-mapi] Auto-draft failed:', error);
+
+    // Show error notification
+    chrome.notifications.create(`error:${email.id}`, {
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: 'go-mapi: Draft failed',
+      message: `${email.subject || '(No Subject)'}: ${error}`,
+      priority: 2,
+    });
+  }
+}
+
+// Click notification → open Gmail draft
+chrome.notifications.onClicked.addListener((notificationId) => {
+  if (notificationId.startsWith('draft:')) {
+    const draftId = notificationId.slice('draft:'.length);
+    chrome.tabs.create({
+      url: `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`,
+    });
+    chrome.notifications.clear(notificationId);
+  }
+});
 
 // Message handlers from popup
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {

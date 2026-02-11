@@ -115,6 +115,16 @@ if ($SetupOnly -or $FullTest) {
     $setupSuccess = Invoke-SandboxCommand `
         -Command "powershell -ExecutionPolicy Bypass -File C:\go-mapi\tests\sandbox\setup.ps1" `
         -Description "WinAppDriver setup"
+
+    # Display setup output
+    $setupLog = Join-Path $OutputFolder "setup.log"
+    Write-Host "`n--- Setup Output ---"
+    if (Test-Path $setupLog) {
+        Get-Content $setupLog
+    } else {
+        Write-Host "(No setup log found)"
+    }
+    Write-Host "--- End Output ---"
 }
 
 if ($SetupOnly) {
