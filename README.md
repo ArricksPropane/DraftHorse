@@ -75,7 +75,7 @@ go-mapi uses a three-component architecture optimized for enterprise deployment:
 
 > Note: MSI installer coming soon. For now, manual installation is required.
 
-1. Download the latest release from [Releases](https://github.com/telenieko/go-mapi/releases)
+1. Download the latest release from [Releases](https://github.com/marcfargas/go-mapi/releases)
 
 2. **Register the DLL** (run as admin):
    ```powershell
