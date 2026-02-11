@@ -59,8 +59,9 @@ Write-Host ""
 Write-Host "  Step 1: Remove browser registrations" -ForegroundColor White
 
 $browsers = @(
-    @{ Name = "Chrome"; Path = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.gomapi.host" },
-    @{ Name = "Edge";   Path = "HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\com.gomapi.host" }
+    @{ Name = "Chrome";   Path = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.gomapi.host" },
+    @{ Name = "Chromium"; Path = "HKCU:\Software\Chromium\NativeMessagingHosts\com.gomapi.host" },
+    @{ Name = "Edge";     Path = "HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\com.gomapi.host" }
 )
 
 foreach ($browser in $browsers) {
