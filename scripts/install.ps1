@@ -246,13 +246,11 @@ try {
         Write-Info "Backed up previous default: $previousDefault"
     }
 
-    # Register
+    # Register — DLLPath must be a VALUE on the key (not a subkey).
+    # This is how mapi32.dll stub finds the actual MAPI DLL to load.
     New-Item -Path $goMapiRegPath -Force | Out-Null
     New-ItemProperty -Path $goMapiRegPath -Name "(Default)" -Value "go-mapi" -PropertyType String -Force | Out-Null
-
-    $dllRegPath = "$goMapiRegPath\DLLPath"
-    New-Item -Path $dllRegPath -Force | Out-Null
-    New-ItemProperty -Path $dllRegPath -Name "(Default)" -Value $dllInstallPath -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $goMapiRegPath -Name "DLLPath" -Value $dllInstallPath -PropertyType String -Force | Out-Null
 
     Set-ItemProperty -Path $mailClientsPath -Name "(Default)" -Value "go-mapi" -Force
 
