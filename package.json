@@ -24,6 +24,8 @@
     "clean:interceptor": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/interceptor/build -ErrorAction SilentlyContinue\"",
     "clean:native-host": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/native-host/build -ErrorAction SilentlyContinue\"",
     "clean:extension": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/extension/dist -ErrorAction SilentlyContinue\"",
+    "install:mapi": "powershell -ExecutionPolicy Bypass -File scripts/install.ps1",
+    "uninstall:mapi": "powershell -ExecutionPolicy Bypass -File scripts/uninstall.ps1",
     "register:mapi": "powershell -ExecutionPolicy Bypass -File scripts/register-mapi-dll.ps1",
     "unregister:mapi": "regedit /s scripts/unregister-mapi.reg",
     "register:native-host": "powershell -ExecutionPolicy Bypass -File src/native-host/manifests/install-host.ps1",
