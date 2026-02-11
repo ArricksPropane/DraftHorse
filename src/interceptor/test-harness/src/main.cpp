@@ -9,6 +9,8 @@ extern int test_with_attachments();
 extern int test_unicode();
 extern int test_multiple_recipients();
 extern int test_unicode_wide();
+extern int test_ansi_encoding();
+extern int test_null_filename();
 
 using namespace mapi_test;
 
@@ -47,6 +49,8 @@ int main(int argc, char* argv[]) {
         { "Unicode (ANSI)", test_unicode },
         { "Unicode (Wide/MAPISendMailW)", test_unicode_wide },
         { "Multiple Recipients", test_multiple_recipients },
+        { "ANSI Codepage Encoding", test_ansi_encoding },
+        { "Null Filename (path fallback)", test_null_filename },
     };
 
     for (const auto& test : tests) {

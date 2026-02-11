@@ -40,6 +40,9 @@ public:
 
     // Get count of JSON files in directory
     static int GetJsonFileCount(const std::string& tempDir);
+
+    // Read the content of the newest JSON file in the directory
+    static std::string ReadNewestJsonContent(const std::string& tempDir);
 };
 
 }  // namespace mapi_test

@@ -61,6 +61,8 @@ private:
 
     // Convert wide string (UTF-16) to UTF-8
     static std::string WideToUtf8(const wchar_t* wide);
+    static std::string AnsiToUtf8(const char* ansi);
+    static std::string FilenameFromPath(const std::string& path);
 
     // Get application name (for originApp field)
     static std::string GetOriginApplicationName();

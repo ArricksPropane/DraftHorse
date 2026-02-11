@@ -141,4 +141,28 @@ int TestUtilities::GetJsonFileCount(const std::string& tempDir) {
     return count;
 }
 
+std::string TestUtilities::ReadNewestJsonContent(const std::string& tempDir) {
+    std::string newestPath;
+    std::filesystem::file_time_type newestTime{};
+
+    try {
+        for (const auto& entry : fs::directory_iterator(tempDir)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".json") {
+                auto wt = entry.last_write_time();
+                if (newestPath.empty() || wt > newestTime) {
+                    newestTime = wt;
+                    newestPath = entry.path().string();
+                }
+            }
+        }
+    } catch (...) {}
+
+    if (newestPath.empty()) return "";
+
+    std::ifstream file(newestPath);
+    std::stringstream buf;
+    buf << file.rdbuf();
+    return buf.str();
+}
+
 }  // namespace mapi_test
