@@ -73,23 +73,24 @@ go-mapi uses a three-component architecture optimized for enterprise deployment:
 
 ### Installation
 
-> Note: MSI installer coming soon. For now, manual installation is required.
-
-1. Download the latest release from [Releases](https://github.com/marcfargas/go-mapi/releases)
-
-2. **Register the DLL** (run as admin):
-   ```powershell
-   regsvr32 "C:\Program Files\go-mapi\go-mapi.dll"
-   ```
-
-3. **Install native messaging host** (run as admin):
-   ```powershell
-   go-mapi-host.exe -install -extension-id YOUR_EXTENSION_ID
-   ```
-
-4. **Install the extension**:
+1. **Install the extension** in Chrome or Edge:
    - Chrome Web Store: [Link coming soon]
    - Edge Add-ons: [Link coming soon]
+   - Or load unpacked from a [release zip](https://github.com/marcfargas/go-mapi/releases)
+
+2. **Copy your extension ID** from `chrome://extensions` (enable Developer mode)
+
+3. **Run the installer** (PowerShell as admin):
+   ```powershell
+   irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/install.ps1 | iex
+   ```
+   The script will download the latest release, install the binaries, register the
+   MAPI handler, and set up native messaging. It will prompt for your extension ID.
+
+   To uninstall:
+   ```powershell
+   irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/uninstall.ps1 | iex
+   ```
 
 ### Usage
 
