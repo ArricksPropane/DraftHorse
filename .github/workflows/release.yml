@@ -15,7 +15,12 @@ jobs:
       - name: Get Version
         id: version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Strip 'v' prefix for semver
+          SEMVER="${TAG#v}"
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "SEMVER=$SEMVER" >> $GITHUB_OUTPUT
 
       # Build C++ Interceptor
       - name: Install MinGW and Ninja
@@ -38,7 +43,7 @@ jobs:
         working-directory: src/native-host
         run: |
           go mod tidy
-          go build -ldflags "-s -w -X main.Version=${{ steps.version.outputs.VERSION }}" -o build/go-mapi-host.exe .
+          go build -ldflags "-s -w -X main.Version=${{ steps.version.outputs.SEMVER }}" -o build/go-mapi-host.exe .
 
       # Build Browser Extension
       - name: Setup Node.js
@@ -46,27 +51,37 @@ jobs:
         with:
           node-version: 20
 
-      - name: Build Extension
-        working-directory: src/extension
-        run: |
-          npm install
-          npm run build
+      - name: Install Dependencies
+        run: npm install
 
-      # Package extension as zip
+      - name: Build Extension
+        run: npm run build:extension
+
+      # Package release assets
       - name: Package Extension
         shell: bash
         run: |
           cd src/extension/dist
-          7z a -tzip ../../../go-mapi-extension-${{ steps.version.outputs.VERSION }}.zip .
+          7z a -tzip ../../../go-mapi-extension-${{ steps.version.outputs.TAG }}.zip .
+
+      - name: Package Install Scripts
+        shell: bash
+        run: |
+          7z a -tzip go-mapi-scripts-${{ steps.version.outputs.TAG }}.zip \
+            scripts/install.ps1 \
+            scripts/uninstall.ps1
 
       # Create Release
       - name: Create Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
+          name: go-mapi ${{ steps.version.outputs.TAG }}
+          generate_release_notes: true
+          prerelease: ${{ contains(steps.version.outputs.TAG, 'alpha') || contains(steps.version.outputs.TAG, 'beta') }}
           files: |
             src/interceptor/build/bin/go-mapi.dll
             src/native-host/build/go-mapi-host.exe
-            go-mapi-extension-${{ steps.version.outputs.VERSION }}.zip
+            go-mapi-extension-${{ steps.version.outputs.TAG }}.zip
+            go-mapi-scripts-${{ steps.version.outputs.TAG }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
