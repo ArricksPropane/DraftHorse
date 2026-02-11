@@ -14,14 +14,17 @@ A few third-party tools have filled this gap over the years. The most notable, [
 
 ## Status
 
-**Alpha** - Core functionality works, but not yet production-ready.
+**Alpha** — Core functionality works, not yet production-ready.
 
-- MAPI interception: Working
-- Native messaging bridge: Working
-- Browser extension UI: Basic implementation
-- Gmail integration: In progress
-- Attachment support: Planned
-- MSI installer: Planned
+| Component | Status |
+|-----------|--------|
+| MAPI interception (ANSI + Unicode) | ✅ Working |
+| Native messaging bridge | ✅ Working |
+| Browser extension UI | ✅ Basic |
+| Gmail draft creation & sending | 🔧 In progress |
+| Attachment upload | 🔧 In progress |
+| PowerShell installer | ✅ Working |
+| MSI installer | 📋 Planned |
 
 See [ROADMAP.md](ROADMAP.md) for planned work.
 
@@ -50,18 +53,18 @@ go-mapi uses a three-component architecture optimized for enterprise deployment:
 
 ### Components
 
-| Component | Technology | Deployment | Purpose |
-|-----------|------------|------------|---------|
-| Interceptor DLL | C++ (MinGW) | MSI/Admin | Captures MAPI calls, writes JSON |
-| Native Host | Go | MSI/Admin | Bridges filesystem to browser |
-| Browser Extension | React + TypeScript | Chrome Web Store / Edge Add-ons | UI + Gmail API |
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Interceptor DLL | C++ (MinGW) | Captures MAPI calls, writes JSON to `%TEMP%\go-mapi\` |
+| Native Host | Go | Watches folder, bridges to browser via Native Messaging |
+| Browser Extension | React + TypeScript | UI + Gmail API (Chrome & Edge) |
 
 ### Why This Architecture?
 
-- **Enterprise-friendly**: DLL and native host are stable, deployed via MSI with admin rights
-- **Easy updates**: Extension updates arrive via browser extension management - no admin needed
-- **Simple OAuth**: Extension uses Chrome Identity API - no separate auth flow
+- **Enterprise-friendly**: DLL and host installed once with admin rights; extension updates independently
+- **Simple OAuth**: Extension uses Chrome Identity API — no separate auth flow needed
 - **Cross-browser**: Same extension works in Chrome and Edge
+- **Debuggable**: JSON files on disk make the IPC trivially inspectable
 
 ## Quick Start
 
@@ -80,17 +83,13 @@ go-mapi uses a three-component architecture optimized for enterprise deployment:
 
 2. **Copy your extension ID** from `chrome://extensions` (enable Developer mode)
 
-3. **Run the installer** (PowerShell as admin):
+3. **Run the installer** (admin PowerShell):
    ```powershell
    irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/install.ps1 | iex
    ```
-   The script will download the latest release, install the binaries, register the
-   MAPI handler, and set up native messaging. It will prompt for your extension ID.
-
-   To uninstall:
-   ```powershell
-   irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/uninstall.ps1 | iex
-   ```
+   Downloads the latest release, installs binaries to `C:\Program Files\go-mapi\`,
+   registers the MAPI handler, and sets up native messaging for Chrome and Edge.
+   It will prompt for your extension ID.
 
 ### Usage
 
@@ -98,36 +97,43 @@ go-mapi uses a three-component architecture optimized for enterprise deployment:
 2. The email appears in the go-mapi extension popup
 3. Click "Save as Draft" or "Send Now"
 
+### Advanced Install Options
+
+```powershell
+# Pin a specific version
+.\install.ps1 -ExtensionId "abc..." -Version "v0.1.0"
+
+# Custom install directory
+.\install.ps1 -ExtensionId "abc..." -InstallDir "D:\go-mapi"
+
+# Developer: install from local build instead of GitHub
+.\install.ps1 -ExtensionId "abc..." -Local
+```
+
+### Uninstall
+
+```powershell
+# One-liner (admin PowerShell)
+irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/uninstall.ps1 | iex
+
+# Registry-only (keep files)
+.\uninstall.ps1 -KeepFiles
+```
+
+The uninstaller removes all registry entries and restores your previous default mail client.
+
 ## Enterprise Deployment
 
-For enterprise deployment, create an MSI that includes:
-- `go-mapi.dll` → `C:\Program Files\go-mapi\`
-- `go-mapi-host.exe` → `C:\Program Files\go-mapi\`
-- Registry entries for MAPI client and native messaging host
+For managed environments:
 
-The extension can be deployed via:
-- Chrome Web Store (public or unlisted)
-- Edge Add-ons
-- Enterprise policy (`ExtensionInstallForcelist`)
-
-### OAuth Setup
-
-1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable Gmail API
-3. Create OAuth 2.0 credentials (Chrome Extension type)
-4. Configure the extension with your client ID
-
-## Key Technologies
-
-- **C++ (MinGW)**: MAPI interceptor DLL - zero dependencies, minimal footprint
-- **Go**: Native messaging host - efficient filesystem watching
-- **TypeScript + React**: Browser extension - modern UI with type safety
-- **Chrome Native Messaging**: Secure communication between extension and host
-- **Gmail API**: Draft creation and email sending
+- **Binaries**: Deploy `go-mapi.dll` and `go-mapi-host.exe` to `C:\Program Files\go-mapi\` via MSI or SCCM
+- **Registry**: The installer script creates the required entries; export them for GPO deployment
+- **Extension**: Force-install via Chrome/Edge enterprise policy ([`ExtensionInstallForcelist`](https://chromeenterprise.google/policies/#ExtensionInstallForcelist))
+- **OAuth**: Create a GCP project, enable Gmail API, and configure an OAuth 2.0 client ID (Chrome Extension type)
 
 ## Why "go-mapi"?
 
-The name is a nod to "Go(ogle)" and "let's go". The project started as a pragmatic solution to the Affixa shutdown.
+The name is a nod to "Go(ogle)" and "let's go". The project started as a pragmatic solution to the [Affixa shutdown](https://help.affixa.com/article/100-sunsetting-and-retirement-of-affixa).
 
 ## Contributing
 
