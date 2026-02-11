@@ -1,6 +1,33 @@
 import type { MailMessage } from '../types/messages';
 
 /**
+ * RFC 2047 MIME-encode a string for use in email headers (Subject, names).
+ * Non-ASCII text must be encoded as =?UTF-8?B?<base64>?= to avoid mojibake.
+ */
+function mimeEncode(text: string): string {
+  // Check if encoding is needed (any non-ASCII character)
+  if (/^[\x20-\x7E]*$/.test(text)) {
+    return text; // Pure ASCII — no encoding needed
+  }
+  const utf8Bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (let i = 0; i < utf8Bytes.length; i++) {
+    binary += String.fromCharCode(utf8Bytes[i]);
+  }
+  return `=?UTF-8?B?${btoa(binary)}?=`;
+}
+
+/**
+ * Format a recipient for an email header, MIME-encoding the name if needed.
+ */
+function formatRecipient(r: { name: string; address: string }): string {
+  if (r.name) {
+    return `${mimeEncode(r.name)} <${r.address}>`;
+  }
+  return r.address;
+}
+
+/**
  * Builds an RFC 2822 formatted email message from a MailMessage object.
  */
 export function buildRfc2822Message(email: MailMessage): string {
@@ -9,30 +36,21 @@ export function buildRfc2822Message(email: MailMessage): string {
   // From will be filled by Gmail
   // To
   if (email.recipients.to.length > 0) {
-    const to = email.recipients.to
-      .map((r) => (r.name ? `"${r.name}" <${r.address}>` : r.address))
-      .join(', ');
-    lines.push(`To: ${to}`);
+    lines.push(`To: ${email.recipients.to.map(formatRecipient).join(', ')}`);
   }
 
   // CC
   if (email.recipients.cc.length > 0) {
-    const cc = email.recipients.cc
-      .map((r) => (r.name ? `"${r.name}" <${r.address}>` : r.address))
-      .join(', ');
-    lines.push(`Cc: ${cc}`);
+    lines.push(`Cc: ${email.recipients.cc.map(formatRecipient).join(', ')}`);
   }
 
   // BCC
   if (email.recipients.bcc.length > 0) {
-    const bcc = email.recipients.bcc
-      .map((r) => (r.name ? `"${r.name}" <${r.address}>` : r.address))
-      .join(', ');
-    lines.push(`Bcc: ${bcc}`);
+    lines.push(`Bcc: ${email.recipients.bcc.map(formatRecipient).join(', ')}`);
   }
 
-  // Subject
-  lines.push(`Subject: ${email.subject || '(No Subject)'}`);
+  // Subject — MIME-encode for non-ASCII
+  lines.push(`Subject: ${mimeEncode(email.subject || '(No Subject)')}`);
 
   // Content-Type
   if (email.bodyFormat === 'html') {
@@ -40,12 +58,18 @@ export function buildRfc2822Message(email: MailMessage): string {
   } else {
     lines.push('Content-Type: text/plain; charset=UTF-8');
   }
+  lines.push('Content-Transfer-Encoding: base64');
 
   // Empty line before body
   lines.push('');
 
-  // Body
-  lines.push(email.body || '');
+  // Body — base64 encode to safely transport UTF-8
+  const bodyBytes = new TextEncoder().encode(email.body || '');
+  let bodyBinary = '';
+  for (let i = 0; i < bodyBytes.length; i++) {
+    bodyBinary += String.fromCharCode(bodyBytes[i]);
+  }
+  lines.push(btoa(bodyBinary));
 
   return lines.join('\r\n');
 }
