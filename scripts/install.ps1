@@ -460,8 +460,12 @@ if (-not $ExtensionId) {
         
         Write-Host ""
         Write-Info "No go-mapi extension detected in browser profiles"
-        Write-Info "Install the extension from Chrome Web Store first, or enter the extension ID manually."
-        Write-Info "Find it at chrome://extensions (Developer mode ON)."
+        Write-Host ""
+        Write-Host "  You need to install the extension first:" -ForegroundColor Cyan
+        Write-Host "    Chrome: https://chrome.google.com/webstore/detail/go-mapi/[ID-HERE]" -ForegroundColor Gray
+        Write-Host "    Edge:   https://microsoftedge.microsoft.com/addons/detail/go-mapi/[ID-HERE]" -ForegroundColor Gray
+        Write-Host ""
+        Write-Info "Or enter the extension ID manually (find at chrome://extensions with Developer mode ON)."
         Write-Host ""
         $ExtensionId = Read-Host "  Extension ID (32 chars, or press Enter to skip)"
         
