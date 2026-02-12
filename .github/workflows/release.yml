@@ -5,8 +5,16 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-release:
+  build-and-test:
+    uses: ./.github/workflows/build.yml
+
+  release:
+    needs: build-and-test
     runs-on: windows-latest
 
     steps:
@@ -17,7 +25,6 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          # Strip 'v' prefix for semver
           SEMVER="${TAG#v}"
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
           echo "SEMVER=$SEMVER" >> $GITHUB_OUTPUT
@@ -31,7 +38,6 @@ jobs:
       - name: Build Interceptor DLL
         working-directory: src/interceptor
         run: .\build.ps1 -Config Release -Clean
-        # Version is read from package.json by build.ps1 automatically
 
       # Build Go Native Host
       - name: Setup Go
@@ -52,7 +58,7 @@ jobs:
           node-version: 20
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build Extension
         run: npm run build:extension
@@ -64,12 +70,11 @@ jobs:
           cd src/extension/dist
           7z a -tzip ../../../go-mapi-extension-${{ steps.version.outputs.TAG }}.zip .
 
-      - name: Package Install Scripts
+      - name: Package Install Script
         shell: bash
         run: |
           7z a -tzip go-mapi-scripts-${{ steps.version.outputs.TAG }}.zip \
-            scripts/install.ps1 \
-            scripts/uninstall.ps1
+            scripts/install.ps1
 
       # Create Release
       - name: Create Release

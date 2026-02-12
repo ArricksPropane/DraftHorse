@@ -26,10 +26,7 @@
     "clean:native-host": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/native-host/build -ErrorAction SilentlyContinue\"",
     "clean:extension": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/extension/dist -ErrorAction SilentlyContinue\"",
     "install:mapi": "powershell -ExecutionPolicy Bypass -File scripts/install.ps1",
-    "uninstall:mapi": "powershell -ExecutionPolicy Bypass -File scripts/uninstall.ps1",
-    "register:mapi": "powershell -ExecutionPolicy Bypass -File scripts/register-mapi-dll.ps1",
-    "unregister:mapi": "regedit /s scripts/unregister-mapi.reg",
-    "register:native-host": "powershell -ExecutionPolicy Bypass -File src/native-host/manifests/install-host.ps1",
+    "uninstall:mapi": "powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Uninstall",
     "test:dll:sandbox": "powershell -ExecutionPolicy Bypass -File tests/sandbox/run-sandbox-test.ps1"
   },
   "repository": {
@@ -49,9 +46,9 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.0.0",
     "@playwright/test": "^1.58.0",
-    "eslint": "^10.0.0",
+    "eslint": "^9.0.0",
     "sharp": "^0.34.5",
     "typescript-eslint": "^8.55.0"
   }

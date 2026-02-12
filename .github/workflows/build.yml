@@ -6,6 +6,11 @@ on:
       - main
       - develop
   pull_request:
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-interceptor:
@@ -88,20 +93,16 @@ jobs:
           node-version: 20
 
       - name: Install Dependencies
-        working-directory: src/extension
-        run: npm install
+        run: npm ci
 
       - name: Type Check
-        working-directory: src/extension
-        run: npm run typecheck
+        run: npm run -w go-mapi-extension typecheck
 
       - name: Run Extension Tests
-        working-directory: src/extension
-        run: npm run test:run
+        run: npm run -w go-mapi-extension test:run
 
       - name: Build Extension
-        working-directory: src/extension
-        run: npm run build
+        run: npm run build:extension
 
       - name: Upload Extension Artifact
         uses: actions/upload-artifact@v4

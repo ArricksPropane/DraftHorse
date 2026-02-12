@@ -1,18 +1,22 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Downloads and installs go-mapi from GitHub releases.
+    Installs or uninstalls go-mapi.
 
 .DESCRIPTION
-    One-liner installer for go-mapi. Downloads the latest release (or a specific
-    version) from GitHub, installs binaries, registers the MAPI handler, and sets
-    up native messaging for Chrome and Edge.
+    One-liner installer/uninstaller for go-mapi. Downloads the latest release
+    (or a specific version) from GitHub, installs binaries, registers the MAPI
+    handler, and sets up native messaging for Chrome, Chromium, and Edge.
 
-    Usage:
+    Install (interactive):
       irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/install.ps1 | iex
 
-    Or with parameters:
-      & ([scriptblock]::Create((irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/install.ps1)))
+    Uninstall:
+      .\install.ps1 -Uninstall
+
+.PARAMETER Uninstall
+    Remove go-mapi: deletes registry entries, restores previous mail client,
+    removes installed files.
 
 .PARAMETER ExtensionId
     Chrome/Edge extension ID (32 lowercase letters). If not provided, the script
@@ -31,24 +35,29 @@
 .PARAMETER BuildDir
     When used with -Local, specifies the directory containing built artifacts.
 
+.PARAMETER KeepFiles
+    When used with -Uninstall, only removes registry entries but keeps files.
+
 .EXAMPLE
-    # Interactive (prompts for extension ID)
+    # Interactive install (prompts for extension ID)
     irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/install.ps1 | iex
 
 .EXAMPLE
-    # Non-interactive
+    # Non-interactive install
     .\install.ps1 -ExtensionId "abcdefghijklmnopqrstuvwxyz123456"
-
-.EXAMPLE
-    # Specific version
-    .\install.ps1 -ExtensionId "abc..." -Version "v0.1.0"
 
 .EXAMPLE
     # Developer: install from local build
     .\install.ps1 -ExtensionId "abc..." -Local
+
+.EXAMPLE
+    # Uninstall
+    .\install.ps1 -Uninstall
 #>
 
 param(
+    [switch]$Uninstall,
+
     [string]$ExtensionId,
 
     [string]$Version = "latest",
@@ -57,7 +66,9 @@ param(
 
     [switch]$Local,
 
-    [string]$BuildDir
+    [string]$BuildDir,
+
+    [switch]$KeepFiles
 )
 
 Set-StrictMode -Version Latest
@@ -67,9 +78,136 @@ $GH_REPO = "marcfargas/go-mapi"
 
 # --- Helpers ---
 
-function Write-Step  { param([string]$Msg) Write-Host "  [+] $Msg" -ForegroundColor Green }
-function Write-Info  { param([string]$Msg) Write-Host "  [i] $Msg" -ForegroundColor Cyan }
-function Write-Warn  { param([string]$Msg) Write-Host "  [!] $Msg" -ForegroundColor Yellow }
+function Write-Step { param([string]$Msg) Write-Host "  [+] $Msg" -ForegroundColor Green }
+function Write-Info { param([string]$Msg) Write-Host "  [i] $Msg" -ForegroundColor Cyan }
+function Write-Warn { param([string]$Msg) Write-Host "  [!] $Msg" -ForegroundColor Yellow }
+function Write-Skip { param([string]$Msg) Write-Host "  [-] $Msg" -ForegroundColor DarkGray }
+
+$browsers = @(
+    @{ Name = "Chrome";   Path = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.gomapi.host" },
+    @{ Name = "Chromium"; Path = "HKCU:\Software\Chromium\NativeMessagingHosts\com.gomapi.host" },
+    @{ Name = "Edge";     Path = "HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\com.gomapi.host" }
+)
+
+# ============================================================
+#  UNINSTALL
+# ============================================================
+
+if ($Uninstall) {
+    Write-Host ""
+    Write-Host "  go-mapi uninstaller" -ForegroundColor White
+    Write-Host "  ========================================" -ForegroundColor DarkGray
+
+    # Read install metadata if available
+    $metadataPath = Join-Path $InstallDir ".install-metadata.json"
+    $metadata = $null
+    if (Test-Path $metadataPath) {
+        $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
+        Write-Info "Found installation: $($metadata.version) (installed $($metadata.installedAt))"
+    } else {
+        Write-Info "Install dir: $InstallDir"
+    }
+    Write-Host ""
+
+    # --- Step 1: Remove native messaging registrations ---
+
+    Write-Host "  Step 1: Remove browser registrations" -ForegroundColor White
+
+    foreach ($browser in $browsers) {
+        if (Test-Path $browser.Path) {
+            Remove-Item -Path $browser.Path -Force
+            Write-Step "Removed $($browser.Name) registration"
+        } else {
+            Write-Skip "$($browser.Name) not registered"
+        }
+    }
+
+    # --- Step 2: Remove MAPI registry entries ---
+
+    Write-Host ""
+    Write-Host "  Step 2: Remove MAPI registration" -ForegroundColor White
+
+    $mailClientsPath = "HKLM:\SOFTWARE\Clients\Mail"
+    $goMapiRegPath   = "$mailClientsPath\go-mapi"
+
+    $currentDefault = $null
+    try {
+        $currentDefault = (Get-ItemProperty -Path $mailClientsPath -Name "(Default)" -ErrorAction SilentlyContinue).'(Default)'
+    } catch { }
+
+    if (Test-Path $goMapiRegPath) {
+        Remove-Item -Path $goMapiRegPath -Recurse -Force
+        Write-Step "Removed registry key: $goMapiRegPath"
+    } else {
+        Write-Skip "MAPI registry key not found"
+    }
+
+    # Restore previous default mail client
+    if ($currentDefault -eq "go-mapi") {
+        $previousDefault = $null
+
+        # Try backup file first
+        $backupFile = Join-Path $InstallDir ".previous-mail-client"
+        if (Test-Path $backupFile) {
+            $previousDefault = (Get-Content $backupFile -Raw).Trim()
+        }
+        # Try metadata
+        elseif ($metadata -and $metadata.previousClient) {
+            $previousDefault = $metadata.previousClient
+        }
+
+        if ($previousDefault -and (Test-Path "$mailClientsPath\$previousDefault")) {
+            Set-ItemProperty -Path $mailClientsPath -Name "(Default)" -Value $previousDefault -Force
+            Write-Step "Restored default mail client: $previousDefault"
+        } else {
+            # Auto-detect common clients
+            $fallbacks = @("Microsoft Outlook", "Outlook", "Windows Mail")
+            $restored = $false
+            foreach ($fallback in $fallbacks) {
+                if (Test-Path "$mailClientsPath\$fallback") {
+                    Set-ItemProperty -Path $mailClientsPath -Name "(Default)" -Value $fallback -Force
+                    Write-Step "Restored default mail client: $fallback (auto-detected)"
+                    $restored = $true
+                    break
+                }
+            }
+            if (-not $restored) {
+                Set-ItemProperty -Path $mailClientsPath -Name "(Default)" -Value "" -Force
+                Write-Warn "No previous mail client found — cleared default"
+            }
+        }
+    } else {
+        Write-Info "Default mail client is '$currentDefault' (not go-mapi, leaving unchanged)"
+    }
+
+    # --- Step 3: Remove files ---
+
+    Write-Host ""
+    Write-Host "  Step 3: Remove files" -ForegroundColor White
+
+    if ($KeepFiles) {
+        Write-Info "KeepFiles specified — skipping file removal"
+    } elseif (Test-Path $InstallDir) {
+        $fileCount = (Get-ChildItem -Path $InstallDir -Force).Count
+        Remove-Item -Path $InstallDir -Recurse -Force
+        Write-Step "Removed $InstallDir ($fileCount files)"
+    } else {
+        Write-Skip "Install directory not found"
+    }
+
+    # --- Done ---
+
+    Write-Host ""
+    Write-Host "  ========================================" -ForegroundColor DarkGray
+    Write-Host "  go-mapi uninstalled" -ForegroundColor Green
+    Write-Host ""
+
+    exit 0
+}
+
+# ============================================================
+#  INSTALL
+# ============================================================
 
 function Get-LatestRelease {
     $url = "https://api.github.com/repos/$GH_REPO/releases/latest"
@@ -274,12 +412,6 @@ try {
     $manifest | Out-File -FilePath $manifestPath -Encoding UTF8
     Write-Step "Created manifest: $manifestPath"
 
-    $browsers = @(
-        @{ Name = "Chrome";   Path = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.gomapi.host" },
-        @{ Name = "Chromium"; Path = "HKCU:\Software\Chromium\NativeMessagingHosts\com.gomapi.host" },
-        @{ Name = "Edge";     Path = "HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\com.gomapi.host" }
-    )
-
     foreach ($browser in $browsers) {
         $parentPath = Split-Path $browser.Path
         if (-not (Test-Path $parentPath)) {
@@ -320,7 +452,7 @@ try {
     Write-Host "    3. Right-click a file -> Send to -> Mail recipient"
     Write-Host ""
     Write-Host "  To uninstall:" -ForegroundColor DarkGray
-    Write-Host "    irm https://raw.githubusercontent.com/$GH_REPO/main/scripts/uninstall.ps1 | iex" -ForegroundColor DarkGray
+    Write-Host "    .\install.ps1 -Uninstall" -ForegroundColor DarkGray
     Write-Host ""
 
 } finally {

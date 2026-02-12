@@ -71,9 +71,10 @@ go-mapi/
 │       │   ├── popup/         # React UI
 │       │   └── types/         # TypeScript types
 │       └── package.json
-├── scripts/               # Registration scripts
-│   ├── register-mapi-dll.ps1    # Register DLL as mail client
-│   └── register-native-host.ps1 # Register native messaging host
+├── scripts/               # Install & dev tools
+│   ├── install.ps1              # Install/uninstall go-mapi
+│   ├── test-drop-email.ps1      # Drop test emails for dev
+│   └── generate-icons.js        # Generate extension icons
 ├── tests/
 │   ├── e2e/               # Playwright E2E tests
 │   └── sandbox/           # Windows Sandbox DLL tests

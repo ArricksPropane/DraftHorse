@@ -115,11 +115,11 @@ go-mapi uses a three-component architecture optimized for enterprise deployment:
 ### Uninstall
 
 ```powershell
-# One-liner (admin PowerShell)
-irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/uninstall.ps1 | iex
+# Full uninstall (admin PowerShell)
+.\install.ps1 -Uninstall
 
 # Registry-only (keep files)
-.\uninstall.ps1 -KeepFiles
+.\install.ps1 -Uninstall -KeepFiles
 ```
 
 The uninstaller removes all registry entries and restores your previous default mail client.

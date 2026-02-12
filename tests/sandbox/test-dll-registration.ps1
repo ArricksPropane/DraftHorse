@@ -31,7 +31,11 @@ Log "OK: Found $DllPath"
 Log ""
 Log "[2/3] Registering DLL..."
 try {
-    & "$ProjectRoot\scripts\register-mapi-dll.ps1" -BuildPath "$ProjectRoot\src\interceptor\build\bin" 2>&1 | ForEach-Object { Log $_ }
+    $regPath = "HKLM:\SOFTWARE\Clients\Mail\go-mapi"
+    New-Item -Path $regPath -Force | Out-Null
+    New-ItemProperty -Path $regPath -Name "(Default)" -Value "go-mapi" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $regPath -Name "DLLPath" -Value $DllPath -PropertyType String -Force | Out-Null
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Clients\Mail" -Name "(Default)" -Value "go-mapi" -Force
     Log "OK: DLL registered"
 } catch {
     Log "FAILED: Registration error: $_"
@@ -41,9 +45,9 @@ try {
 # Step 3: Verify registry
 Log ""
 Log "[3/3] Verifying registry..."
-$regPath = "HKLM:\SOFTWARE\Clients\Mail\go-mapi\DLLPath"
+$goMapiKey = "HKLM:\SOFTWARE\Clients\Mail\go-mapi"
 $defaultMail = (Get-ItemProperty "HKLM:\SOFTWARE\Clients\Mail" -ErrorAction SilentlyContinue)."(Default)"
-$dllRegValue = (Get-ItemProperty $regPath -ErrorAction SilentlyContinue)."(Default)"
+$dllRegValue = (Get-ItemProperty $goMapiKey -ErrorAction SilentlyContinue)."DLLPath"
 
 Log "  Default mail client: $defaultMail"
 Log "  DLL path in registry: $dllRegValue"
