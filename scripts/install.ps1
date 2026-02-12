@@ -215,7 +215,7 @@ function Get-InstalledExtensionIds {
         }
     }
     
-    return $foundIds | Select-Object -Unique
+    return @($foundIds | Select-Object -Unique)
 }
 
 # ============================================================
@@ -424,14 +424,14 @@ if (Test-Path $metadataPath) {
 # --- Auto-detect or prompt for Extension ID ---
 
 if (-not $ExtensionId) {
-    $detectedIds = Get-InstalledExtensionIds
+    $detectedIds = @(Get-InstalledExtensionIds)  # Force array
     
-    if ($detectedIds.Count -eq 1) {
+    if ($detectedIds -and $detectedIds.Count -eq 1) {
         $ExtensionId = $detectedIds[0]
         Write-Host ""
         Write-Step "Auto-detected extension ID: $ExtensionId"
     }
-    elseif ($detectedIds.Count -gt 1) {
+    elseif ($detectedIds -and $detectedIds.Count -gt 1) {
         Write-Host ""
         Write-Info "Multiple go-mapi extensions found:"
         for ($i = 0; $i -lt $detectedIds.Count; $i++) {
