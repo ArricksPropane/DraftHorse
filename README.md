@@ -14,16 +14,18 @@ A few third-party tools have filled this gap over the years. The most notable, [
 
 ## Status
 
-**Alpha** — Core functionality works, not yet production-ready.
+**Beta** — Core flow works end-to-end. Usable for early adopters.
 
 | Component | Status |
 |-----------|--------|
 | MAPI interception (ANSI + Unicode) | ✅ Working |
 | Native messaging bridge | ✅ Working |
-| Browser extension UI | ✅ Basic |
-| Gmail draft creation & sending | 🔧 In progress |
-| Attachment upload | 🔧 In progress |
+| Browser extension (popup + notifications) | ✅ Working |
+| Gmail draft creation (with attachments) | ✅ Working |
+| UTF-8 / codepage encoding | ✅ Working |
+| Version tracking across components | ✅ Working |
 | PowerShell installer | ✅ Working |
+| OAuth consent (external users) | 📋 Planned |
 | MSI installer | 📋 Planned |
 
 See [ROADMAP.md](ROADMAP.md) for planned work.
