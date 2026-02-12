@@ -83,15 +83,19 @@ go-mapi uses a three-component architecture optimized for enterprise deployment:
    - Edge Add-ons: [Link coming soon]
    - Or load unpacked from a [release zip](https://github.com/marcfargas/go-mapi/releases)
 
-2. **Copy your extension ID** from `chrome://extensions` (enable Developer mode)
-
-3. **Run the installer** (admin PowerShell):
+2. **Run the installer** (admin PowerShell):
    ```powershell
    irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/install.ps1 | iex
    ```
-   Downloads the latest release, installs binaries to `C:\Program Files\go-mapi\`,
-   registers the MAPI handler, and sets up native messaging for Chrome and Edge.
-   It will prompt for your extension ID.
+   
+   The installer will:
+   - **Auto-detect** the extension ID from your browser profiles (no copy-paste needed!)
+   - Download the latest release from GitHub
+   - Install binaries to `C:\Program Files\go-mapi\`
+   - Register the MAPI handler
+   - Set up native messaging for Chrome and Edge
+   
+   **Fully automated** — just install the extension first, then run the command above.
 
 ### Usage
 
@@ -102,15 +106,35 @@ go-mapi uses a three-component architecture optimized for enterprise deployment:
 ### Advanced Install Options
 
 ```powershell
+# Fully automated (no prompts, for CI/automation)
+.\install.ps1 -Unattended
+
 # Pin a specific version
-.\install.ps1 -ExtensionId "abc..." -Version "v0.1.0"
+.\install.ps1 -Version "v0.1.0"
 
 # Custom install directory
-.\install.ps1 -ExtensionId "abc..." -InstallDir "D:\go-mapi"
+.\install.ps1 -InstallDir "D:\go-mapi"
+
+# Manually specify extension ID (if auto-detection fails)
+.\install.ps1 -ExtensionId "abcdefghijklmnopqrstuvwxyz123456"
 
 # Developer: install from local build instead of GitHub
-.\install.ps1 -ExtensionId "abc..." -Local
+.\install.ps1 -Local
 ```
+
+### Troubleshooting
+
+**Installer can't find extension:**
+- Make sure you've installed the extension in Chrome or Edge first
+- Check `chrome://extensions` - the extension should be listed
+- If auto-detection fails, manually specify: `.\install.ps1 -ExtensionId "your-32-char-id"`
+
+**Installation logs:**
+- Check `C:\Program Files\go-mapi\install.log` for detailed error messages
+
+**"Send to → Mail recipient" doesn't work:**
+- Restart Windows Explorer (or reboot)
+- Verify DLL is registered: check `HKLM:\SOFTWARE\Clients\Mail\go-mapi`
 
 ### Uninstall
 
@@ -128,9 +152,9 @@ The uninstaller removes all registry entries and restores your previous default 
 
 For managed environments:
 
-- **Binaries**: Deploy `go-mapi.dll` and `go-mapi-host.exe` to `C:\Program Files\go-mapi\` via MSI or SCCM
-- **Registry**: The installer script creates the required entries; export them for GPO deployment
+- **Automated Install**: Use `.\install.ps1 -Unattended` in SCCM/Intune deployment scripts
 - **Extension**: Force-install via Chrome/Edge enterprise policy ([`ExtensionInstallForcelist`](https://chromeenterprise.google/policies/#ExtensionInstallForcelist))
+- **Registry**: Export keys from `HKLM:\SOFTWARE\Clients\Mail\go-mapi` for GPO deployment if needed
 - **OAuth**: Create a GCP project, enable Gmail API, and configure an OAuth 2.0 client ID (Chrome Extension type)
 
 ## Why "go-mapi"?

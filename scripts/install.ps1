@@ -8,7 +8,7 @@
     (or a specific version) from GitHub, installs binaries, registers the MAPI
     handler, and sets up native messaging for Chrome, Chromium, and Edge.
 
-    Install (interactive):
+    Install (fully automated):
       irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/install.ps1 | iex
 
     Uninstall:
@@ -19,8 +19,8 @@
     removes installed files.
 
 .PARAMETER ExtensionId
-    Chrome/Edge extension ID (32 lowercase letters). If not provided, the script
-    will prompt interactively.
+    Chrome/Edge extension ID (32 lowercase letters). If not provided and not in
+    -Unattended mode, the script will auto-detect or prompt interactively.
 
 .PARAMETER Version
     Specific version to install (e.g., "v0.1.0"). Defaults to "latest".
@@ -35,16 +35,27 @@
 .PARAMETER BuildDir
     When used with -Local, specifies the directory containing built artifacts.
 
+.PARAMETER Unattended
+    Silent install mode. Auto-detects extension ID, suppresses prompts, logs to file.
+    Exits with error code if requirements not met. Suitable for automation/CI.
+
 .PARAMETER KeepFiles
     When used with -Uninstall, only removes registry entries but keeps files.
 
+.PARAMETER LogFile
+    Path to log file. Defaults to $InstallDir\install.log
+
 .EXAMPLE
-    # Interactive install (prompts for extension ID)
+    # Interactive install (auto-detects extension ID)
     irm https://raw.githubusercontent.com/marcfargas/go-mapi/main/scripts/install.ps1 | iex
 
 .EXAMPLE
     # Non-interactive install
     .\install.ps1 -ExtensionId "abcdefghijklmnopqrstuvwxyz123456"
+
+.EXAMPLE
+    # Unattended install (for automation)
+    .\install.ps1 -Unattended
 
 .EXAMPLE
     # Developer: install from local build
@@ -57,37 +68,155 @@
 
 param(
     [switch]$Uninstall,
-
     [string]$ExtensionId,
-
     [string]$Version = "latest",
-
     [string]$InstallDir = "C:\Program Files\go-mapi",
-
     [switch]$Local,
-
     [string]$BuildDir,
-
-    [switch]$KeepFiles
+    [switch]$Unattended,
+    [switch]$KeepFiles,
+    [string]$LogFile
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $GH_REPO = "marcfargas/go-mapi"
+$Script:LogPath = if ($LogFile) { $LogFile } else { Join-Path $InstallDir "install.log" }
 
-# --- Helpers ---
+# --- Logging ---
 
-function Write-Step { param([string]$Msg) Write-Host "  [+] $Msg" -ForegroundColor Green }
-function Write-Info { param([string]$Msg) Write-Host "  [i] $Msg" -ForegroundColor Cyan }
-function Write-Warn { param([string]$Msg) Write-Host "  [!] $Msg" -ForegroundColor Yellow }
-function Write-Skip { param([string]$Msg) Write-Host "  [-] $Msg" -ForegroundColor DarkGray }
+function Write-Log {
+    param([string]$Msg, [string]$Level = "INFO")
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMsg = "[$timestamp] [$Level] $Msg"
+    
+    # Ensure log directory exists
+    $logDir = Split-Path $Script:LogPath -Parent
+    if ($logDir -and -not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }
+    
+    Add-Content -Path $Script:LogPath -Value $logMsg -ErrorAction SilentlyContinue
+}
+
+function Write-Step { 
+    param([string]$Msg) 
+    Write-Host "  [+] $Msg" -ForegroundColor Green 
+    Write-Log $Msg "INFO"
+}
+
+function Write-Info { 
+    param([string]$Msg) 
+    Write-Host "  [i] $Msg" -ForegroundColor Cyan 
+    Write-Log $Msg "INFO"
+}
+
+function Write-Warn { 
+    param([string]$Msg) 
+    Write-Host "  [!] $Msg" -ForegroundColor Yellow 
+    Write-Log $Msg "WARN"
+}
+
+function Write-Skip { 
+    param([string]$Msg) 
+    Write-Host "  [-] $Msg" -ForegroundColor DarkGray 
+    Write-Log $Msg "INFO"
+}
+
+function Write-ErrorLog {
+    param([string]$Msg)
+    Write-Host "  [ERROR] $Msg" -ForegroundColor Red
+    Write-Log $Msg "ERROR"
+}
 
 $browsers = @(
     @{ Name = "Chrome";   Path = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.gomapi.host" },
     @{ Name = "Chromium"; Path = "HKCU:\Software\Chromium\NativeMessagingHosts\com.gomapi.host" },
     @{ Name = "Edge";     Path = "HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\com.gomapi.host" }
 )
+
+# --- Prerequisites Check ---
+
+function Test-Prerequisites {
+    Write-Log "Checking prerequisites" "INFO"
+    
+    # Windows version
+    $osVersion = [System.Environment]::OSVersion.Version
+    if ($osVersion.Major -lt 10) {
+        Write-ErrorLog "Windows 10 or later required (detected: Windows $($osVersion.Major).$($osVersion.Minor))"
+        return $false
+    }
+    Write-Log "OS: Windows $($osVersion.Major).$($osVersion.Minor) OK" "INFO"
+    
+    # PowerShell version
+    $psVersion = $PSVersionTable.PSVersion
+    if ($psVersion.Major -lt 5) {
+        Write-ErrorLog "PowerShell 5.0 or later required (detected: $psVersion)"
+        return $false
+    }
+    Write-Log "PowerShell: $psVersion OK" "INFO"
+    
+    # Admin rights (already enforced by #Requires but let's log it)
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmin) {
+        Write-ErrorLog "Administrator privileges required"
+        return $false
+    }
+    Write-Log "Running as Administrator: OK" "INFO"
+    
+    return $true
+}
+
+# --- Auto-detect Extension ID ---
+
+function Get-InstalledExtensionIds {
+    Write-Log "Auto-detecting extension IDs" "INFO"
+    $foundIds = @()
+    
+    # Chrome profile paths
+    $chromePaths = @(
+        "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Extensions",
+        "$env:LOCALAPPDATA\Google\Chrome\User Data\Profile 1\Extensions"
+    )
+    
+    # Edge profile paths
+    $edgePaths = @(
+        "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Extensions",
+        "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Profile 1\Extensions"
+    )
+    
+    $allPaths = $chromePaths + $edgePaths
+    
+    foreach ($path in $allPaths) {
+        if (Test-Path $path) {
+            $extensions = Get-ChildItem -Path $path -Directory -ErrorAction SilentlyContinue
+            foreach ($ext in $extensions) {
+                if ($ext.Name -match '^[a-z]{32}$') {
+                    # Check if it has a manifest (to verify it's installed)
+                    $versions = Get-ChildItem -Path $ext.FullName -Directory -ErrorAction SilentlyContinue
+                    if ($versions) {
+                        $manifestPath = Join-Path $versions[0].FullName "manifest.json"
+                        if (Test-Path $manifestPath) {
+                            # Try to read manifest to check if it's go-mapi
+                            try {
+                                $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+                                if ($manifest.name -eq "go-mapi") {
+                                    Write-Log "Found go-mapi extension: $($ext.Name)" "INFO"
+                                    $foundIds += $ext.Name
+                                }
+                            } catch {
+                                # Not JSON or can't read, skip
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return $foundIds | Select-Object -Unique
+}
 
 # ============================================================
 #  UNINSTALL
@@ -97,6 +226,7 @@ if ($Uninstall) {
     Write-Host ""
     Write-Host "  go-mapi uninstaller" -ForegroundColor White
     Write-Host "  ========================================" -ForegroundColor DarkGray
+    Write-Log "=== UNINSTALL STARTED ===" "INFO"
 
     # Read install metadata if available
     $metadataPath = Join-Path $InstallDir ".install-metadata.json"
@@ -200,6 +330,7 @@ if ($Uninstall) {
     Write-Host ""
     Write-Host "  ========================================" -ForegroundColor DarkGray
     Write-Host "  go-mapi uninstalled" -ForegroundColor Green
+    Write-Log "=== UNINSTALL COMPLETED ===" "INFO"
     Write-Host ""
 
     exit 0
@@ -216,7 +347,7 @@ function Get-LatestRelease {
         return $release
     } catch {
         if ($_.Exception.Response.StatusCode -eq 404) {
-            Write-Error "No releases found at $url. Is the repository public?"
+            Write-ErrorLog "No releases found at $url. Is the repository public?"
         }
         throw
     }
@@ -228,7 +359,7 @@ function Get-SpecificRelease {
     try {
         return Invoke-RestMethod -Uri $url -Headers @{ Accept = "application/vnd.github.v3+json" }
     } catch {
-        Write-Error "Release '$Tag' not found at $url"
+        Write-ErrorLog "Release '$Tag' not found at $url"
         throw
     }
 }
@@ -239,6 +370,7 @@ function Download-Asset {
     Invoke-WebRequest -Uri $Url -OutFile $OutPath -UseBasicParsing
     $size = [math]::Round((Get-Item $OutPath).Length / 1KB)
     Write-Host " ${size}KB" -ForegroundColor DarkGray
+    Write-Log "Downloaded $Name (${size}KB)" "INFO"
 }
 
 function Find-LocalArtifact {
@@ -255,24 +387,109 @@ function Find-LocalArtifact {
 Write-Host ""
 Write-Host "  go-mapi installer" -ForegroundColor White
 Write-Host "  ========================================" -ForegroundColor DarkGray
+Write-Log "=== INSTALL STARTED ===" "INFO"
 
-# --- Prompt for Extension ID if missing ---
+# --- Check prerequisites ---
 
-if (-not $ExtensionId) {
+if (-not (Test-Prerequisites)) {
     Write-Host ""
-    Write-Info "The extension ID is required for native messaging."
-    Write-Info "Find it at chrome://extensions (Developer mode ON)."
-    Write-Host ""
-    $ExtensionId = Read-Host "  Extension ID (32 chars)"
+    Write-ErrorLog "Prerequisites check failed. See log: $Script:LogPath"
+    exit 1
 }
 
-if ($ExtensionId -notmatch '^[a-z]{32}$') {
-    Write-Error "Invalid extension ID: '$ExtensionId'. Must be 32 lowercase letters (from chrome://extensions)."
+# --- Check if already installed ---
+
+$metadataPath = Join-Path $InstallDir ".install-metadata.json"
+$existingInstall = $null
+if (Test-Path $metadataPath) {
+    try {
+        $existingInstall = Get-Content $metadataPath -Raw | ConvertFrom-Json
+        Write-Host ""
+        Write-Warn "go-mapi is already installed (version: $($existingInstall.version))"
+        Write-Info "This will upgrade/reinstall go-mapi"
+        
+        if (-not $Unattended) {
+            $continue = Read-Host "  Continue? (Y/n)"
+            if ($continue -eq "n" -or $continue -eq "N") {
+                Write-Host ""
+                Write-Info "Installation cancelled"
+                exit 0
+            }
+        }
+    } catch {
+        Write-Warn "Could not read existing installation metadata"
+    }
+}
+
+# --- Auto-detect or prompt for Extension ID ---
+
+if (-not $ExtensionId) {
+    $detectedIds = Get-InstalledExtensionIds
+    
+    if ($detectedIds.Count -eq 1) {
+        $ExtensionId = $detectedIds[0]
+        Write-Host ""
+        Write-Step "Auto-detected extension ID: $ExtensionId"
+    }
+    elseif ($detectedIds.Count -gt 1) {
+        Write-Host ""
+        Write-Info "Multiple go-mapi extensions found:"
+        for ($i = 0; $i -lt $detectedIds.Count; $i++) {
+            Write-Host "    $($i + 1). $($detectedIds[$i])"
+        }
+        
+        if ($Unattended) {
+            # In unattended mode, use the first one
+            $ExtensionId = $detectedIds[0]
+            Write-Info "Unattended mode: using first ID: $ExtensionId"
+        } else {
+            $selection = Read-Host "  Select extension (1-$($detectedIds.Count)) or enter custom ID"
+            if ($selection -match '^\d+$' -and [int]$selection -le $detectedIds.Count) {
+                $ExtensionId = $detectedIds[[int]$selection - 1]
+            } else {
+                $ExtensionId = $selection
+            }
+        }
+    }
+    else {
+        # No extensions found
+        if ($Unattended) {
+            Write-ErrorLog "No go-mapi extension detected. Install extension first or provide -ExtensionId"
+            exit 1
+        }
+        
+        Write-Host ""
+        Write-Info "No go-mapi extension detected in browser profiles"
+        Write-Info "Install the extension from Chrome Web Store first, or enter the extension ID manually."
+        Write-Info "Find it at chrome://extensions (Developer mode ON)."
+        Write-Host ""
+        $ExtensionId = Read-Host "  Extension ID (32 chars, or press Enter to skip)"
+        
+        if (-not $ExtensionId) {
+            Write-Host ""
+            Write-Warn "No extension ID provided. Installation will continue, but you'll need to"
+            Write-Warn "re-run this installer with -ExtensionId after installing the extension."
+            Write-Host ""
+            if (-not $Unattended) {
+                $continue = Read-Host "  Continue anyway? (Y/n)"
+                if ($continue -eq "n" -or $continue -eq "N") {
+                    exit 0
+                }
+            }
+            $ExtensionId = "PLACEHOLDER_EXTENSION_ID_32CHR"
+        }
+    }
+}
+
+if ($ExtensionId -ne "PLACEHOLDER_EXTENSION_ID_32CHR" -and $ExtensionId -notmatch '^[a-z]{32}$') {
+    Write-ErrorLog "Invalid extension ID: '$ExtensionId'. Must be 32 lowercase letters (from chrome://extensions)."
+    exit 1
 }
 
 Write-Host ""
 Write-Info "Install dir:  $InstallDir"
 Write-Info "Extension ID: $ExtensionId"
+Write-Log "Extension ID: $ExtensionId" "INFO"
 
 # --- Acquire artifacts ---
 
@@ -303,10 +520,12 @@ try {
         $hostSource = Find-LocalArtifact "go-mapi-host.exe" $searchPaths
 
         if (-not $dllSource) {
-            Write-Error "go-mapi.dll not found. Run 'npm run build:interceptor' first.`nSearched: $($searchPaths -join ', ')"
+            Write-ErrorLog "go-mapi.dll not found. Run 'npm run build:interceptor' first.`nSearched: $($searchPaths -join ', ')"
+            exit 1
         }
         if (-not $hostSource) {
-            Write-Error "go-mapi-host.exe not found. Run 'npm run build:native-host' first.`nSearched: $($searchPaths -join ', ')"
+            Write-ErrorLog "go-mapi-host.exe not found. Run 'npm run build:native-host' first.`nSearched: $($searchPaths -join ', ')"
+            exit 1
         }
 
         Write-Step "Found DLL:  $dllSource"
@@ -314,7 +533,7 @@ try {
 
         $dllArtifact = $dllSource
         $hostArtifact = $hostSource
-        $installedVersion = "local"
+        $installedVersion = "local-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 
     } else {
         # --- Download mode: fetch from GitHub releases ---
@@ -329,13 +548,20 @@ try {
 
         $tag = $release.tag_name
         Write-Step "Release: $tag ($($release.published_at.ToString('yyyy-MM-dd')))"
+        Write-Log "Downloading release: $tag" "INFO"
 
         # Find assets
         $dllAsset  = $release.assets | Where-Object { $_.name -eq "go-mapi.dll" }
         $hostAsset = $release.assets | Where-Object { $_.name -eq "go-mapi-host.exe" }
 
-        if (-not $dllAsset) { Write-Error "Release $tag is missing go-mapi.dll asset" }
-        if (-not $hostAsset) { Write-Error "Release $tag is missing go-mapi-host.exe asset" }
+        if (-not $dllAsset) { 
+            Write-ErrorLog "Release $tag is missing go-mapi.dll asset"
+            exit 1
+        }
+        if (-not $hostAsset) { 
+            Write-ErrorLog "Release $tag is missing go-mapi-host.exe asset"
+            exit 1
+        }
 
         # Download
         $dllArtifact = Join-Path $tempDir "go-mapi.dll"
@@ -430,6 +656,8 @@ try {
         extensionId     = $ExtensionId
         installedAt     = (Get-Date -Format "o")
         previousClient  = $previousDefault
+        installedBy     = $env:USERNAME
+        computerName    = $env:COMPUTERNAME
     } | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path $InstallDir ".install-metadata.json") -Encoding UTF8
 
     # --- Done ---
@@ -437,24 +665,50 @@ try {
     Write-Host ""
     Write-Host "  ========================================" -ForegroundColor DarkGray
     Write-Host "  Installed go-mapi $installedVersion" -ForegroundColor Green
+    Write-Log "=== INSTALL COMPLETED: $installedVersion ===" "INFO"
     Write-Host ""
-    Write-Host "  Install dir:      $InstallDir"
-    Write-Host "  MAPI DLL:         $dllInstallPath"
-    Write-Host "  Native host:      $(Join-Path $InstallDir 'go-mapi-host.exe')"
-    Write-Host "  Default client:   go-mapi"
+    Write-Host "  Install dir:      $InstallDir" -ForegroundColor White
+    Write-Host "  MAPI DLL:         $dllInstallPath" -ForegroundColor Gray
+    Write-Host "  Native host:      $(Join-Path $InstallDir 'go-mapi-host.exe')" -ForegroundColor Gray
+    Write-Host "  Default client:   go-mapi" -ForegroundColor Gray
     if ($previousDefault -and $previousDefault -ne "go-mapi") {
-        Write-Host "  Previous client:  $previousDefault (backed up)"
+        Write-Host "  Previous client:  $previousDefault (backed up)" -ForegroundColor DarkGray
     }
     Write-Host ""
+    
+    if ($ExtensionId -eq "PLACEHOLDER_EXTENSION_ID_32CHR") {
+        Write-Host "  ⚠ IMPORTANT: Extension not detected!" -ForegroundColor Yellow
+        Write-Host "    1. Install the extension from Chrome Web Store" -ForegroundColor Yellow
+        Write-Host "    2. Re-run this installer to register native messaging" -ForegroundColor Yellow
+        Write-Host ""
+    }
+    
     Write-Host "  Next steps:" -ForegroundColor Cyan
-    Write-Host "    1. Install the extension from Chrome Web Store (or load unpacked)"
-    Write-Host "    2. Sign in with your Google account in the extension"
-    Write-Host "    3. Right-click a file -> Send to -> Mail recipient"
+    if ($ExtensionId -ne "PLACEHOLDER_EXTENSION_ID_32CHR") {
+        Write-Host "    1. Open the go-mapi extension in your browser"
+        Write-Host "    2. Sign in with your Google account"
+        Write-Host "    3. Right-click a file → Send to → Mail recipient"
+    } else {
+        Write-Host "    1. Install go-mapi extension from Chrome Web Store"
+        Write-Host "    2. Run: .\install.ps1 -ExtensionId <your-extension-id>"
+    }
+    Write-Host ""
+    Write-Host "  Log file: $Script:LogPath" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  To uninstall:" -ForegroundColor DarkGray
     Write-Host "    .\install.ps1 -Uninstall" -ForegroundColor DarkGray
     Write-Host ""
 
+    exit 0
+
+} catch {
+    Write-Host ""
+    Write-ErrorLog "Installation failed: $($_.Exception.Message)"
+    Write-Host "  See log for details: $Script:LogPath" -ForegroundColor Red
+    Write-Log "EXCEPTION: $($_.Exception.ToString())" "ERROR"
+    Write-Log "=== INSTALL FAILED ===" "ERROR"
+    Write-Host ""
+    exit 1
 } finally {
     # Clean up temp dir
     if (Test-Path $tempDir) {

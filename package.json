@@ -13,6 +13,7 @@
     "build:native-host": "powershell -ExecutionPolicy Bypass -Command \"$v=(Get-Content package.json -Raw|ConvertFrom-Json).version; cd src/native-host; go build -ldflags \\\"-s -w -X main.Version=$v\\\" -o build/go-mapi-host.exe .\"",
     "build:native-host:debug": "powershell -ExecutionPolicy Bypass -Command \"$v=(Get-Content package.json -Raw|ConvertFrom-Json).version; cd src/native-host; go build -ldflags \\\"-X main.Version=$v\\\" -o build/go-mapi-host.exe .\"",
     "build:extension": "npm run -w go-mapi-extension build",
+    "package:extension": "powershell -ExecutionPolicy Bypass -File scripts/package-extension.ps1",
     "dev:extension": "npm run -w go-mapi-extension dev",
     "lint": "eslint src/extension/src/ && cd src/native-host && go vet ./...",
     "test": "npm run test:native-host && npm run test:extension",
