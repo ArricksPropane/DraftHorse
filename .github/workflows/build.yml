@@ -8,10 +8,6 @@ on:
   pull_request:
   workflow_call:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build-interceptor:
     name: Build Interceptor (C++)
