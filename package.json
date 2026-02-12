@@ -14,6 +14,7 @@
     "build:native-host:debug": "powershell -ExecutionPolicy Bypass -Command \"$v=(Get-Content package.json -Raw|ConvertFrom-Json).version; cd src/native-host; go build -ldflags \\\"-X main.Version=$v\\\" -o build/go-mapi-host.exe .\"",
     "build:extension": "npm run -w go-mapi-extension build",
     "dev:extension": "npm run -w go-mapi-extension dev",
+    "lint": "eslint src/extension/src/ && cd src/native-host && go vet ./...",
     "test": "npm run test:native-host && npm run test:extension",
     "test:native-host": "cd src/native-host && go test -v ./...",
     "test:extension": "npm run -w go-mapi-extension test:run",
@@ -48,7 +49,10 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.58.0",
-    "sharp": "^0.34.5"
+    "eslint": "^10.0.0",
+    "sharp": "^0.34.5",
+    "typescript-eslint": "^8.55.0"
   }
 }

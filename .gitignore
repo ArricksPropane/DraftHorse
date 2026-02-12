@@ -33,3 +33,8 @@ playwright-report/
 
 # Pi agent config (local, not tracked)
 .pi/
+
+# Internal/dev-only
+experiments/
+TODO.txt
+PLANNING_AGENT.md

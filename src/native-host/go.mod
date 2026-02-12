@@ -1,4 +1,4 @@
-module github.com/anthropics/go-mapi/native-host
+module github.com/marcfargas/go-mapi/native-host
 
 go 1.21
 
