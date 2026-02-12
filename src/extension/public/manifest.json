@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "go-mapi",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Send emails via Gmail from Windows MAPI applications (right-click → Send to → Mail recipient)",
   "permissions": [
     "nativeMessaging",

@@ -14,21 +14,21 @@ A few third-party tools have filled this gap over the years. The most notable, [
 
 ## Status
 
-**Beta** — Core flow works end-to-end. Usable for early adopters.
+**v1.0.0 Stable** — Production-ready for personal and enterprise use.
 
 | Component | Status |
 |-----------|--------|
-| MAPI interception (ANSI + Unicode) | ✅ Working |
-| Native messaging bridge | ✅ Working |
-| Browser extension (popup + notifications) | ✅ Working |
-| Gmail draft creation (with attachments) | ✅ Working |
-| UTF-8 / codepage encoding | ✅ Working |
-| Version tracking across components | ✅ Working |
-| PowerShell installer | ✅ Working |
-| OAuth consent (external users) | 📋 Planned |
-| MSI installer | 📋 Planned |
+| MAPI interception (ANSI + Unicode) | ✅ Stable |
+| Native messaging bridge | ✅ Stable |
+| Browser extension (popup + notifications) | ✅ Stable |
+| Gmail draft creation (with attachments) | ✅ Stable |
+| UTF-8 / codepage encoding | ✅ Stable |
+| Auto-detecting installer | ✅ Stable |
+| Unattended installation mode | ✅ Stable |
+| Comprehensive logging | ✅ Stable |
+| Chrome & Edge support | ✅ Stable |
 
-See [ROADMAP.md](ROADMAP.md) for planned work.
+**What's Next:** Extension UI improvements, MSI installer. See [ROADMAP.md](ROADMAP.md).
 
 ## Architecture
 
@@ -79,8 +79,8 @@ go-mapi uses a three-component architecture optimized for enterprise deployment:
 ### Installation
 
 1. **Install the extension** in Chrome or Edge:
-   - Chrome Web Store: [Link coming soon]
-   - Edge Add-ons: [Link coming soon]
+   - Chrome Web Store: [Install go-mapi](https://chrome.google.com/webstore) (under review)
+   - Edge Add-ons: [Install go-mapi](https://microsoftedge.microsoft.com/addons) (under review)
    - Or load unpacked from a [release zip](https://github.com/marcfargas/go-mapi/releases)
 
 2. **Run the installer** (admin PowerShell):
