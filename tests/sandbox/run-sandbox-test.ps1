@@ -22,8 +22,23 @@ if (-not $wsbPath) {
 }
 
 # Check for existing sandbox
-$existing = wsb list --raw 2>&1 | ConvertFrom-Json
-if ($existing.WindowsSandboxEnvironments.Count -gt 0) {
+# Separate stderr from stdout so non-JSON diagnostics (first-run banners,
+# telemetry notices, update nags) don't break the ConvertFrom-Json parse
+# under $ErrorActionPreference = "Stop". See WR-02 in 05-REVIEW.md.
+try {
+    $listOutput = wsb list --raw 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($listOutput)) {
+        $existing = $null
+    } else {
+        $existing = $listOutput | ConvertFrom-Json -ErrorAction Stop
+    }
+} catch {
+    Write-Host "WARNING: Could not parse 'wsb list --raw' output: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "Continuing -- assuming no existing sandbox." -ForegroundColor Yellow
+    $existing = $null
+}
+
+if ($existing -and $existing.WindowsSandboxEnvironments.Count -gt 0) {
     Write-Host "WARNING: Existing sandbox found. Stopping it..." -ForegroundColor Yellow
     foreach ($sb in $existing.WindowsSandboxEnvironments) {
         wsb stop --id $sb.Id 2>&1 | Out-Null
@@ -33,7 +48,19 @@ if ($existing.WindowsSandboxEnvironments.Count -gt 0) {
 
 # Start sandbox (no config - we'll share folder separately)
 Write-Host "`n[1/4] Starting Windows Sandbox..."
-$startResult = wsb start --raw 2>&1 | ConvertFrom-Json
+# Defensive JSON parse: same pattern as 'wsb list --raw' above. See WR-02.
+try {
+    $startRaw = wsb start --raw 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($startRaw)) {
+        Write-Host "ERROR: 'wsb start --raw' exited with code $LASTEXITCODE and no output" -ForegroundColor Red
+        exit 1
+    }
+    $startResult = $startRaw | ConvertFrom-Json -ErrorAction Stop
+} catch {
+    Write-Host "ERROR: Could not parse 'wsb start --raw' output: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Raw output: $startRaw" -ForegroundColor Red
+    exit 1
+}
 if (-not $startResult.Id) {
     Write-Host "ERROR: Failed to start sandbox" -ForegroundColor Red
     Write-Host $startResult
@@ -109,8 +136,12 @@ if ($RegistrationOnly) {
     exit 0
 }
 
-# Run setup (WinAppDriver install)
-if ($SetupOnly -or $FullTest) {
+# Run setup (WinAppDriver install) -- only when explicitly requested via -SetupOnly.
+# WR-01: -FullTest does NOT run this step. The REL-02 install -> verify -> uninstall
+# flow has no UI-automation dependency; tests/sandbox/README.md describes the
+# -FullTest path without a WinAppDriver install step, and coupling the two
+# made full runs fragile on sandbox network hiccups.
+if ($SetupOnly) {
     Write-Host "`n[4/4] Running setup (WinAppDriver)..."
     $setupSuccess = Invoke-SandboxCommand `
         -Command "powershell -ExecutionPolicy Bypass -File C:\go-mapi\tests\sandbox\setup.ps1" `
@@ -125,6 +156,12 @@ if ($SetupOnly -or $FullTest) {
         Write-Host "(No setup log found)"
     }
     Write-Host "--- End Output ---"
+
+    if (-not $setupSuccess) {
+        Write-Host "`n=== SETUP FAILED ===" -ForegroundColor Red
+        if (-not $KeepRunning) { wsb stop --id $sandboxId 2>&1 | Out-Null }
+        exit 1
+    }
 }
 
 if ($SetupOnly) {
@@ -138,10 +175,41 @@ if ($SetupOnly) {
     exit 0
 }
 
-# Full test with UI automation
+# Full test: install -> verify -> uninstall round-trip (REL-02)
 if ($FullTest) {
-    Write-Host "`n=== FULL TEST (WinAppDriver) ===" -ForegroundColor Yellow
-    Write-Host "TODO: Implement WinAppDriver-based UI automation"
+    Write-Host "`n[5/5] Running REL-02 install -> verify -> uninstall flow..." -ForegroundColor Cyan
+
+    # Sanity check: the host-side Inno Setup compile must have happened already
+    $hostInstaller = Join-Path $ProjectRoot 'src\installer\dist\go-mapi-setup.exe'
+    if (-not (Test-Path $hostInstaller)) {
+        Write-Host "ERROR: $hostInstaller not found." -ForegroundColor Red
+        Write-Host "Compile it on the host first:" -ForegroundColor Yellow
+        Write-Host '  & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" /DGOMAPIVersion=2.0.0-local src\installer\go-mapi.iss' -ForegroundColor Yellow
+        if (-not $KeepRunning) { wsb stop --id $sandboxId 2>&1 | Out-Null }
+        exit 1
+    }
+    Write-Host "OK: Found $hostInstaller ($((Get-Item $hostInstaller).Length) bytes)" -ForegroundColor Green
+
+    $fullSuccess = Invoke-SandboxCommand `
+        -Command "powershell -ExecutionPolicy Bypass -File C:\go-mapi\tests\sandbox\install-and-verify.ps1" `
+        -Description "Install-and-verify round-trip"
+
+    # Retrieve the script log
+    $fullLog = Join-Path $OutputFolder "install-and-verify.log"
+    Write-Host "`n--- Install+Verify Output ---"
+    if (Test-Path $fullLog) {
+        Get-Content $fullLog
+    } else {
+        Write-Host "(No install-and-verify.log found at $fullLog)"
+    }
+    Write-Host "--- End Output ---"
+
+    if (-not $fullSuccess) {
+        Write-Host "`n=== REL-02 FULL TEST FAILED ===" -ForegroundColor Red
+        if (-not $KeepRunning) { wsb stop --id $sandboxId 2>&1 | Out-Null }
+        exit 1
+    }
+    Write-Host "`n=== REL-02 FULL TEST PASSED ===" -ForegroundColor Green
 }
 
 # Cleanup
