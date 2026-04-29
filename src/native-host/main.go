@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	mapi "github.com/marcfargas/go-mapi/internal/mapi"
 )
 
 const (
@@ -70,7 +72,7 @@ func parseFlags() {
 	if *gmailBaseFlag != "" {
 		hostConfig.gmailAPIBase = *gmailBaseFlag
 	} else {
-		hostConfig.gmailAPIBase = gmailAPIBase
+		hostConfig.gmailAPIBase = mapi.GmailAPIBase
 	}
 }
 
@@ -92,7 +94,8 @@ func main() {
 	messaging := NewNativeMessaging()
 
 	// Create email watcher using resolved watch dir
-	watcher, err := NewEmailWatcher(hostConfig.watchDir, messaging)
+	adapter := newNativeMessagingAdapter(messaging)
+	watcher, err := mapi.NewEmailWatcher(hostConfig.watchDir, adapter)
 	if err != nil {
 		logError("failed to create watcher: %v", err)
 		messaging.SendError(fmt.Sprintf("failed to create watcher: %v", err))
@@ -181,7 +184,7 @@ func handleCreateDraft(messaging *NativeMessaging, msg *IncomingMessage) {
 		return
 	}
 
-	client := NewGmailClientWithBase(msg.Token, hostConfig.gmailAPIBase)
+	client := mapi.NewGmailClientWithBase(msg.Token, hostConfig.gmailAPIBase)
 
 	logInfo("creating draft with %d attachments", len(msg.Email.Attachments))
 	draftID, err := client.CreateDraft(msg.Email)

@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
+
+	mapi "github.com/marcfargas/go-mapi/internal/mapi"
 )
 
 // Message types for Native Messaging protocol
@@ -27,12 +30,12 @@ const (
 
 // OutgoingMessage is sent from host to extension
 type OutgoingMessage struct {
-	Type        string       `json:"type"`
-	ID          string       `json:"id,omitempty"`
-	Data        *MailMessage `json:"data,omitempty"`
-	Error       string       `json:"error,omitempty"`
-	Version     string       `json:"version,omitempty"`     // legacy field — kept for backwards compat, do not remove
-	HostVersion string       `json:"hostVersion,omitempty"` // FOUND-02: new canonical host version field
+	Type        string            `json:"type"`
+	ID          string            `json:"id,omitempty"`
+	Data        *mapi.MailMessage `json:"data,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	Version     string            `json:"version,omitempty"`     // legacy field — kept for backwards compat, do not remove
+	HostVersion string            `json:"hostVersion,omitempty"` // FOUND-02: new canonical host version field
 
 	// Draft creation response
 	DraftID  string `json:"draftId,omitempty"`
@@ -45,42 +48,8 @@ type IncomingMessage struct {
 	ID   string `json:"id,omitempty"`
 
 	// create-draft fields
-	Token string       `json:"token,omitempty"`
-	Email *MailMessage `json:"email,omitempty"`
-}
-
-// MailMessage represents an intercepted email
-type MailMessage struct {
-	Version            int          `json:"version"`
-	InterceptorVersion string       `json:"interceptorVersion,omitempty"`
-	HostVersion        string       `json:"hostVersion,omitempty"`
-	Timestamp          string       `json:"timestamp"`
-	Subject            string       `json:"subject"`
-	Body               string       `json:"body"`
-	BodyFormat         string       `json:"bodyFormat"`
-	Recipients         Recipients   `json:"recipients"`
-	Attachments        []Attachment `json:"attachments"`
-	OriginApp          string       `json:"originApp"`
-}
-
-// Recipients contains email recipients by type
-type Recipients struct {
-	To  []Recipient `json:"to"`
-	CC  []Recipient `json:"cc"`
-	BCC []Recipient `json:"bcc"`
-}
-
-// Recipient represents a single email recipient
-type Recipient struct {
-	Name    string `json:"name"`
-	Address string `json:"address"`
-}
-
-// Attachment represents an email attachment
-type Attachment struct {
-	Filename string `json:"filename"`
-	Path     string `json:"path"`
-	Size     int64  `json:"size"`
+	Token string            `json:"token,omitempty"`
+	Email *mapi.MailMessage `json:"email,omitempty"`
 }
 
 // NativeMessaging handles Chrome Native Messaging protocol
@@ -152,7 +121,7 @@ func (nm *NativeMessaging) Write(msg *OutgoingMessage) error {
 }
 
 // SendEmail sends an email message to the extension
-func (nm *NativeMessaging) SendEmail(id string, mail *MailMessage) error {
+func (nm *NativeMessaging) SendEmail(id string, mail *mapi.MailMessage) error {
 	return nm.Write(&OutgoingMessage{
 		Type: MsgTypeEmail,
 		ID:   id,
@@ -203,3 +172,59 @@ func (nm *NativeMessaging) SendDraftError(emailID string, errMsg string) error {
 		Error: errMsg,
 	})
 }
+
+// nativeMessagingAdapter implements mapi.WatcherCallback, bridging watcher
+// events to native-messaging frames sent to the Chrome extension.
+//
+// The legacy wire protocol sends one frame per changed item (not per-snapshot),
+// preserving the existing Extension ↔ Host contract:
+//   - New ID in snapshot → SendEmail (added)
+//   - ID absent from snapshot → SendRemoved (deleted/processed)
+type nativeMessagingAdapter struct {
+	nm      *NativeMessaging
+	mu      sync.Mutex
+	prevIDs map[string]struct{} // IDs seen in the last snapshot
+}
+
+func newNativeMessagingAdapter(nm *NativeMessaging) *nativeMessagingAdapter {
+	return &nativeMessagingAdapter{
+		nm:      nm,
+		prevIDs: make(map[string]struct{}),
+	}
+}
+
+func (a *nativeMessagingAdapter) OnQueueChanged(snapshot []mapi.EmailWithId) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Build current ID set
+	currentIDs := make(map[string]struct{}, len(snapshot))
+	for _, e := range snapshot {
+		currentIDs[e.Id] = struct{}{}
+	}
+
+	// Send removed notifications for IDs that disappeared
+	for id := range a.prevIDs {
+		if _, found := currentIDs[id]; !found {
+			_ = a.nm.SendRemoved(id)
+		}
+	}
+
+	// Send email notifications for IDs that are new
+	for _, e := range snapshot {
+		if _, seen := a.prevIDs[e.Id]; !seen {
+			// Stamp host version before sending (was done in watcher.processFile
+			// previously; now the adapter is responsible since internal/mapi
+			// does not have access to the Version variable).
+			e.Message.HostVersion = Version
+			_ = a.nm.SendEmail(e.Id, e.Message)
+		}
+	}
+
+	a.prevIDs = currentIDs
+}
+
+func (a *nativeMessagingAdapter) OnError(err error) {
+	_ = a.nm.SendError(err.Error())
+}
+
