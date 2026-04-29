@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Wails Pivot
-status: phase-complete
-stopped_at: Phase 08 complete — ready for Phase 09 (Queue, Automode + Toasts)
-last_updated: "2026-04-18T00:30:00.000Z"
-last_activity: 2026-04-18 -- Phase 08 human UAT approved; marked complete
+status: executing
+stopped_at: Phase 08.1 executing (9 plans, 7 waves)
+last_updated: "2026-04-18T20:30:00.000Z"
+last_activity: 2026-04-18 -- Phase 08.1 execution started
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 2
-  total_plans: 9
+  total_plans: 27
   completed_plans: 9
-  percent: 100
+  percent: 33
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** A non-technical Windows user can install go-mapi once and have every "Send to Mail recipient" action appear as a Gmail draft — without touching a terminal, a toolchain, or a registry editor.
-**Current focus:** Phase 09 — Queue, Automode + Toasts (next)
+**Current focus:** Phase 8.1 — Post-pivot cleanup and test coverage review (INSERTED, next)
 
 ## Current Position
 
 Milestone: v3.0 Wails Pivot
-Phase: 08 (oauth-credentials) — COMPLETE
-Plan: 5 of 5
-Status: Phase 08 complete — awaiting routing to Phase 09
-Last activity: 2026-04-18 -- Phase 08 human UAT approved; marked complete
+Phase: 08.1 (post-pivot-cleanup-and-test-coverage-review) — EXECUTING
+Plan: 0 of 9
+Status: Executing (7 waves)
+Last activity: 2026-04-18 -- Phase 08.1 execution started
 
-Progress: [████████░░] 40% (2/5 phases complete — 7, 8)
+Progress: [████████░░] 40% (2/5 phases complete — 7, 8; 8.1 in progress)
 
 ## Performance Metrics
 
@@ -62,6 +62,10 @@ Recent decisions carried into v3.0:
 - [Phase 08]: Build-tag split pattern required for wails build compatibility: any fatal startup guard in main.go must be extracted to a !bindings-tagged file so wailsbindings.exe can introspect types without triggering os.Exit
 - [Phase 08]: D-11/D-12 realised: zalando/go-keyring v0.2.8 wired for Windows Credential Manager; keyring.ErrNotFound on Get/Delete is signed-out state (not error); service=go-mapi user=oauth-tokens
 
+### Roadmap Evolution
+
+- Phase 8.1 inserted after Phase 8 (2026-04-18): Post-pivot cleanup and test coverage review (URGENT) — purge v2.x native-host + browser-extension leftovers and shore up Wails codebase test coverage before Phase 9 feature work resumes
+
 ### Pending Todos
 
 - AUTH-06: Google OAuth verification submitted 2026-04-17 (GCP client, consent screen, scope justifications done; 4-8 week review window running)
@@ -78,6 +82,6 @@ Recent decisions carried into v3.0:
 
 ## Session Continuity
 
-Last session: 2026-04-18T00:30:00.000Z
-Stopped at: Phase 08 complete (human UAT approved after tray-idle fix 04462ed + dev-wails.ps1 fix f05d63c)
-Resume: run `/gsd-discuss-phase 9` to start Phase 09 (Queue, Automode + Toasts)
+Last session: 2026-04-18T16:46:10.454Z
+Stopped at: Phase 08.1 context gathered
+Resume: run `/gsd-discuss-phase 8.1` to start the inserted cleanup/coverage phase before Phase 09
