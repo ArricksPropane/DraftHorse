@@ -80,7 +80,7 @@ Full details: `milestones/v2.1.0-ROADMAP.md`
 - [x] 08-04-PLAN.md — Token refresh + invalid_grant classification + SignOut + OnStartup wiring (AUTH-03, AUTH-04, AUTH-05, AUTH-07, QUAL-03)
 - [x] 08-05-PLAN.md — Frontend: welcome screen + pre-auth modal + re-auth banner + signed-in header (AUTH-01, AUTH-02, AUTH-05, AUTH-07)
 
-### Phase 8.1: Post-pivot cleanup and test coverage review (INSERTED)
+### Phase 8.1: Post-pivot cleanup and test coverage review (INSERTED) — ✓ COMPLETE 2026-04-19
 **Goal**: The repository contains no residue of the v2.x native-host + browser-extension architecture, and every component of the Wails desktop app has test coverage appropriate to its risk — so Phase 9 feature work starts from a clean, coherent, well-tested baseline
 **Depends on**: Phase 8
 **Requirements**: QUAL-03 (carry-forward via D-05), QUAL-04 (closed by per-PR `-race` gate via D-07)
@@ -99,9 +99,9 @@ Full details: `milestones/v2.1.0-ROADMAP.md`
 - [x] 08.1-04-PLAN.md — Cleanup wave 1: drop src/native-host/, trim go.work + package.json + .changeset/config.json (D-02 wave 1, D-21)
 - [x] 08.1-05-PLAN.md — Cleanup wave 2+3: drop src/extension/, src/installer/, ESLint config + devDeps, installer CI workflows, sharp devDep, generate-icons.js (D-02 waves 2-3, D-19)
 - [x] 08.1-06-PLAN.md — Cleanup wave 4+5+6: drop tests/e2e/, tests/fixtures/, e2e.yml, release.yml, v2.x scripts + docs, TODO.txt, AGENTS.md / PLANNING_AGENT.md / CONTRIBUTING.md inspect-and-decide, drop @playwright/test (D-13, D-14, D-16, D-18)
-- [ ] 08.1-07-PLAN.md — Rewrite build.yml for Wails app + per-PR -race + coverage + svelte-check + Vitest (D-07, D-08, D-10, D-17, QUAL-04)
-- [ ] 08.1-08-PLAN.md — Finalize root package.json shape: description, repo URL, Wails-era aggregator scripts (D-22)
-- [ ] 08.1-09-PLAN.md — Rewrite CLAUDE.md + README.md for v3.0 Wails architecture; update PROJECT.md D-05 outcome (D-04, D-05)
+- [x] 08.1-07-PLAN.md — Rewrite build.yml for Wails app + per-PR -race + coverage + svelte-check + Vitest (D-07, D-08, D-10, D-17, QUAL-04)
+- [x] 08.1-08-PLAN.md — Finalize root package.json shape: description, repo URL, Wails-era aggregator scripts (D-22)
+- [x] 08.1-09-PLAN.md — Rewrite CLAUDE.md + README.md for v3.0 Wails architecture; update PROJECT.md D-05 outcome (D-04, D-05)
 **UI hint**: no
 
 ### Phase 9: Queue, Automode + Toasts
