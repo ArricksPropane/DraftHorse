@@ -43,6 +43,7 @@ Full details: `milestones/v2.1.0-ROADMAP.md`
 - [x] **Phase 9: Queue, Automode + Toasts** — Email queue UI, Manual/Auto-draft toggle, and Windows toast notifications
 - [x] **Phase 10: Installer + Migration** — NSIS installer with AppUserModelID, WebView2 bootstrap, v2.x cleanup, uninstall, and release/smoke groundwork landed in 10-05 and 10-06
 - [ ] **Phase 11: Autoupdate + Release** — Notify-only autoupdate, GitHub release pipeline, extension store retirement, smoke test
+- [x] **Phase 11.1: Installer hardening + enterprise deploy + silent auto-update (INSERTED)** — All Users install scope made mandatory, NSIS T2/T4 fixes (Start Menu shortcut + 32-bit DLL reinstall), `/AUTOUPDATE=1` opt-in Scheduled Task running as SYSTEM with SHA-256 verification, CI publishes SHA256SUMS.txt, README enterprise-install section
 
 ## Phase Details
 
@@ -162,6 +163,27 @@ Full details: `milestones/v2.1.0-ROADMAP.md`
 - [ ] 11-05-PLAN.md — Windows Sandbox clean-machine smoke harness + evidence gate (REL-06)
 - [x] 11-06-PLAN.md — Playwright/CDP E2E harness — closes UI roundtrip regression class (REL-08; inserted 2026-04-22 after 11-05 manual smoke caught queue-row staleness bugs Vitest mocks could not see; 5/5 specs green, self-verification confirmed Test 2 catches the pre-fix watcher dispatch bug)
 
+### Phase 11.1: Installer hardening + enterprise deploy + silent auto-update (INSERTED)
+**Goal**: Ship v3.0 with a complete enterprise-deploy story — an admin can run `go-mapi-setup.exe /AUTOUPDATE=1` (or tick the install-time checkbox) to get a fleet-ready endpoint that installs system-wide and keeps itself updated unattended via a SYSTEM-context Scheduled Task. Single-user install is dropped (MAPI handler is inherently machine-wide); pre-existing T2 (Start Menu shortcut location) and T4 (32-bit DLL reinstall overwrite) bugs are root-caused and fixed.
+**Depends on**: Phase 11 (11-01/02/03/06 already shipped — updater backend + tray UI + main-window banner + E2E harness are prerequisites for the silent-update path; 11-04 Task 2+3 stays paused on `go-mapi-www` separately)
+**Requirements**: INST-01, INST-04, INST-05, REL-02, REL-03, REL-06, REL-07, REL-09 (REL-09 introduced by this phase — see REQUIREMENTS.md)
+**Success Criteria** (what must be TRUE):
+  1. Installer is system-wide only: `RequestExecutionLevel admin` enforced, `SetShellVarContext all` wraps the Start Menu shortcut create/delete, no "Current User" / per-user fallback language anywhere in NSIS or docs (T2 + D-01 + D-03)
+  2. In-place reinstall succeeds without a manual uninstall step — both x64 and x86 `go-mapi.dll` overwrite cleanly via `SetOverwrite try` + explicit `Delete`, with a Pester regression in the smoke harness (T4 + D-04 + D-05)
+  3. Installer exposes a single boolean "Enable automatic updates" affordance (UI checkbox, default OFF; CLI parameter `/AUTOUPDATE=1` for silent installs); no tri-state, no machine-config gate (D-07)
+  4. When enabled, installer registers a Windows Scheduled Task `go-mapi Auto Update` running as `SYSTEM` with `MultipleInstancesPolicy=IgnoreNew`, daily 03:00 + RandomDelay PT30M, at-startup catch-up, `RunOnlyIfNetworkAvailable=true`, `StartWhenAvailable=true`, `ExecutionTimeLimit=PT12H` (D-08 + D-09 + D-14)
+  5. `go-mapi.exe --update-check-silent` runs without spawning the tray, window, or WebView2; downloads the new release asset(s) into `%ProgramData%\go-mapi\updates\staging\`, verifies SHA-256 via `SHA256SUMS.txt` + go-selfupdate `ChecksumValidator`, and atomically swaps the running binary using `MoveFileEx` rename-while-running. `MOVEFILE_DELAY_UNTIL_REBOOT` is explicitly NOT used (RDS targets do not reboot). Retry-with-backoff caps at 12 hours total elapsed (D-10 + D-11 + D-12 + D-13 + D-14)
+  6. Uninstaller idempotently removes the Scheduled Task (`schtasks /delete /tn "go-mapi Auto Update" /f`, "task not found" exit code swallowed) BEFORE binary scrub, AND scrubs `%ProgramData%\go-mapi\updates\` and any `.old.<pid>` orphans (D-16 + D-18 case 6)
+  7. CI publishes `SHA256SUMS.txt` alongside `go-mapi-setup.exe` at the stable Release URL; Pester smoke harness extends Phase 10's coverage with: 32-bit DLL reinstall regression (item 21), Start Menu shortcut location regression (item 25), `/AUTOUPDATE=1` task registration (item 22), `/AUTOUPDATE=0` task absence (item 23), uninstaller idempotent removal (item 24) (D-17 + D-18)
+  8. README has an "Enterprise installation" section covering the All Users elevation requirement, `/AUTOUPDATE=1` parameter, Scheduled Task management commands, SHA-256 verification expectation, and the multi-user RDS limitation carry-forward; ROADMAP and REQUIREMENTS reflect the simplified scope (D-19 + D-20 + REL-09)
+**Plans**: 6 plans
+- [x] 11.1-01-PLAN.md — NSIS T2 + T4 fixes + Pester items 21+25 regressions (INST-01, INST-04, INST-05, REL-06; D-01/D-03/D-04/D-05)
+- [x] 11.1-02-PLAN.md — Silent updater scaffold: --update-check-silent flag + updatesStagingDir() + build-tag stub (REL-03, REL-09; D-10/D-15)
+- [x] 11.1-03-PLAN.md — SHA256SUMS.txt release pipeline step + asset list extension (REL-02, REL-09; D-11/D-17)
+- [x] 11.1-04-PLAN.md — Silent updater download + ChecksumValidator wiring + MoveFileEx atomic swap with retry (REL-03, REL-09; D-11/D-12/D-13/D-14)
+- [x] 11.1-05-PLAN.md — Scheduled Task XML + NSIS /AUTOUPDATE parser + register/remove + Pester items 22-24 + uninstaller scrub (INST-01, INST-04, INST-05, REL-06, REL-09; D-07/D-08/D-09/D-16/D-18)
+- [x] 11.1-06-PLAN.md — README "Enterprise installation" section + ROADMAP rewrite + REQUIREMENTS REL-09 insertion (REL-07, REL-09; D-19/D-20)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -178,6 +200,7 @@ Full details: `milestones/v2.1.0-ROADMAP.md`
 | 9. Queue, Automode + Toasts | v3.0 | 9/9 | Complete | 2026-04-19 |
 | 10. Installer + Migration | v3.0 | 6/6 | Complete | 2026-04-20 |
 | 11. Autoupdate + Release | v3.0 | 0/? | Not started | - |
+| 11.1. Installer hardening + enterprise deploy + silent auto-update (INSERTED) | v3.0 | 6/6 | Complete | 2026-04-27 |
 
 ---
-*Roadmap updated: 2026-04-21 — Phase 10 accepted complete for progression; remaining verification debt is explicitly waived for planning purposes and Phase 11 is next*
+*Roadmap updated: 2026-04-25 — Phase 11.1 success criteria rewritten to simplified scope (binary auto-update checkbox + Scheduled Task + SHA-256 manifest); machine-config YAML deferred per D-02; tri-state install collapsed to binary per D-07. See .planning/phases/11.1-installer-hardening-enterprise-deploy-silent-auto-update/11.1-CONTEXT.md for the locked decision rationale.*

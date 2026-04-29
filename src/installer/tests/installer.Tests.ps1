@@ -44,6 +44,14 @@ BeforeAll {
     $script:InstallDir32 = "${env:ProgramFiles(x86)}\go-mapi"
     $script:MapiKey32    = 'HKLM:\SOFTWARE\WOW6432Node\Clients\Mail\go-mapi'
 
+    # Phase 11.1 D-03 / D-18 case 4: %APPDATA% path is the negative-assertion target.
+    # The %ProgramData% path is already $script:Shortcut (set by Phase 10).
+    $script:AppDataLnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\go-mapi.lnk'
+
+    # Phase 11.1 Plan 11.1-05 — Scheduled Task assertions (D-08 / D-16 / D-18 cases 1, 2, 5, 6)
+    $script:TaskName    = 'go-mapi Auto Update'
+    $script:UpdatesDir  = Join-Path $env:ProgramData 'go-mapi\updates'
+
     Write-Host ("[Setup] SetupExe    = {0}" -f $script:SetupExe)
     Write-Host ("[Setup] InstallDir  = {0}" -f $script:InstallDir)
     Write-Host ("[Setup] ProgramData = {0}" -f $script:ProgramData)
@@ -144,6 +152,137 @@ Describe "go-mapi installer round-trip" {
             Test-Path $script:MapiKey32 | Should -BeTrue
             $props = Get-ItemProperty -Path $script:MapiKey32
             $props.DLLPath | Should -Match '(?i)Program Files \(x86\)\\go-mapi\\go-mapi\.dll$'
+        }
+
+        # Phase 11.1 D-05 / D-18 case 3 — silent reinstall overwrites both DLLs (T4 regression)
+        It "21. silent reinstall over existing install overwrites both x64 and x86 DLLs" {
+            # Pre-condition: prior items already installed once into $script:InstallDir.
+            # Capture both DLLs' hashes before reinstall to detect "no overwrite happened".
+            $x64Path = Join-Path $script:InstallDir   'go-mapi.dll'
+            $x86Path = Join-Path $script:InstallDir32 'go-mapi.dll'
+            $x64Before = (Get-FileHash -Algorithm SHA256 -Path $x64Path).Hash
+            $x86Before = (Get-FileHash -Algorithm SHA256 -Path $x86Path).Hash
+
+            # Touch both files to a known earlier mtime so a silent skip leaves them stale.
+            (Get-Item $x64Path).LastWriteTime = (Get-Date).AddDays(-1)
+            (Get-Item $x86Path).LastWriteTime = (Get-Date).AddDays(-1)
+
+            # Reinstall silently WITHOUT prior uninstall — this is the T4 repro case.
+            $proc = Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait -PassThru
+            $proc.ExitCode | Should -Be 0
+
+            # Both DLLs MUST have a fresh mtime (overwrite happened).
+            (Get-Item $x64Path).LastWriteTime | Should -BeGreaterThan (Get-Date).AddMinutes(-2)
+            (Get-Item $x86Path).LastWriteTime | Should -BeGreaterThan (Get-Date).AddMinutes(-2)
+
+            # Hashes should match the prior install (same binaries shipped — confirms the
+            # overwrite happened with a real File write rather than NSIS skipping).
+            (Get-FileHash -Algorithm SHA256 -Path $x64Path).Hash | Should -Be $x64Before
+            (Get-FileHash -Algorithm SHA256 -Path $x86Path).Hash | Should -Be $x86Before
+
+            # Registry DLLPath values must still point to the right bitness in both views.
+            (Get-ItemProperty -Path $script:MapiKey).DLLPath   | Should -Match '(?i)Program Files\\go-mapi\\go-mapi\.dll$'
+            (Get-ItemProperty -Path $script:MapiKey32).DLLPath | Should -Match '(?i)Program Files \(x86\)\\go-mapi\\go-mapi\.dll$'
+        }
+
+        # Phase 11.1 D-03 / D-18 case 4 — Start Menu shortcut location regression
+        It "25. Start Menu shortcut lands at %ProgramData%\Microsoft\Windows\Start Menu\Programs (D-03 regression)" {
+            # The reinstall above ensures the shortcut is in place — no extra setup needed.
+            Test-Path $script:Shortcut    | Should -BeTrue  -Because "D-03: shortcut MUST be all-users (%ProgramData%)"
+            Test-Path $script:AppDataLnk  | Should -BeFalse -Because "D-03: per-user shortcut MUST NOT be created (%APPDATA%)"
+        }
+
+        # Phase 11.1 D-08 / D-18 case 1 — /AUTOUPDATE=1 registers the Scheduled Task
+        It "22. /AUTOUPDATE=1 install registers the Scheduled Task with correct principal + triggers" {
+            # Self-contained: uninstall + reinstall with /AUTOUPDATE=1.
+            $uninst = Join-Path $script:InstallDir 'uninstall.exe'
+            if (Test-Path $uninst) {
+                Start-Process -FilePath $uninst -ArgumentList '/S' -Wait | Out-Null
+                Start-Sleep -Seconds 2
+            }
+            $proc = Start-Process -FilePath $script:SetupExe -ArgumentList '/S','/AUTOUPDATE=1',"/D=$($script:InstallDir)" -Wait -PassThru
+            $proc.ExitCode | Should -Be 0
+            Start-Sleep -Seconds 1   # Pitfall 5: let Task Scheduler cache settle.
+
+            $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+            $task | Should -Not -BeNullOrEmpty
+            # Get-ScheduledTask under PS5.1 resolves the principal SID to its
+            # friendly name and returns enum values as ints. Both the resolved
+            # form (SYSTEM / Highest / IgnoreNew) and the raw form (S-1-5-18 /
+            # 1 / 2) are equivalent — accept either to stay portable across
+            # PS5.1 vs PS7+ runners. Verified by Plan 11.1-05 sandbox UAT under
+            # PS5.1 (returned SYSTEM / 1 / 2).
+            $task.Principal.UserId                    | Should -BeIn @('S-1-5-18','SYSTEM')
+            $task.Principal.RunLevel                  | Should -BeIn @('Highest', 1)
+            $task.Settings.MultipleInstances          | Should -BeIn @('IgnoreNew', 2)
+            $task.Settings.RunOnlyIfNetworkAvailable  | Should -BeTrue
+            $task.Settings.StartWhenAvailable         | Should -BeTrue
+            $task.Triggers.Count                      | Should -Be 2   # CalendarTrigger + BootTrigger
+            ($task.Actions | Where-Object { $_.Execute -match 'go-mapi\.exe' }).Arguments | Should -Be '--update-check-silent'
+        }
+
+        # Phase 11.1 D-07 / D-18 case 2 — /AUTOUPDATE absent: no Scheduled Task
+        It "23. /AUTOUPDATE=0 install does NOT register the Scheduled Task" {
+            $uninst = Join-Path $script:InstallDir 'uninstall.exe'
+            if (Test-Path $uninst) {
+                Start-Process -FilePath $uninst -ArgumentList '/S' -Wait | Out-Null
+                Start-Sleep -Seconds 2
+            }
+            Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait | Out-Null
+            Start-Sleep -Seconds 1
+            Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
+        }
+
+        # Phase 11.1 D-16 / D-18 case 5 — uninstaller idempotently removes the task
+        # AND scrubs %ProgramData%\go-mapi\updates (D-18 case 6)
+        It "24. uninstall removes the Scheduled Task even when /AUTOUPDATE=0 was used" {
+            # /AUTOUPDATE=0 install — uninstall must still run schtasks /delete /f and exit 0.
+            Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait | Out-Null
+            $uninst = Join-Path $script:InstallDir 'uninstall.exe'
+            $proc = Start-Process -FilePath $uninst -ArgumentList '/S' -Wait -PassThru
+            $proc.ExitCode | Should -Be 0   # D-16: idempotent removal — 'task not found' is OK.
+            Start-Sleep -Seconds 2
+
+            # D-16 belt: even though /AUTOUPDATE=0 means no task was registered,
+            # the uninstaller's schtasks /delete /f ran (rc=1 swallowed). Confirm
+            # nothing is left behind in Task Scheduler post-uninstall.
+            Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
+
+            # Uninstaller also scrubs %ProgramData%\go-mapi\updates (D-18 case 6).
+            Test-Path $script:UpdatesDir | Should -BeFalse -Because "uninstaller scrubs %ProgramData%\go-mapi\updates per D-18 case 6"
+        }
+
+        # Phase 11.1 W7 — uninstaller scrubs *.old.<pid> orphan files left by silent updater
+        It "24b. uninstaller scrubs *.old.<pid> orphan files left by silent updater (W7 regression)" {
+            # Reinstall fresh so $script:InstallDir exists with the binary.
+            $uninst = Join-Path $script:InstallDir 'uninstall.exe'
+            if (Test-Path $uninst) {
+                Start-Process -FilePath $uninst -ArgumentList '/S' -Wait | Out-Null
+                Start-Sleep -Seconds 2
+            }
+            Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait | Out-Null
+
+            # Plant orphan files mimicking what swapInPlace would leave behind.
+            $orphan64  = Join-Path $script:InstallDir   'go-mapi.exe.old.123'
+            $orphanDll = Join-Path $script:InstallDir   'go-mapi.dll.old.456'
+            $orphan32  = Join-Path $script:InstallDir32 'go-mapi.dll.old.789'
+            New-Item -ItemType File -Path $orphan64  -Force | Out-Null
+            New-Item -ItemType File -Path $orphanDll -Force | Out-Null
+            New-Item -ItemType File -Path $orphan32  -Force | Out-Null
+
+            Test-Path $orphan64  | Should -BeTrue  # sanity
+            Test-Path $orphanDll | Should -BeTrue
+            Test-Path $orphan32  | Should -BeTrue
+
+            # Uninstall — orphans MUST be gone.
+            $uninstAfter = Join-Path $script:InstallDir 'uninstall.exe'
+            $proc = Start-Process -FilePath $uninstAfter -ArgumentList '/S' -Wait -PassThru
+            $proc.ExitCode | Should -Be 0
+            Start-Sleep -Seconds 2
+
+            Test-Path $orphan64  | Should -BeFalse -Because "uninstaller MUST scrub *.old.<pid> orphans in `$INSTDIR (W7)"
+            Test-Path $orphanDll | Should -BeFalse -Because "uninstaller MUST scrub *.old.<pid> orphans in `$INSTDIR (W7)"
+            Test-Path $orphan32  | Should -BeFalse -Because "uninstaller MUST scrub *.old.<pid> orphans in `$PROGRAMFILES32\go-mapi (W7)"
         }
     }
 

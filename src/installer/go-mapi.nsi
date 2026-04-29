@@ -58,17 +58,89 @@ BrandingText "${PRODUCT_NAME} ${PRODUCT_VERSION} — LGPL-3.0"
 ;------------------------------------------------------------------------------
 
 !include "MUI2.nsh"
+; Phase 11.1 Plan 05 — D-07 / D-08 silent auto-update wiring.
+;   FileFunc.nsh : ${GetParameters} + ${GetOptions} for /AUTOUPDATE=N parsing.
+;   nsDialogs.nsh: nsDialogs::Create + ${NSD_*} for the AutoUpdate page checkbox.
+;   LogicLib.nsh : ${If}/${Else}/${EndIf} + ${DoUntil}/${LoopUntil}/${Errors}
+;                  used by AutoUpdatePageLeave and un.ScrubOldOrphans.
+!include "FileFunc.nsh"
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
+
+; Phase 11.1 D-07: parsed in .onInit, propagated through the AutoUpdate page,
+; consumed by RegisterScheduledTask. Strict bool — only the literal "1" enables.
+Var AutoUpdateFlag
+Var AutoUpdateCheckboxState   ; nsDialogs handle for the FinishPage-adjacent checkbox.
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${__FILEDIR__}\..\..\LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
+; Phase 11.1 D-07: AutoUpdate opt-in checkbox page. Default OFF. /AUTOUPDATE=1
+; on the command line forces enable for silent installs (the page is skipped
+; in /S mode and when the flag is already set).
+Page custom AutoUpdatePage AutoUpdatePageLeave
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "English"
+
+;------------------------------------------------------------------------------
+; .onInit — parse /AUTOUPDATE=N (Phase 11.1 D-07).
+;
+; Default OFF: empty string after GetOptions = parameter not specified.
+; Strict bool comparison downstream (StrCmp $AutoUpdateFlag "1") so any value
+; other than the literal "1" — including "0", "true", "yes", or anything else —
+; resolves to OFF. RESEARCH §T-11.1.05-03: the parsed value never flows into
+; ExecWait argument construction; only the fixed schtasks command line uses it.
+;------------------------------------------------------------------------------
+Function .onInit
+  ${GetParameters} $R0
+  ${GetOptions} $R0 "/AUTOUPDATE=" $AutoUpdateFlag
+FunctionEnd
+
+;------------------------------------------------------------------------------
+; AutoUpdatePage — interactive UI checkbox (Phase 11.1 D-07).
+;
+; Skipped if /S (silent install) — silent installs use /AUTOUPDATE=N only.
+; Skipped if /AUTOUPDATE=1 was already set on the command line — no need to
+; ask again. Default state is UNCHECKED per D-07.
+;------------------------------------------------------------------------------
+Function AutoUpdatePage
+  ; Skip if /S (silent install) — silent installs use /AUTOUPDATE only.
+  IfSilent 0 +2
+    Abort
+  ; Skip if /AUTOUPDATE=1 was already set on the command line.
+  StrCmp $AutoUpdateFlag "1" 0 +3
+    DetailPrint "Auto-update pre-set via /AUTOUPDATE=1 — skipping checkbox page"
+    Abort
+
+  !insertmacro MUI_HEADER_TEXT "Automatic updates" "Enable unattended updates for this machine"
+  nsDialogs::Create 1018
+  Pop $0
+
+  ${NSD_CreateLabel} 0 0 100% 40u "go-mapi can keep itself up-to-date automatically using a Windows Scheduled Task that runs as SYSTEM. The task downloads, verifies SHA-256 integrity, and applies updates without prompting users. Recommended for managed/RDS environments."
+  Pop $0
+
+  ${NSD_CreateCheckbox} 0 50u 100% 12u "Enable automatic updates (creates a Scheduled Task)"
+  Pop $1
+  ${NSD_SetState} $1 ${BST_UNCHECKED}    ; D-07 default OFF
+  StrCpy $AutoUpdateCheckboxState $1
+
+  nsDialogs::Show
+FunctionEnd
+
+Function AutoUpdatePageLeave
+  ${NSD_GetState} $AutoUpdateCheckboxState $0
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $AutoUpdateFlag "1"
+  ${Else}
+    StrCpy $AutoUpdateFlag "0"
+  ${EndIf}
+  DetailPrint "AutoUpdateFlag chosen: $AutoUpdateFlag"
+FunctionEnd
 
 ;------------------------------------------------------------------------------
 ; Install section
@@ -92,13 +164,27 @@ Section "Install" SecInstall
   ; (= $PROGRAMFILES64\go-mapi) for native MAPI callers; x86 DLL lands in
   ; $PROGRAMFILES32\go-mapi for legacy 32-bit MAPI callers. Registry
   ; DLLPath writes below route each view to the matching-bitness DLL.
+  ; PHASE 11.1 T4 (D-04): explicit Delete + SetOverwrite try collapses transient
+  ; AV/filter holds into a no-op rather than aborting the installer. RESEARCH
+  ; §Pattern 1 + §Pitfall 1. NSIS default SetOverwrite is `on`, which makes
+  ; reinstall fail hard on any transient lock; `try` skips silently if write
+  ; fails (the explicit Delete clears the prior version first so it does not).
+  ClearErrors
+  Delete "$INSTDIR\go-mapi.exe"
+  Delete "$INSTDIR\go-mapi.dll"
+  SetOverwrite try
   File "${__FILEDIR__}\..\app\build\bin\go-mapi.exe"
   File "${__FILEDIR__}\..\interceptor\build-x64\bin\go-mapi.dll"
+  SetOverwrite on
 
-  ; x86 DLL goes into $PROGRAMFILES32\go-mapi (auto-resolved by NSIS on 64-bit Windows)
+  ; x86 DLL — same T4 treatment in $PROGRAMFILES32 view.
   CreateDirectory "$PROGRAMFILES32\go-mapi"
   SetOutPath "$PROGRAMFILES32\go-mapi"
+  ClearErrors
+  Delete "$PROGRAMFILES32\go-mapi\go-mapi.dll"
+  SetOverwrite try
   File "${__FILEDIR__}\..\interceptor\build-x86\bin\go-mapi.dll"
+  SetOverwrite on
 
   ; Reset $OUTDIR for the rest of the install section
   SetOutPath "$INSTDIR"
@@ -145,11 +231,17 @@ Section "Install" SecInstall
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "NoModify"        1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "NoRepair"        1
 
+  ; D-03: best-effort cleanup of stale per-user shortcut from pre-11.1 builds.
+  SetShellVarContext current
+  Delete "$SMPROGRAMS\go-mapi.lnk"
+  ; (next call to CreateShortcutAndAUMID below already wrapped to all-users)
+
   ; Stub calls — bodies are filled in by later plans. Each stub emits a
   ; DetailPrint so the installer log documents which milestone owns the work.
   Call InstallWebView2           ; plan 10-02
-  Call CreateShortcutAndAUMID    ; plan 10-03
+  Call CreateShortcutAndAUMID    ; plan 10-03 (D-03)
   Call AddFirewallRule           ; plan 10-03
+  Call RegisterScheduledTask     ; Phase 11.1 D-08 (gated on $AutoUpdateFlag)
 SectionEnd
 
 ;------------------------------------------------------------------------------
@@ -570,9 +662,11 @@ FunctionEnd
 ;------------------------------------------------------------------------------
 
 Function CreateShortcutAndAUMID
-  ; D-13: Start Menu shortcut — all-users (admin install → $SMPROGRAMS resolves
-  ; to %ProgramData%\Microsoft\Windows\Start Menu\Programs\).
-  ; Signature: CreateShortcut link target parameters iconfile iconindex startoptions keyboardshortcut description
+  ; D-03 (Phase 11.1): tight SetShellVarContext all wrap around the All Users
+  ; shortcut create. Pitfall 2: this also redirects $APPDATA, $LOCALAPPDATA,
+  ; $DESKTOP — keep the wrap tight so the existing %ProgramData% walk at
+  ; lines 666-676 stays in default `current` context.
+  SetShellVarContext all
   CreateShortcut "$SMPROGRAMS\go-mapi.lnk" \
       "$INSTDIR\go-mapi.exe" \
       "" \
@@ -586,6 +680,7 @@ Function CreateShortcutAndAUMID
   ; D-15: production AUMID is com.marcfargas.gomapi (matches the ${AUMID} define).
   ApplicationID::Set "$SMPROGRAMS\go-mapi.lnk" "${AUMID}"
   Pop $0
+  SetShellVarContext current
   StrCmp $0 "0" AumidOk
   DetailPrint "WARNING: AUMID stamp rc=$0 — Action Center persistence may break"
   ; Do NOT halt the installer — continue install; Pester test (plan 10-05) will surface this in CI.
@@ -627,6 +722,111 @@ Function AddFirewallRule
 FunctionEnd
 
 ;------------------------------------------------------------------------------
+; RegisterScheduledTask — Phase 11.1 D-08 / D-09 / D-14
+;
+; Gated on $AutoUpdateFlag == "1" (D-07: default OFF, only the literal "1"
+; enables — the .onInit GetOptions parser keeps strict-bool semantics).
+;
+; Steps:
+;   1. Stage tasks/go-mapi-auto-update.xml into $INSTDIR.
+;   2. Substitute INSTDIR_PLACEHOLDER -> $INSTDIR via PowerShell 5.1.
+;      [regex]::Escape on the replacement value protects against any
+;      regex meta in $INSTDIR (RESEARCH §T-11.1.05-04). -Encoding Unicode
+;      preserves the UTF-16 LE BOM that schtasks /XML requires.
+;   3. schtasks /create /XML <path> /TN "go-mapi Auto Update" /F /RU SYSTEM
+;      /RL HIGHEST. /F suppresses "task already exists" → idempotent
+;      re-install (RESEARCH §Pitfall 3). /RU + /RL are defensive overrides
+;      of the XML <Principals> block (typo guard).
+;   4. Delete the staged XML — the definition lives in Task Scheduler now.
+;------------------------------------------------------------------------------
+
+Function RegisterScheduledTask
+  StrCmp $AutoUpdateFlag "1" 0 SkipTask
+  DetailPrint "Auto-update opt-in: registering Scheduled Task 'go-mapi Auto Update'"
+
+  ; Generate the Task Scheduler XML programmatically with $INSTDIR baked in.
+  ; The earlier "stage tasks/go-mapi-auto-update.xml + nsExec PowerShell
+  ; substitution" pattern shipped in Plan 11.1-05 e9b2693 proved unreliable —
+  ; the XML retained INSTDIR_PLACEHOLDER literal because the nested-quote
+  ; escaping in the nsExec command line prevented PowerShell from running the
+  ; substitution at all. Programmatic generation eliminates the entire
+  ; substitution step.
+  ;
+  ; FileWriteUTF16LE (with /BOM on the first call) writes proper UTF-16 LE
+  ; bytes preceded by the 0xFF 0xFE BOM — the encoding schtasks /XML requires
+  ; on Win 10/11. NOTE: NSIS Unicode-build's plain `FileWrite` writes ANSI/
+  ; UTF-8 bytes (single-byte per char), NOT UTF-16 LE, despite what some
+  ; older NSIS docs imply — verified empirically in Plan 11.1-05 sandbox UAT
+  ; (the staged file had a 0xFF 0xFE BOM followed by single-byte ASCII for
+  ; "<?xml...", which schtasks decoded as garbage Chinese characters and
+  ; rejected as malformed XML). FileWriteUTF16LE is the correct primitive.
+  ;
+  ; The committed src/installer/tasks/go-mapi-auto-update.xml file remains as
+  ; the canonical reference for the task shape — it is no longer staged at
+  ; install time, but downstream docs and future maintainers can read it.
+  FileOpen $0 "$INSTDIR\go-mapi-auto-update.xml" w
+  FileWriteUTF16LE /BOM $0 '<?xml version="1.0" encoding="UTF-16"?>$\r$\n'
+  FileWriteUTF16LE $0 '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">$\r$\n'
+  FileWriteUTF16LE $0 '  <RegistrationInfo>$\r$\n'
+  FileWriteUTF16LE $0 '    <Description>go-mapi silent auto-update — fetches and applies updates without elevating the interactive user.</Description>$\r$\n'
+  FileWriteUTF16LE $0 '    <URI>\go-mapi Auto Update</URI>$\r$\n'
+  FileWriteUTF16LE $0 '  </RegistrationInfo>$\r$\n'
+  FileWriteUTF16LE $0 '  <Triggers>$\r$\n'
+  FileWriteUTF16LE $0 '    <CalendarTrigger>$\r$\n'
+  FileWriteUTF16LE $0 '      <StartBoundary>2026-01-01T03:00:00</StartBoundary>$\r$\n'
+  FileWriteUTF16LE $0 '      <Enabled>true</Enabled>$\r$\n'
+  FileWriteUTF16LE $0 '      <RandomDelay>PT30M</RandomDelay>$\r$\n'
+  FileWriteUTF16LE $0 '      <ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>$\r$\n'
+  FileWriteUTF16LE $0 '    </CalendarTrigger>$\r$\n'
+  FileWriteUTF16LE $0 '    <BootTrigger>$\r$\n'
+  FileWriteUTF16LE $0 '      <Enabled>true</Enabled>$\r$\n'
+  FileWriteUTF16LE $0 '      <Delay>PT5M</Delay>$\r$\n'
+  FileWriteUTF16LE $0 '    </BootTrigger>$\r$\n'
+  FileWriteUTF16LE $0 '  </Triggers>$\r$\n'
+  FileWriteUTF16LE $0 '  <Principals>$\r$\n'
+  FileWriteUTF16LE $0 '    <Principal id="Author">$\r$\n'
+  FileWriteUTF16LE $0 '      <UserId>S-1-5-18</UserId>$\r$\n'
+  FileWriteUTF16LE $0 '      <RunLevel>HighestAvailable</RunLevel>$\r$\n'
+  FileWriteUTF16LE $0 '    </Principal>$\r$\n'
+  FileWriteUTF16LE $0 '  </Principals>$\r$\n'
+  FileWriteUTF16LE $0 '  <Settings>$\r$\n'
+  FileWriteUTF16LE $0 '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>$\r$\n'
+  FileWriteUTF16LE $0 '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>$\r$\n'
+  FileWriteUTF16LE $0 '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>$\r$\n'
+  FileWriteUTF16LE $0 '    <AllowHardTerminate>true</AllowHardTerminate>$\r$\n'
+  FileWriteUTF16LE $0 '    <StartWhenAvailable>true</StartWhenAvailable>$\r$\n'
+  FileWriteUTF16LE $0 '    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>$\r$\n'
+  FileWriteUTF16LE $0 '    <Enabled>true</Enabled>$\r$\n'
+  FileWriteUTF16LE $0 '    <ExecutionTimeLimit>PT12H</ExecutionTimeLimit>$\r$\n'
+  FileWriteUTF16LE $0 '  </Settings>$\r$\n'
+  FileWriteUTF16LE $0 '  <Actions Context="Author">$\r$\n'
+  FileWriteUTF16LE $0 '    <Exec>$\r$\n'
+  FileWriteUTF16LE $0 '      <Command>"$INSTDIR\go-mapi.exe"</Command>$\r$\n'
+  FileWriteUTF16LE $0 '      <Arguments>--update-check-silent</Arguments>$\r$\n'
+  FileWriteUTF16LE $0 '    </Exec>$\r$\n'
+  FileWriteUTF16LE $0 '  </Actions>$\r$\n'
+  FileWriteUTF16LE $0 '</Task>$\r$\n'
+  FileClose $0
+
+  ; /F idempotent re-install. /RU SYSTEM is defensive (XML already pins
+  ; <UserId>S-1-5-18</UserId>). NOTE: /RL is INCOMPATIBLE with /XML — schtasks
+  ; rejects with "la opción /XML solo puede usarse con /S /U /P /RU /RP /F /IT
+  ; /TN" if both are passed. RunLevel comes from <RunLevel>HighestAvailable</RunLevel>
+  ; in the XML instead.
+  ExecWait 'schtasks /create /XML "$INSTDIR\go-mapi-auto-update.xml" /TN "go-mapi Auto Update" /F /RU SYSTEM' $0
+  DetailPrint "schtasks /create rc=$0"
+
+  ; One-shot stage file — definition now lives in Task Scheduler database.
+  Delete "$INSTDIR\go-mapi-auto-update.xml"
+  Goto Done
+
+SkipTask:
+  DetailPrint "Auto-update opt-in not set (/AUTOUPDATE=0 or absent) — skipping Scheduled Task"
+
+Done:
+FunctionEnd
+
+;------------------------------------------------------------------------------
 ; Uninstall section
 ;
 ; Full 10-step scrub (D-18) lives in plan 10-04. This stub keeps the
@@ -634,7 +834,14 @@ FunctionEnd
 ;------------------------------------------------------------------------------
 
 Section "Uninstall"
-  ; QUICK-260423-ntu T2 — MUST be the first statement: if go-mapi.exe is
+  ; Phase 11.1 D-16: remove the Scheduled Task FIRST so it cannot fire
+  ; mid-uninstall (the task launches go-mapi.exe --update-check-silent which
+  ; would write to $INSTDIR while we are scrubbing it). schtasks /delete /f
+  ; is idempotent — rc=0 (removed) and rc=1 (not found) are both swallowed
+  ; by un.RemoveScheduledTask, so /AUTOUPDATE=0 installs uninstall cleanly too.
+  Call un.RemoveScheduledTask
+
+  ; QUICK-260423-ntu T2 — runs SECOND now (was first): if go-mapi.exe is
   ; still running when the uninstaller starts, WM_CLOSE it and wait up to
   ; 10s for the intentionalQuit path to fire before any Delete runs.
   Call un.EnsureAppNotRunning
@@ -648,7 +855,9 @@ Section "Uninstall"
   DetailPrint "firewall delete rule rc=$0"
 
   ; 2. Start Menu shortcut (plan 10-03 stamped the AUMID on this .lnk)
+  SetShellVarContext all
   Delete "$SMPROGRAMS\go-mapi.lnk"
+  SetShellVarContext current
 
   ; 3. MAPI handler key (native view)
   DeleteRegKey HKLM "SOFTWARE\Clients\Mail\go-mapi"
@@ -660,6 +869,27 @@ Section "Uninstall"
 
   ; 4. Restore (Default) Mail client from backup (D-11)
   Call un.RestorePreviousMailClient
+
+  ; Phase 11.1 D-18 case 6: scrub silent-update staging dir (Plan 11.1-04 writes
+  ; here under SYSTEM context; Plan 11.1-05 owns the cleanup).
+  ; Use ReadEnvStr to read %PROGRAMDATA% directly. The `$APPDATA\..\..\ProgramData`
+  ; pattern used elsewhere in this file (BackupPreviousMailClient, RestorePreviousMailClient)
+  ; resolves to `<userprofile>\ProgramData` under default `current` context — a
+  ; non-existent path. Verified by Plan 11.1-05 sandbox UAT (Test B updates_dir_after=true
+  ; while planted file remained at C:\ProgramData\go-mapi\updates). ReadEnvStr is
+  ; reliable across user/SYSTEM contexts.
+  ReadEnvStr $0 PROGRAMDATA
+  RMDir /r "$0\go-mapi\updates"
+
+  ; Phase 11.1 W7: belt-and-braces cleanup of *.old.<pid> orphans left by
+  ; silent-updater swaps (Plan 11.1-04 swapInPlace renames the old binary
+  ; aside via MoveFileEx before placing the new one). Plan 11.1-04 also
+  ; cleans these proactively at silent-update start; this catches any orphans
+  ; that survive past the last cycle. Runs before the binary scrub at step 9.
+  Push "$INSTDIR"
+  Call un.ScrubOldOrphans
+  Push "$PROGRAMFILES32\go-mapi"
+  Call un.ScrubOldOrphans
 
   ; 5. %ProgramData%\go-mapi\uninst\ — remove AFTER the restore (step 4) since
   ; the restore reads from this directory
@@ -985,4 +1215,54 @@ unEANR_Exited:
 unEANR_NotFound:
   Pop $1
   Pop $0
+FunctionEnd
+
+;------------------------------------------------------------------------------
+; un.RemoveScheduledTask — Phase 11.1 D-16
+;
+; Idempotent removal of the silent-update Scheduled Task. Runs unconditionally
+; — installs that did NOT register the task (e.g. /AUTOUPDATE=0) still call
+; this; rc=1 ("task not found") is swallowed. /F suppresses the confirmation
+; prompt. Logged via DetailPrint for installer-log forensic trail.
+;------------------------------------------------------------------------------
+
+Function un.RemoveScheduledTask
+  ExecWait 'schtasks /delete /tn "go-mapi Auto Update" /f' $0
+  DetailPrint "schtasks /delete rc=$0 (0=removed, 1=not found — both ok)"
+FunctionEnd
+
+;------------------------------------------------------------------------------
+; un.ScrubOldOrphans — Phase 11.1 W7
+;
+; Belt-and-braces cleanup of *.old.<pid> orphan files left behind by the
+; silent updater's MoveFileEx rename-while-running pattern (Plan 11.1-04
+; swapInPlace). Plan 11.1-04 cleans these proactively at silent-update start;
+; this uninstaller helper catches any orphans that survive past the last
+; update cycle. Pattern matches both go-mapi.exe.old.<pid> and
+; go-mapi.dll.old.<pid> via NSIS FindFirst/FindNext.
+;
+; Stack contract: caller pushes the directory path (e.g. "$INSTDIR"), function
+; pops it, scrubs all "*.old.*" matches in that directory, returns nothing.
+;------------------------------------------------------------------------------
+
+Function un.ScrubOldOrphans
+  Pop $R0   ; directory path (e.g. "$INSTDIR")
+  Push $R1
+  Push $R2
+
+  ClearErrors
+  FindFirst $R1 $R2 "$R0\*.old.*"
+  IfErrors un.SOO_Done
+un.SOO_Loop:
+  StrCmp $R2 "" un.SOO_Done
+  Delete "$R0\$R2"
+  DetailPrint "scrubbed orphan: $R0\$R2"
+  ClearErrors
+  FindNext $R1 $R2
+  IfErrors un.SOO_Done
+  Goto un.SOO_Loop
+un.SOO_Done:
+  FindClose $R1
+  Pop $R2
+  Pop $R1
 FunctionEnd

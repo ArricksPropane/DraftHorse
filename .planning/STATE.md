@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Wails Pivot
 status: executing
-stopped_at: Phase 11 context gathered
-last_updated: "2026-04-21T17:34:15.297Z"
-last_activity: 2026-04-21 -- Phase 11 execution started
+stopped_at: Phase 11.1 COMPLETE — all 6 plans shipped (11.1-01..11.1-06). Plan 11.1-06 landed README enterprise-install section, ROADMAP D-20 rewrite, REQUIREMENTS REL-08 traceability backfill + REL-09 add. Next move is Phase 11 close-out (11-04 Task 2+3 — Chrome/Edge delisting + GA tag), still paused on c:/dev/go-mapi-www.
+last_updated: "2026-04-27T22:30:00.000Z"
+last_activity: 2026-04-27
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 38
-  completed_plans: 33
-  percent: 87
+  total_phases: 7
+  completed_phases: 6
+  total_plans: 45
+  completed_plans: 44
+  percent: 98
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** A non-technical Windows user can install go-mapi once and have every "Send to Mail recipient" action appear as a Gmail draft — without touching a terminal, a toolchain, or a registry editor.
-**Current focus:** Phase 11 — Auto-Update + v3.0 Release
+**Current focus:** Phase 11 close-out (11-04 Task 2+3 — Chrome/Edge store delisting + GA tag push), paused on c:/dev/go-mapi-www. Phase 11.1 (installer hardening + silent auto-update) is COMPLETE.
 
 ## Current Position
 
 Milestone: v3.0 Wails Pivot
-Phase: 11 (Auto-Update + v3.0 Release) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 11
-Last activity: 2026-04-23 - Completed quick task 260423-tk6: DLL copies attachments to queue + surface draft-failure reason in UI
+Phase: 11.1 COMPLETE (6/6 plans) — Phase 11 close-out remains queued (paused on go-mapi-www)
+Plan: 6 of 6 — Phase 11.1 complete (next: Phase 11 close-out / 11-04 Task 2+3 once www lands)
+Status: Phase 11.1 ready for verification / close-out
+Last activity: 2026-04-27 — Plan 11.1-06 landed (README ## Enterprise installation section + ROADMAP D-20 rewrite + REQUIREMENTS REL-08 traceability backfill + REL-09 add); Phase 11.1 closes here (3 commits: 0d7ab4b, 3b81abd, 6729004)
 
-Progress: [████████████████████] 100% planned work complete through Phase 10; Phase 11 is planned and ready for execution
+Progress: [█████████▊] 98%
 
 ## Performance Metrics
 
@@ -75,6 +75,16 @@ Recent decisions carried into v3.0:
 - [Phase 9]: Toast shim uses `QueryInterface` (returns `(*IUnknown, error)`), NOT `MustQueryInterface` (panics on failure). In Go test runners outside a real WinRT host, `MustQueryInterface` panics cascade through the test runner even with recover. Propagate errors via Go's normal error path.
 - [Phase 9]: Manual QA gate pattern for Windows shell features (tray, toast, live UI): DEFERRED in favor of Windows Sandbox + FlaUI automation todo (`.planning/todos/pending/2026-04-19-automate-tray-visual-qa-windows-sandbox.md`). Surfaces in `09-HUMAN-UAT.md`. All 3 deferred checks are tracked for closure by either a manual pass or the automation harness.
 - [Phase 10]: All six Phase 10 plans have completion summaries on 2026-04-20. Remaining work is human/CI verification debt recorded in `10-VERIFICATION.md` and `10-HUMAN-UAT.md`; per user direction, that debt is accepted for progression and does not block Phase 11.
+- Phase 11.1-04: errChecksumFailed sentinel + filename-only abort log keeps go-selfupdate's hex-digest validator errors out of update.log (Pitfall 6 / T-11.1.04-06)
+- Phase 11.1-04: Verify-BEFORE-write (not just verify-BEFORE-swap) — downloadAndVerify runs ChecksumValidator on in-memory bytes BEFORE os.WriteFile so an unverified asset never hits disk; strengthens T-11.1.04-02 mitigation
+- Phase 11.1-05: Programmatic XML emission via FileWriteUTF16LE (with /BOM on first call) replaces the original "stage tasks/*.xml + nsExec PowerShell INSTDIR_PLACEHOLDER substitute" pattern — sandbox UAT proved nested-quote escaping prevented the PS substitution from running at all; programmatic generation eliminates the entire substitution step
+- Phase 11.1-05: NSIS Unicode-build's plain FileWrite writes ANSI/UTF-8 single-byte chars (NOT UTF-16 LE) despite older docs implying otherwise — schtasks /XML rejects the corrupt output. FileWriteUTF16LE is the correct primitive for UTF-16 LE emission
+- Phase 11.1-05: schtasks /create /XML rejects /RL HIGHEST as incompatible (rc=-2147467259, locale-dependent error message) — RunLevel must be pinned via <RunLevel> inside the XML body, not on the command line
+- Phase 11.1-05: $APPDATA\..\..\ProgramData NSIS path math resolves to <userprofile>\ProgramData (non-existent) under default `current` shell-var context — not %ProgramData% as legacy comments claimed; ReadEnvStr PROGRAMDATA is the reliable replacement. Other call sites in go-mapi.nsi (Backup/RestorePreviousMailClient, existing uninst\ removal) still use the broken pattern; deferred follow-up
+- Phase 11.1-05: Sandbox-UAT (`tests/sandbox` Windows Sandbox harness) is the proven Wave-2 verification gate for installer-touching plans — caught four NSIS defects that neither makensis compile nor Pester discovery surfaced; pattern for all future installer plans
+- Phase 11.1-06: REL-08 was defined in REQUIREMENTS.md §Release & Autoupdate but missing from the Traceability table (silent gap from the 2026-04-22 insert); Plan 11.1-06 backfilled the row to Phase 11 alongside the new REL-09 row to Phase 11.1, bringing Coverage to 45/45
+- Phase 11.1-06: Doc plans should also refresh the v3.0 milestone-summary bullet at the top of ROADMAP.md, not just the §Phase Details entry — leaving the summary stale leaves the document self-contradictory after a D-20-class scope retraction
+- Phase 11.1: Phase complete (6/6 plans, 2026-04-27). Delivered scope: All Users only install, T2 + T4 NSIS fixes, /AUTOUPDATE=1 binary opt-in checkbox, SYSTEM Scheduled Task `go-mapi Auto Update`, SHA-256 verification via go-selfupdate ChecksumValidator + SHA256SUMS.txt CI publish, MoveFileEx atomic swap, Pester items 21-25, README enterprise-install section, REL-09 added to REQUIREMENTS
 
 ### Roadmap Evolution
 
@@ -83,20 +93,22 @@ Recent decisions carried into v3.0:
 - Phase 9 planned 2026-04-19 (9 plans / 6 waves; plan-checker PASSED zero blockers). 09-01 closes WR-01/02/03 to green-up develop CI BEFORE 09-03 watcher_bridge fan-out lands. Toast plan 09-06 carries the NOTIF-05 wintoast shim (~150 LOC, go-ole + x/sys/windows) as the highest-risk item; flagged `autonomous: false` with manual-QA checkpoint.
 - Phase 9 completed 2026-04-19 (5/5 must-haves; 9 plans / 6 waves). Code-review found 1 critical + 5 warnings — all closed in the REVIEW-FIX pass. Verification status `human_needed` — 3 UAT items (tray visual, toast E2E, full user-flow) deferred to the Windows Sandbox + FlaUI automation todo. Develop CI green again after 09-01 landed WR-01/02/03 fixes.
 - Phase 10 completed 2026-04-20 from an implementation standpoint (10-01 through 10-06 all landed). Verification status remains `human_needed`, but the remaining manual/CI checks are accepted as non-blocking for progression into Phase 11.
+- Phase 11.1 inserted after Phase 11 (2026-04-24): Installer hardening + enterprise deploy + silent auto-update (URGENT — in-flight). Scope: All Users install made mandatory (single-user dropped — MAPI is inherently machine-wide); T2 NSIS `SetShellVarContext all` fix; T4 32-bit DLL reinstall-overwrite fix; T7 machine-wide `%PROGRAMDATA%\go-mapi\go-mapi.machine.yaml` config surface; T8 ship `*.yaml.example` files; T6 silent auto-selfupdate via Scheduled Task with tri-state install option (None / Notify / Silent, Notify default); CI + README refresh for enterprise story. Phase 11's remaining 11-04 Task 2+3 (Chrome/Edge delisting + GA tag push) explicitly moved to AFTER v3.0 ships and `go-mapi-www` is live — non-blocking post-GA housekeeping.
 
 ### Pending Todos
 
-- AUTH-06: Google OAuth verification submitted 2026-04-17 (GCP client, consent screen, scope justifications done; 4-8 week review window running)
-- AUTH-06b: Record and upload YouTube demo video for OAuth verification — blocked until Plan 08-05 ships end-to-end sign-in + draft flow. See `.planning/todos/pending/2026-04-17-oauth-verification-youtube-demo-video.md`
+- (none open — AUTH-06 + AUTH-06b closed 2026-04-28; remaining items are deferred-on-purpose, see Blockers/Concerns)
 
 ### Blockers/Concerns
 
-- Google OAuth verification (AUTH-06) is a 4-8 week external dependency — late submission blocks launch
+- v3.0 GA tag push + Chrome/Edge store delisting (Phase 11 Plan 11-04 Tasks 2+3) remain ON HOLD pending `c:/dev/go-mapi-www` ship. Non-blocking for engineering; blocks public release announcement.
 - Phase 7 measurement-methodology follow-up: iter 2/3 single-instance mutex race in `measure-ram.ps1` (see 07-VERIFICATION.md §Methodology Caveats). Not a blocker; only matters if RAM gate needs re-running.
 
 ### Resolved
 
 - ~~RAM profile under RDS conditions is unvalidated~~ — RESOLVED 2026-04-14: Phase 7 Plan 04 measured 43.24 MB mean per session on 5 concurrent sessions (n=4 clean), well under 80 MB gate; verdict PASS. Full report: 07-VERIFICATION.md.
+- ~~AUTH-06: Google OAuth verification (4-8 week review window)~~ — RESOLVED 2026-04-28: verification approved.
+- ~~AUTH-06b: YouTube demo video for OAuth verification~~ — RESOLVED 2026-04-28: recorded, uploaded, accepted. Todo file already moved to `.planning/todos/completed/2026-04-17-oauth-verification-youtube-demo-video.md`.
 
 ### Quick Tasks Completed
 
@@ -107,9 +119,12 @@ Recent decisions carried into v3.0:
 | 260423-olq | Wails build wrapper reads .env.local and injects OAuth via ldflags | 2026-04-23 | adc8c16 | [260423-olq-wails-build-wrapper-reads-env-local-and-](./quick/260423-olq-wails-build-wrapper-reads-env-local-and-/) |
 | 260423-qpx | Address fallback for legacy Simple MAPI apps + fix dev-build update compare | 2026-04-23 | 5876088 | [260423-qpx-address-fallback-for-legacy-mapi-apps-fi](./quick/260423-qpx-address-fallback-for-legacy-mapi-apps-fi/) |
 | 260423-tk6 | DLL copies attachments into queue-owned dir + surface draft-failure reason in UI | 2026-04-23 | 30b35c6 | [260423-tk6-dll-copies-attachments-to-queue-surface-](./quick/260423-tk6-dll-copies-attachments-to-queue-surface-/) |
+| Phase 11.1 P11.1-04 | 905s | 2 tasks | 2 files |
+| Phase 11.1 P11.1-05 | ~50min impl + sandbox UAT round-trip | 3 tasks (+1 UAT-fix) | 3 files (1 new, 2 modified) |
+| Phase 11.1 P11.1-06 | 282s | 3 tasks | 3 modified (README, ROADMAP, REQUIREMENTS) + 1 SUMMARY |
 
 ## Session Continuity
 
-Last session: 2026-04-21T15:21:34.465Z
-Stopped at: Phase 11 context gathered
-Resume: run `/gsd-execute-phase 11`
+Last session: 2026-04-27T22:30:00.000Z
+Stopped at: Phase 11.1 COMPLETE — Plan 11.1-06 landed README enterprise-install section + ROADMAP D-20 rewrite + REQUIREMENTS REL-08 traceability backfill + REL-09 add (commits 0d7ab4b, 3b81abd, 6729004). All 6 plans of Phase 11.1 shipped.
+Resume: Phase 11 close-out is the next move — specifically 11-04 Task 2+3 (Chrome/Edge store delisting + GA tag push + v3.0 release). Still paused on c:/dev/go-mapi-www landing per project_phase11_release_gated_on_www memory. Once www ships, run `/gsd-execute-phase 11` to resume 11-04.
