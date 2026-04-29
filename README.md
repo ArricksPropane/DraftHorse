@@ -1,10 +1,5 @@
 # go-mapi
 
-[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/ndhoimoncoekjmldllpbjdanamdhemcl?label=Chrome%20Web%20Store)](https://chromewebstore.google.com/detail/go-mapi/ndhoimoncoekjmldllpbjdanamdhemcl)
-[![Edge Add-ons](https://img.shields.io/badge/Edge%20Add--ons-go--mapi-blue)](https://microsoftedge.microsoft.com/addons/detail/gomapi/jfpjjkihpciojgaohonjooengomfbpom)
-[![GitHub Release](https://img.shields.io/github/v/release/marcfargas/go-mapi)](https://github.com/marcfargas/go-mapi/releases/latest)
-[![License: LGPL-3.0](https://img.shields.io/badge/License-LGPL--3.0-blue.svg)](LICENSE)
-
 **The MAPI-to-Gmail bridge you always wanted.**
 
 ## Overview
