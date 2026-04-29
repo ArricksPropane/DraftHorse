@@ -627,14 +627,23 @@ func (am *AuthManager) revokeRefreshToken(parent context.Context) {
 }
 
 // GmailCall is the signature Phase 9's draft-creation code will satisfy.
-// Returning a 401 signals to the wrapper "refresh and retry once".
-// Any other non-nil error is bubbled up verbatim.
+// The statusCode return is ONLY inspected for 401 — it is the caller's signal
+// that the access token was rejected and a refresh + retry should be attempted.
+// Any other status with a non-nil err is bubbled up verbatim (no retry).
+// Callers that return (non-401, nil) are treated as success regardless of the
+// numeric status; callers must therefore always pair a failed HTTP response with
+// a non-nil err. The (0, someErr) case (transport failure before any HTTP status
+// is known) is safely handled: status 0 != 401, so the error is returned directly.
 type GmailCall func(accessToken string) (statusCode int, err error)
 
 // MakeAuthenticatedGmailCall is the public helper Phase 9 uses. It ensures
 // a fresh access token (proactive D-13), invokes fn, and on a single 401
 // forces a refresh and retries once. A second 401 — or any refresh error
 // classifying as invalid_grant — triggers sign-out and emits auth-changed.
+//
+// Contract: fn must return (401, non-nil-err) to trigger the retry path.
+// Any other (status, err) combination where err != nil is returned as-is.
+// Any (status, nil) combination where status != 401 is treated as success.
 func (a *App) MakeAuthenticatedGmailCall(ctx context.Context, fn GmailCall) error {
 	if a.auth == nil {
 		return ErrNotAuthenticated
@@ -737,21 +746,35 @@ func (a *App) SignOut() error {
 // needed, and emits the initial auth-changed event. Runs under App.startup.
 // On invalid_grant or any keyring error, proceeds as signed-out.
 // Safe to call once per startup.
-func (a *App) bootstrapAuth() {
+//
+// Returns a channel that is closed when the async userinfo fetch goroutine
+// completes so callers (tests) can wait deterministically. Production callers
+// MAY discard the channel; discarding a receive-only channel is valid Go.
+//
+// WR-02 (2026-04-19): prior to this change, bootstrapAuth spawned a
+// fire-and-forget goroutine that leaked under -race in TestBootstrapAuth*
+// tests because tests exited before the goroutine contacted the real Google
+// userinfo endpoint. The returned channel lets tests stub userinfoEndpointOverride
+// and wait with a timeout select instead of relying on process-exit timing.
+func (a *App) bootstrapAuth() <-chan struct{} {
+	done := make(chan struct{})
 	if a.auth == nil {
-		return
+		close(done)
+		return done
 	}
 	if err := a.auth.LoadFromKeyring(); err != nil {
 		logError("oauth bootstrap: keyring load: %v", err)
 		a.SetTrayError("credential store unavailable")
 		a.emitAuthChanged()
-		return
+		close(done)
+		return done
 	}
 	if a.auth.tokens == nil {
 		logInfo("oauth bootstrap: no tokens, signed-out state")
 		a.SetTrayError("sign in required")
 		a.emitAuthChanged()
-		return
+		close(done)
+		return done
 	}
 	// Proactive refresh if within 5 minutes of expiry.
 	a.auth.refresh.Lock()
@@ -761,7 +784,8 @@ func (a *App) bootstrapAuth() {
 		logInfo("oauth bootstrap: invalid_grant — prompting re-sign-in")
 		a.SetTrayError("sign-in expired")
 		a.emitAuthChanged()
-		return
+		close(done)
+		return done
 	}
 	if err != nil {
 		// Transient: keep tokens (refreshIfNeededLocked did not clear them),
@@ -777,10 +801,14 @@ func (a *App) bootstrapAuth() {
 	// would flash an authenticated header with empty email/name. The Svelte
 	// frontend renders the queue view from the initial GetAuthStatus() pull
 	// on mount, and updates email/name via this single async emit.
+	// The returned done channel is closed when the goroutine completes (WR-02).
 	go func() {
+		defer close(done)
 		a.auth.refresh.Lock()
 		a.auth.fetchUserInfoLocked(a.ctx)
 		a.auth.refresh.Unlock()
-		a.emitAuthChanged() // single emission, email/name populated
+		a.emitAuthChanged()    // single emission, email/name populated
+		a.signalTrayRefresh() // tray reads SignedIn from auth.Status() — refresh after auth settles
 	}()
+	return done
 }
