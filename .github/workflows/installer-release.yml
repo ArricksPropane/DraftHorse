@@ -5,6 +5,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Version string for dry-run (e.g. 3.0.0-rc.1). Ignored on tag-push runs.'
+        required: false
+        default: '0.0.0-dev'
       dry_run:
         description: 'Dry run — build + sign but do not publish GitHub release'
         required: false
@@ -32,6 +36,7 @@ jobs:
     env:
       GOMAPI_OAUTH_CLIENT_ID:     ${{ secrets.GOMAPI_OAUTH_CLIENT_ID }}
       GOMAPI_OAUTH_CLIENT_SECRET: ${{ secrets.GOMAPI_OAUTH_CLIENT_SECRET }}
+      HAS_SIGNPATH:               ${{ secrets.SIGNPATH_API_TOKEN != '' }}
 
     steps:
       - name: Checkout
@@ -50,35 +55,67 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
-      - name: Install MinGW (interceptor build)
-        run: |
-          choco install mingw --no-progress -y
-          echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
+      - name: Install mingw-mstorsjo-llvm-ucrt (interceptor build toolchain)
         shell: pwsh
+        run: |
+          # build.ps1 (since QUICK-260423-ntu) requires the triple-prefixed clang driver
+          # from scoop's mingw-mstorsjo-llvm-ucrt package — choco's mingw uses a different
+          # driver layout and is unusable for our x64 + x86 dual build. The package also
+          # bundles cmake + ninja, so no separate cmake/ninja install is needed here.
+          Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+          # windows-latest pwsh sessions run elevated (as runneradmin); scoop's installer
+          # aborts under elevation unless SCOOP_INSTALL_AS_ADMIN=1 is set (or -RunAsAdmin
+          # is passed). Setting the env var is a no-op when non-elevated and clears the
+          # gate when elevated, so it's safe in both modes.
+          $env:SCOOP_INSTALL_AS_ADMIN = "1"
+          Invoke-WebRequest -UseBasicParsing https://get.scoop.sh -OutFile "$env:TEMP\install-scoop.ps1"
+          & "$env:TEMP\install-scoop.ps1"
+          scoop install mingw-mstorsjo-llvm-ucrt
+          if ($LASTEXITCODE -ne 0) { throw "scoop install mingw-mstorsjo-llvm-ucrt failed (exit $LASTEXITCODE)" }
+          # Sanity check — fail fast if either triple-prefixed driver is missing.
+          # build.ps1 reads from this exact path; it is hardcoded, not PATH-derived.
+          $bin = "$env:USERPROFILE\scoop\apps\mingw-mstorsjo-llvm-ucrt\current\bin"
+          foreach ($exe in @('x86_64-w64-mingw32-clang.exe','i686-w64-mingw32-clang.exe')) {
+            if (-not (Test-Path "$bin\$exe")) { throw "Missing $exe in $bin" }
+          }
+          Write-Host "scoop mingw-mstorsjo-llvm-ucrt installed:"
+          Get-ChildItem "$bin\*-w64-mingw32-clang*.exe" | ForEach-Object { Write-Host "  $($_.Name)" }
+          # Persist scoop's shims dir on PATH for subsequent steps (GitHub Actions
+          # only auto-propagates system PATH between steps; scoop appends to user
+          # PATH, which a fresh pwsh session will not see without this echo).
+          "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install npm workspaces
         run: npm ci
 
-      # D-26: wails.json info.productVersion is the version authority. Validate it
-      # matches the pushed tag (strip leading 'v'). Throws on mismatch.
-      - name: Extract + validate version against tag
+      # D-26: derive the release version from the trigger and patch wails.json
+      # in-runner so PE metadata, ldflags, and NSIS all see the same value.
+      # The repo's wails.json productVersion is intentionally a placeholder
+      # (0.0.0-dev) — the git tag is the sole authority for release version.
+      - name: Derive version + patch wails.json
         id: version
         shell: pwsh
         run: |
-          $json = Get-Content src/app/wails.json -Raw | ConvertFrom-Json
-          $wailsVer = $json.info.productVersion
-          if (-not $wailsVer) {
-            throw "src/app/wails.json is missing info.productVersion — plan 10-06 task 1 did not land."
+          if ("${{ github.event_name }}" -eq 'push') {
+            $version = "${{ github.ref_name }}" -replace '^v',''
+          } else {
+            $version = "${{ inputs.version }}"
           }
-          $tagVer = "${{ github.ref_name }}" -replace '^v',''
-          if ("${{ github.event_name }}" -eq 'workflow_dispatch') {
-            Write-Host "workflow_dispatch: skipping tag-vs-wails.json validation (using wails.json=$wailsVer)"
-          }
-          elseif ($wailsVer -ne $tagVer) {
-            throw "Tag $tagVer does not match src/app/wails.json info.productVersion=$wailsVer. Bump wails.json before pushing the tag."
-          }
-          "version=$wailsVer" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
-          Write-Host "Release version: $wailsVer"
+          if (-not $version) { throw "Empty version — refusing to build." }
+
+          # Patch wails.json so Wails picks the right value for PE metadata
+          # (FileVersion / ProductVersion resources). Ephemeral — not committed.
+          $path = 'src/app/wails.json'
+          $json = Get-Content $path -Raw | ConvertFrom-Json
+          $json.info.productVersion = $version
+          $json | ConvertTo-Json -Depth 10 | Set-Content $path -Encoding utf8
+
+          # Surface to downstream steps + detect prerelease (any '-' in the version)
+          $isPrerelease = $version -match '-'
+          "version=$version"           | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
+          $preStr = if ($isPrerelease) { 'true' } else { 'false' }
+          "prerelease=$preStr"         | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
+          Write-Host "Release version: $version (prerelease: $preStr)"
 
       # Phase 11 plan 06 guard: prove this workflow would not ship e2e hooks.
       # Fails fast if '-tags e2e', GOMAPI_DEBUG_BROWSER_ARGS, or any GOMAPI_E2E_*
@@ -114,7 +151,7 @@ jobs:
       # SignPath v2 (errata: CONTEXT D-23 referenced @v1 — PATTERNS.md §Planner-Facing
       # Correction Log entry 2 mandates @v2).
       - name: Upload binaries for SignPath (pass 1)
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.HAS_SIGNPATH == 'true' }}
         id: upload-binaries
         uses: actions/upload-artifact@v4
         with:
@@ -122,7 +159,7 @@ jobs:
           path: staged/
 
       - name: SignPath — sign binaries (pass 1 of 2)
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.HAS_SIGNPATH == 'true' }}
         uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token:            ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -134,21 +171,38 @@ jobs:
           wait-for-completion:  true
 
       - name: Replace staged binaries with signed versions
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.HAS_SIGNPATH == 'true' }}
         shell: pwsh
         run: |
           Copy-Item staged-signed/go-mapi.exe src/app/build/bin/go-mapi.exe -Force
           Copy-Item staged-signed/go-mapi-x64.dll src/interceptor/build-x64/bin/go-mapi.dll -Force
           Copy-Item staged-signed/go-mapi-x86.dll src/interceptor/build-x86/bin/go-mapi.dll -Force
 
-      - name: Verify NSIS + compile installer
+      - name: Install NSIS via scoop (extras bucket)
         shell: pwsh
         run: |
-          try { makensis /VERSION | Out-Null } catch { choco install nsis --no-progress -y }
-          makensis /DGOMAPI_VERSION=${{ steps.version.outputs.version }} src\installer\go-mapi.nsi
+          scoop bucket add extras
+          scoop install nsis
+          if ($LASTEXITCODE -ne 0) { throw "scoop install nsis failed (exit $LASTEXITCODE)" }
+          makensis /VERSION
+
+      - name: Compile installer
+        shell: pwsh
+        # cwd matters: NSIS resolves ${__FILEDIR__} relative to the script
+        # invocation path; running makensis from repo root double-resolves
+        # the ..\..\LICENSE include. Match the local `npm run build:installer`
+        # convention which cd's into src/installer first, then move the
+        # artifact back to repo root for the SignPath upload + release-asset
+        # steps that follow.
+        run: |
+          Push-Location src/installer
+          makensis /DGOMAPI_VERSION=${{ steps.version.outputs.version }} go-mapi.nsi
+          if ($LASTEXITCODE -ne 0) { Pop-Location; throw "makensis failed (exit $LASTEXITCODE)" }
+          Pop-Location
+          Move-Item src/installer/go-mapi-setup.exe go-mapi-setup.exe -Force
 
       - name: Upload installer for SignPath (pass 2)
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.HAS_SIGNPATH == 'true' }}
         id: upload-installer
         uses: actions/upload-artifact@v4
         with:
@@ -156,7 +210,7 @@ jobs:
           path: go-mapi-setup.exe
 
       - name: SignPath — sign installer (pass 2 of 2)
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.HAS_SIGNPATH == 'true' }}
         uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token:            ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -215,6 +269,24 @@ jobs:
           Write-Host "Generated SHA256SUMS.txt:"
           Get-Content SHA256SUMS.txt | Write-Host
 
+      - name: Stage release binaries (signed-or-unsigned)
+        shell: pwsh
+        run: |
+          # REL-09 fix (todo 2026-04-28): the Phase 11.1 silent updater
+          # (src/app/updates_silent.go) downloads go-mapi.exe + go-mapi-x64.dll +
+          # go-mapi-x86.dll from releases/latest/download/<name>. They were never
+          # attached to the release until now, causing 404 on every silent run.
+          # Pick the signed branch when SignPath ran, else fall back to the
+          # unsigned staged/ tree. Filenames must match the SHA256SUMS.txt
+          # manifest (already produced above).
+          $src = if (Test-Path 'staged-signed') { 'staged-signed' } else { 'staged' }
+          New-Item -ItemType Directory -Force release-bins | Out-Null
+          Copy-Item "$src/go-mapi.exe"     release-bins/
+          Copy-Item "$src/go-mapi-x64.dll" release-bins/
+          Copy-Item "$src/go-mapi-x86.dll" release-bins/
+          Write-Host "Staged release binaries from ${src}:"
+          Get-ChildItem release-bins | ForEach-Object { Write-Host "  $($_.Name)  $($_.Length) bytes" }
+
       - name: Attach installer + SHA256SUMS.txt to GitHub Release
         if: ${{ github.event_name == 'push' && (github.event.inputs.dry_run != 'true') }}
         uses: softprops/action-gh-release@v2
@@ -222,8 +294,11 @@ jobs:
           files: |
             ${{ steps.final.outputs.path }}
             SHA256SUMS.txt
+            release-bins/go-mapi.exe
+            release-bins/go-mapi-x64.dll
+            release-bins/go-mapi-x86.dll
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.version.outputs.prerelease }}
           body_path: .github/release-template.md
 
       - name: Upload release artifact (workflow_dispatch dry-run debug)
