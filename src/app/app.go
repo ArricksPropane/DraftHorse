@@ -15,6 +15,7 @@ type App struct {
 	trayEnd          func()
 	watcher          *mapi.EmailWatcher // initialized in startup
 	bridge           *watcherBridge     // initialized in startup
+	auth             *AuthManager       // OAuth token lifecycle
 	sessionEndCancel func()             // cancels the session-end message pump
 	shutdownCtx      context.Context
 	shutdownCancel   context.CancelFunc
@@ -31,7 +32,11 @@ type App struct {
 }
 
 // NewApp creates a new App instance.
-func NewApp() *App { return &App{} }
+func NewApp() *App {
+	return &App{
+		auth: NewAuthManager(),
+	}
+}
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
@@ -90,6 +95,11 @@ func (a *App) startup(ctx context.Context) {
 			a.bridge.Close() // idempotent (sync.Once)
 		}
 	})
+
+	// Phase 8: load persisted OAuth tokens and emit initial auth-changed.
+	// Must run after a.ctx is cached (line 42) and after tray is started
+	// (line 47) because SetTrayError is called from bootstrapAuth.
+	a.bootstrapAuth()
 
 	logInfo("startup complete (version %s, watching %s)", Version, watchDir)
 }

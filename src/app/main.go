@@ -28,6 +28,13 @@ func main() {
 	}
 	defer releaseSingleInstance()
 
+	// D-10: Fail fast if OAuth credentials were not injected. A release build
+	// with empty client_id silently cannot sign anyone in — louder now is kinder.
+	// Guard is skipped under the `bindings` build tag (wailsbindings.exe) so that
+	// Wails can generate TypeScript bindings without needing real credentials at
+	// dev time. In production and wails dev, the guard is always active.
+	checkOAuthCredentials()
+
 	app := NewApp()
 
 	// Note: HideWindowOnClose is intentionally NOT set. With it true, Wails routes the X

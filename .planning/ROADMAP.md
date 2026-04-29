@@ -38,7 +38,7 @@ Full details: `milestones/v2.1.0-ROADMAP.md`
 **Milestone Goal:** Replace the browser-extension + native-host split with a standalone Wails (Go + WebView2) desktop app. C++ MAPI interceptor and filesystem IPC stay unchanged; UI moves to system tray + native window, enabling automode, toast notifications, desktop OAuth, and autoupdate. Target RAM profile: ≤ 80 MB idle per instance (RDS constraint — measured in Phase 7).
 
 - [x] **Phase 7: Wails Shell + RAM Gate** — Minimal tray app built and RAM measured (PASS: 43.24 MB mean per session vs 80 MB gate, 2026-04-14)
-- [ ] **Phase 8: OAuth + Credentials** — Desktop OAuth (PKCE loopback) with Windows Credential Manager storage; Google verification submitted day 1 [UNBLOCKED by Phase 7 PASS]
+- [x] **Phase 8: OAuth + Credentials** — Desktop OAuth (PKCE loopback) with Windows Credential Manager storage shipped; human UAT approved 2026-04-18
 - [ ] **Phase 9: Queue, Automode + Toasts** — Email queue UI, Manual/Auto-draft toggle, and Windows toast notifications
 - [ ] **Phase 10: Installer + Migration** — NSIS installer with AppUserModelID, WebView2 bootstrap, v2.x cleanup, and uninstall
 - [ ] **Phase 11: Autoupdate + Release** — Notify-only autoupdate, GitHub release pipeline, extension store retirement, smoke test
@@ -72,7 +72,12 @@ Full details: `milestones/v2.1.0-ROADMAP.md`
   3. When a Gmail API call returns 401, the access token refreshes transparently — the user is not interrupted mid-action
   4. If the refresh token is invalidated (`invalid_grant`), the user sees a clear re-sign-in prompt rather than a silent failure or retry loop
   5. The user can sign out from the main window; signing out clears the stored token from Credential Manager
-**Plans**: TBD
+**Plans**: 5 plans
+- [x] 08-01-PLAN.md — GCP prerequisites gate + -ldflags credential injection (AUTH-06, QUAL-03)
+- [x] 08-02-PLAN.md — AuthManager scaffold + keyring round-trip + Wails bindings (AUTH-03, QUAL-03)
+- [x] 08-03-PLAN.md — SignIn flow: loopback + PKCE S256 + code exchange + userinfo (AUTH-01, AUTH-02, QUAL-03)
+- [x] 08-04-PLAN.md — Token refresh + invalid_grant classification + SignOut + OnStartup wiring (AUTH-03, AUTH-04, AUTH-05, AUTH-07, QUAL-03)
+- [x] 08-05-PLAN.md — Frontend: welcome screen + pre-auth modal + re-auth banner + signed-in header (AUTH-01, AUTH-02, AUTH-05, AUTH-07)
 
 ### Phase 9: Queue, Automode + Toasts
 **Goal**: Users can view queued emails in the main window, act on them individually, set an automatic draft mode, and receive Windows toast notifications when new emails arrive
@@ -122,7 +127,7 @@ Full details: `milestones/v2.1.0-ROADMAP.md`
 | 5. Release Cut | v2.0.0 | 4/4 | Complete | 2026-04-12 |
 | 6. Changesets Monorepo Scaffold | v2.1.0 | 3/3 | Complete | 2026-04-12 |
 | 7. Wails Shell + RAM Gate | v3.0 | 0/? | Not started | - |
-| 8. OAuth + Credentials | v3.0 | 0/? | Not started | - |
+| 8. OAuth + Credentials | v3.0 | 2/5 | In Progress|  |
 | 9. Queue, Automode + Toasts | v3.0 | 0/? | Not started | - |
 | 10. Installer + Migration | v3.0 | 0/? | Not started | - |
 | 11. Autoupdate + Release | v3.0 | 0/? | Not started | - |

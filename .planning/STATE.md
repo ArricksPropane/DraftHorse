@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Wails Pivot
-status: executing
-stopped_at: Phase 7 complete — PASS verdict on RAM gate
-last_updated: "2026-04-14T11:00:00.000Z"
-last_activity: 2026-04-14 -- Phase 07 complete (RAM gate PASS, 43.24 MB mean at idle-post-webview vs 80 MB threshold)
+status: phase-complete
+stopped_at: Phase 08 complete — ready for Phase 09 (Queue, Automode + Toasts)
+last_updated: "2026-04-18T00:30:00.000Z"
+last_activity: 2026-04-18 -- Phase 08 human UAT approved; marked complete
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 20
+  completed_phases: 2
+  total_plans: 9
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-12)
 
 **Core value:** A non-technical Windows user can install go-mapi once and have every "Send to Mail recipient" action appear as a Gmail draft — without touching a terminal, a toolchain, or a registry editor.
-**Current focus:** Phase 07 — wails-shell-ram-gate
+**Current focus:** Phase 09 — Queue, Automode + Toasts (next)
 
 ## Current Position
 
 Milestone: v3.0 Wails Pivot
-Phase: 07 (wails-shell-ram-gate) — COMPLETE ✓ (RAM gate PASS)
-Plan: 4 of 4
-Status: Phase 07 complete; Phase 08 unblocked
-Last activity: 2026-04-14 -- Phase 07 Plan 04 verdict PASS (43.24 MB mean, n=4 at idle-post-webview; full report in 07-VERIFICATION.md)
+Phase: 08 (oauth-credentials) — COMPLETE
+Plan: 5 of 5
+Status: Phase 08 complete — awaiting routing to Phase 09
+Last activity: 2026-04-18 -- Phase 08 human UAT approved; marked complete
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████████░░] 40% (2/5 phases complete — 7, 8)
 
 ## Performance Metrics
 
@@ -57,10 +57,15 @@ Recent decisions carried into v3.0:
 - v3.0: Autoupdate notify-only via creativeprojects/go-selfupdate (no in-process binary replacement)
 - v3.0: NSIS installer (not Inno Setup) — AppUserModelID + Start Menu shortcut + WebView2 bootstrapper
 - Preserved: MAPI DLL, filesystem IPC, delete-on-process privacy model
+- [Phase 08]: D-08/D-09/D-10 realised: package-level var oauthClientID/_Secret with ldflags -X targets, env-var fallback for wails dev, fail-fast guard before wails.Run
+- [Phase 08]: Dev dotfiles at repo root: .env.local / .env.local.example live at C:\dev\go-mapi root, not under src/app/ (visibility preference)
+- [Phase 08]: Build-tag split pattern required for wails build compatibility: any fatal startup guard in main.go must be extracted to a !bindings-tagged file so wailsbindings.exe can introspect types without triggering os.Exit
+- [Phase 08]: D-11/D-12 realised: zalando/go-keyring v0.2.8 wired for Windows Credential Manager; keyring.ErrNotFound on Get/Delete is signed-out state (not error); service=go-mapi user=oauth-tokens
 
 ### Pending Todos
 
-- AUTH-06: Submit Google OAuth verification request on Phase 8 day 1 (4-8 week external review window)
+- AUTH-06: Google OAuth verification submitted 2026-04-17 (GCP client, consent screen, scope justifications done; 4-8 week review window running)
+- AUTH-06b: Record and upload YouTube demo video for OAuth verification — blocked until Plan 08-05 ships end-to-end sign-in + draft flow. See `.planning/todos/pending/2026-04-17-oauth-verification-youtube-demo-video.md`
 
 ### Blockers/Concerns
 
@@ -73,6 +78,6 @@ Recent decisions carried into v3.0:
 
 ## Session Continuity
 
-Last session: 2026-04-14
-Stopped at: Phase 7 complete — Phase 8 unblocked
-Resume: run `/gsd-plan-phase 8` to begin planning OAuth + Credentials
+Last session: 2026-04-18T00:30:00.000Z
+Stopped at: Phase 08 complete (human UAT approved after tray-idle fix 04462ed + dev-wails.ps1 fix f05d63c)
+Resume: run `/gsd-discuss-phase 9` to start Phase 09 (Queue, Automode + Toasts)
