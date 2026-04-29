@@ -57,13 +57,14 @@ Requirements for the v3.0 milestone — standalone Wails desktop app replacing t
 
 ### Release & Autoupdate
 
-- [ ] **REL-01**: Chrome/Edge extension unpublished from Chrome Web Store and Edge Add-ons stores on v3.0 GA
+- [ ] **REL-01**: Chrome/Edge extension listings are retired on v3.0 GA via frozen/deprecated Chrome Web Store and Edge Add-ons pages that redirect users to the desktop app, with proof of the store-side action captured
 - [ ] **REL-02**: `go-mapi-setup.exe` published to stable URL `https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe`
 - [ ] **REL-03**: In-app version check uses `creativeprojects/go-selfupdate` to query GitHub Releases on startup and once per 24h
 - [ ] **REL-04**: When a newer version is available, app shows a tray notification with "Download" action that opens the release page in the browser — no in-process binary replacement
 - [ ] **REL-05**: User can opt out of update checks via a settings toggle
 - [ ] **REL-06**: End-to-end smoke test on Windows Sandbox: fresh install → sign-in → email queued via MAPI → draft created → uninstall clean
-- [ ] **REL-07**: README rewritten to describe the v3.0 install + setup flow; v2.x instructions moved to `docs/legacy/`
+- [ ] **REL-07**: README rewritten to describe the v3.0 install + setup flow; v2.x is retired and not maintained as in-tree legacy documentation
+- [ ] **REL-08**: An end-to-end Playwright/CDP harness drives the real Wails app + WebView2 against a fake Gmail endpoint and a fake keyring (under a `//go:build e2e` shim), with regression coverage for the Wails↔Svelte UI roundtrip class of bug — added 2026-04-22 after Phase 11 manual smoke caught queue-row staleness symptoms that Vitest with mocked bindings could not see
 
 ### Quality Gates (non-functional)
 
