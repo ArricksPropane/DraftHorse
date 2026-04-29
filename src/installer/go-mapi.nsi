@@ -18,6 +18,9 @@
 ;   D-12 — %ProgramData%\go-mapi\uninst\ directory for backup JSON
 ;   T-10-01-01 — ordering invariant enforced below (Call BackupPreviousMailClient
 ;                precedes WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "go-mapi")
+;   QUICK-260423-msq — DLL queue relocated from %TEMP%\go-mapi\ to
+;                %LOCALAPPDATA%\go-mapi\queue\ (DLL creates it at DllMain; installer does not
+;                pre-create it — no install-time action required for the path itself).
 
 Unicode True
 
@@ -79,6 +82,15 @@ Section "Install" SecInstall
   ;   wails build -platform windows/amd64 (→ go-mapi.exe with go:embed frontend)
   File "${__FILEDIR__}\..\app\build\bin\go-mapi.exe"
   File "${__FILEDIR__}\..\interceptor\build\bin\go-mapi.dll"
+
+  ; QUICK-260423-msq — diagnostic scripts shipped alongside the app for the
+  ; future in-app "Report bug" flow. PS 5.1-compatible, non-admin, read-only.
+  ; Installed to $INSTDIR\diagnostics\ so the Wails app can invoke them at a
+  ; known relative path when the user triggers a bug report.
+  SetOutPath "$INSTDIR\diagnostics"
+  File "${__FILEDIR__}\..\..\scripts\diagnostics\collect-registration.ps1"
+  File "${__FILEDIR__}\..\..\scripts\diagnostics\collect-runtime.ps1"
+  SetOutPath "$INSTDIR"
 
   ; D-10 + T-10-01-01 — MUST run BEFORE the HKLM Mail (Default) overwrite below
   ; so the pre-install mail client name is captured correctly.
@@ -479,6 +491,11 @@ Section "Uninstall"
   Delete "$INSTDIR\go-mapi.dll"
   Delete "$INSTDIR\uninstall.exe"
   Delete "$INSTDIR\install.log"
+
+  ; 9b. Diagnostic scripts (QUICK-260423-msq)
+  Delete "$INSTDIR\diagnostics\collect-registration.ps1"
+  Delete "$INSTDIR\diagnostics\collect-runtime.ps1"
+  RMDir  "$INSTDIR\diagnostics"
 
   ; 10. Install dir (RMDir non-recursive — only removes if empty)
   RMDir "$INSTDIR"
