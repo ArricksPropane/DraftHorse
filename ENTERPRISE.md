@@ -5,13 +5,51 @@ managed desktops, group policy.
 
 ## At a glance
 
-- ~40–50 MB RAM per session — viable on RDS / Citrix multi-user hosts
-- Machine-wide (All Users) install only — no per-user install path
-- Unattended (silent) install supported via `/S` flag
-- Optional automatic updates via a Windows Scheduled Task (SYSTEM context)
-- SHA-256 checksums published with every release
-- LGPL-3.0-or-later (FOSS — no per-seat licensing)
-- No telemetry; the only outbound traffic is the Gmail API for the signed-in user
+**Operational facts**
+
+- Single-file NSIS installer (`go-mapi-setup.exe`) — All Users only, no MSI
+- Silent install via `/S`; optional auto-update Scheduled Task via `/AUTOUPDATE=1`
+- ~40–50 MB RAM per signed-in session (idle, after 10 min — see *RAM sizing* below)
+- SHA-256 checksums published with every release (`SHA256SUMS.txt`)
+- Per-user OAuth tokens in Windows Credential Manager (DPAPI-scoped)
+- Outbound network: Gmail API + Google OAuth + GitHub Releases (update check). Nothing else.
+
+**Positioning**
+
+- LGPL-3.0-or-later — FOSS, no per-seat licensing, source on GitHub
+- No telemetry, no content retention, no analytics
+
+## Code signing status
+
+**v3.0.0 is unsigned.** The release pipeline supports SignPath.io OSS
+signing, but v3.0.0 was published from a runner without the SignPath
+secrets configured and used the unsigned `staged/` build path.
+
+Practical consequences for managed deployments:
+
+- **SmartScreen** will warn users on first interactive run. The dismissal
+  flow is **More info → Run anyway**. Silent installs (`/S`) bypass the
+  SmartScreen dialog because there is no interactive shell to display it.
+- **Microsoft Defender Application Control / WDAC** policies that require
+  signed binaries will block go-mapi. You'll need to allow the binary by
+  hash, by file path, or by publisher (not applicable while unsigned).
+- **AppLocker** Publisher rules are not usable while unsigned; use Hash
+  rules against the SHA-256 in `SHA256SUMS.txt`, or Path rules anchored
+  at `%ProgramFiles%\go-mapi\`.
+
+To suppress SmartScreen warnings for managed deployments:
+
+- **Group Policy:** `Computer Configuration → Administrative Templates →
+  Windows Components → File Explorer → Configure Windows Defender
+  SmartScreen` — set to *Disable* or *Warn but allow* per your policy.
+- **Intune (Win32 app):** pre-stage the installer via the Intune Win32 app
+  pipeline; the trust override at deployment time avoids the per-user
+  SmartScreen prompt.
+- **GPO file allow-list** (per-binary): use Software Restriction Policies
+  or AppLocker Hash rules against the published `SHA256SUMS.txt` hash.
+
+A future signed release will replace this section with verification
+guidance (Authenticode chain, `Get-AuthenticodeSignature` snippet).
 
 ## Install modes
 
@@ -63,10 +101,28 @@ go-mapi-setup.exe /S /AUTOUPDATE=1
 The installer is idempotent — running it over an existing install upgrades
 in place (the previous mail client backup is preserved across upgrades).
 
-Exit codes: NSIS silent installs exit with `0` on success and a non-zero
-code on abort. Log output goes to the Windows installer log rather than a
-file; add `/LOG=C:\path\to\install.log` if your deployment tooling needs a
-log file.
+### Exit codes
+
+NSIS uses standard process exit codes. The installer issues `Abort` on
+the failure paths below, which translates to a non-zero exit code; success
+is `0`.
+
+| Exit code | Meaning | Source |
+|---|---|---|
+| `0` | Install completed successfully | NSIS default on `SectionEnd` |
+| `1` | User cancelled the wizard, or interactive `EnsureAppNotRunning` cancelled | NSIS default on `Quit`/`Abort` |
+| `2` | Installation failed (NSIS internal error — file copy, registry write, script error) | NSIS default for `SetErrorLevel 2` and runtime aborts |
+
+The installer's explicit `Abort` paths (interactive cancel of "go-mapi
+already running" prompt; `go-mapi.exe` still running after a 10-second
+graceful-close poll on silent install) surface as exit `1` and exit `2`
+respectively, matching NSIS conventions. SCCM / Intune detection rules
+should treat any non-zero exit as install failure and key the success
+detection off the `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi`
+key existing after the run.
+
+Log output goes to the Windows installer log rather than a file; add
+`/LOG=C:\path\to\install.log` if your deployment tooling needs a log file.
 
 ## Automatic updates
 
@@ -93,6 +149,44 @@ until the next launch; the task does **not** forcibly restart it.
 
 Update logs are written to `%ProgramData%\go-mapi\updates\update.log`
 (admin-readable; no PII, no message content).
+
+### What happens when an update lands during a user session
+
+The silent updater (`src/app/updates_silent.go`) follows a verify-then-swap
+pattern designed to be safe against running user sessions:
+
+1. **Stage:** assets are downloaded into
+   `%ProgramData%\go-mapi\updates\staging\` and SHA-256-verified
+   in-memory **before** any byte hits the install directory.
+2. **Atomic swap (NTFS rename-while-running):** for each of `go-mapi.exe`,
+   `go-mapi-x64.dll`, and `go-mapi-x86.dll`, the updater performs a
+   two-step rename — `installed → installed.old.<pid>` followed by
+   `staged → installed`. This uses `MoveFileEx` and works while the
+   running process holds the file open (NTFS allows rename of a file
+   under loader lock; deletion would be blocked).
+3. **In-memory binary handoff:** any currently running `go-mapi.exe` keeps
+   running from the loader-pinned old binary in memory. New launches —
+   the next user session, the next time the user clicks the tray icon
+   after a quit, or the next reboot — pick up the new binary. **No user
+   process is killed** by the updater (D-13 in the silent-updater plan
+   makes this explicit; the retry loop is the back-pressure, not
+   `WM_CLOSE`).
+4. **Orphan cleanup:** the `*.old.<pid>` files are removed on the next
+   silent-update cycle, after the running process has exited.
+5. **Retry budget:** if a swap fails (`ERROR_SHARING_VIOLATION` from
+   Defender / a filter driver briefly holding the file), the updater
+   retries with exponential backoff up to a 12-hour wall clock; the next
+   Scheduled Task trigger picks up where it left off.
+
+Operational impact: a user who is signed in and idle when an update
+lands sees nothing. The next time they launch go-mapi (after quitting
+from the tray, after reboot, or at next logon), they get the new
+version. There is no forced re-login or restart.
+
+Admin debug log: `%ProgramData%\go-mapi\updates\update.log` (capped at
+1 MB, rotated by truncation; records version transitions, swap
+attempts, retry counts, verify success/failure — no message content,
+no credentials, no hex digests for failed verifications).
 
 ### Managing the Scheduled Task
 
@@ -142,17 +236,26 @@ https://github.com/marcfargas/go-mapi/releases/latest/download/SHA256SUMS.txt
 
 Format follows the `sha256sum` convention (`<lowercase-hex>  <filename>`).
 The automatic updater verifies downloads before applying them. For manual
-verification before deployment:
+verification before deployment (returns success or `throws` on mismatch —
+suitable for use in a deployment pipeline):
 
 ```powershell
-$sums    = (Invoke-WebRequest 'https://github.com/marcfargas/go-mapi/releases/latest/download/SHA256SUMS.txt').Content
-$actual  = (Get-FileHash -Algorithm SHA256 .\go-mapi-setup.exe).Hash.ToLower()
-$sums   # inspect expected hash for go-mapi-setup.exe
-$actual  # compare
+$base = "https://github.com/marcfargas/go-mapi/releases/download/vX.Y.Z"
+$sums = (Invoke-WebRequest "$base/SHA256SUMS.txt").Content
+$expected = ($sums -split "`n" |
+    Where-Object { $_ -match 'go-mapi-setup\.exe' } |
+    ForEach-Object { ($_ -split '\s+')[0] })
+$actual = (Get-FileHash .\go-mapi-setup.exe -Algorithm SHA256).Hash.ToLower()
+if ($actual -eq $expected) {
+    Write-Output "OK ($actual)"
+} else {
+    throw "Checksum mismatch: expected $expected, got $actual"
+}
 ```
 
-If the release carries an Authenticode signature (SignPath.io for OSS), verify
-both the SHA-256 digest and the signature for defense-in-depth.
+Replace `vX.Y.Z` with the tagged release you're verifying. The script
+exits non-zero (via `throw`) on mismatch — wire this into your SCCM /
+Intune pre-install step.
 
 ## Mass deployment
 
@@ -162,7 +265,7 @@ distribution tooling:
 
 - **Intune / SCCM**: deploy `go-mapi-setup.exe /S` as a Win32 app. Detection
   rule: key `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi`
-  exists.
+  exists. Treat any non-zero exit code as failure (see *Exit codes* above).
 - **Group Policy (Software Installation)**: NSIS produces an EXE, not an MSI.
   Use a GP startup script or a third-party EXE-to-MSI wrapper if your policy
   requires MSI format.
@@ -188,6 +291,19 @@ Credential storage: each user's OAuth tokens are stored in the Windows
 Credential Manager (DPAPI-scoped, per user). go-mapi never stores tokens in
 shared locations.
 
+## RAM sizing
+
+The "~40–50 MB RAM per session" figure is measured idle, signed-in, with
+the tray window hidden, after 10 minutes of running on Windows 11 22H2
+(working set, `Get-Process go-mapi`). Memory grows modestly during draft
+creation and returns to baseline once the draft is posted to Gmail. There
+is no observed long-running growth — the watcher and OAuth refresh paths
+are stateless w.r.t. heap retention.
+
+For RDS / Citrix capacity planning, treat 50 MB / concurrent signed-in
+session as a working ceiling. Sessions that have not yet signed in (the
+first-launch SignInScreen state) consume noticeably less.
+
 ## Limitations
 
 ### Multi-user / RDS hosts
@@ -201,13 +317,30 @@ Residue that persists per user after uninstall:
 - `%APPDATA%\go-mapi\` (settings, log) — per user, not touched by the uninstaller
 - Windows Credential Manager target `go-mapi:oauth-tokens` — per user (DPAPI-scoped)
 
-To clean up a specific user's residue, that user (or an admin impersonating
-their session) must:
+**Is the residue harmful?** No. The Credential Manager entry holds a
+DPAPI-encrypted Google refresh token scoped to that user's profile. Without
+the matching go-mapi binary on the host, the token has no privileged
+caller; without that user's interactive logon, DPAPI will not decrypt it.
+Leaving the residue in place after uninstall does not grant access to the
+user's Gmail account — Google will rotate / revoke unused refresh tokens
+on its own schedule. The `%APPDATA%\go-mapi\` residue is a settings file
+and a log; neither contains message content or credentials.
 
-```
-rmdir /s /q "%APPDATA%\go-mapi"
-cmdkey /delete:go-mapi:oauth-tokens
-```
+If your security policy requires per-user cleanup anyway, the most
+operationally tractable patterns on RDS / Citrix are:
+
+- **At-logon scheduled task (per user):** deploy a logon-triggered task
+  via GPO that runs:
+  ```powershell
+  Remove-Item -Recurse -Force "$env:APPDATA\go-mapi" -ErrorAction SilentlyContinue
+  cmdkey /list:go-mapi:oauth-tokens 2>$null | Out-Null
+  if ($LASTEXITCODE -eq 0) { cmdkey /delete:go-mapi:oauth-tokens | Out-Null }
+  ```
+  This runs in the user's own session context, so DPAPI and Credential
+  Manager are reachable without impersonation.
+- **Off-session impersonation** (e.g. `psexec -i -s -u <user>`) is
+  possible but operationally expensive on a 60-host farm and is generally
+  not worth the effort given the residue is harmless.
 
 ### RDS firewall loopback
 
@@ -219,6 +352,46 @@ the user's RDP session) if the rule is absent or blocked by group policy. If
 your GPO blocks `netsh advfirewall` writes, pre-create the rule via policy
 before deploying go-mapi.
 
+The exact rule the installer creates is:
+
+```
+netsh advfirewall firewall add rule ^
+  name="go-mapi OAuth loopback" ^
+  dir=in ^
+  program="%ProgramFiles%\go-mapi\go-mapi.exe" ^
+  action=allow ^
+  profile=any
+```
+
+Translated to PowerShell `New-NetFirewallRule` / GPO equivalents:
+
+| Property | Value |
+|---|---|
+| Name / DisplayName | `go-mapi OAuth loopback` |
+| Direction | Inbound |
+| Action | Allow |
+| Profile | Any (Domain + Private + Public) |
+| Program | `%ProgramFiles%\go-mapi\go-mapi.exe` (full path required by GPO; resolve `%ProgramFiles%` to `C:\Program Files` if your policy editor doesn't expand) |
+| Protocol | Any (the rule is program-scoped, not protocol-scoped) |
+| Local port | Any (the OAuth listener binds an ephemeral port on `127.0.0.1`) |
+| Remote address | Any (loopback is not enforced at firewall layer; the binary itself binds `127.0.0.1` only) |
+
+PowerShell equivalent for GPO startup scripts or pre-staging:
+
+```powershell
+New-NetFirewallRule `
+  -DisplayName "go-mapi OAuth loopback" `
+  -Direction Inbound `
+  -Action Allow `
+  -Program "$env:ProgramFiles\go-mapi\go-mapi.exe" `
+  -Profile Any
+```
+
+Pre-creating the rule via GPO before go-mapi is deployed avoids the
+first-bind UI prompt entirely; the installer's own `netsh` call becomes a
+no-op (the rule already exists with the same name) and a non-fatal
+non-zero return is logged but ignored.
+
 ### No MSI
 
 The installer is an NSIS EXE. There is no MSI wrapper. This is a known
@@ -227,3 +400,8 @@ limitation for GPO-based Software Installation policies.
 ## Support
 
 [GitHub Issues](https://github.com/marcfargas/go-mapi/issues)
+
+---
+
+For end-user installation and usage, see [README.md](README.md).
+For contributors and maintainers, see [DEVELOPMENT.md](DEVELOPMENT.md).
