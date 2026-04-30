@@ -33,9 +33,15 @@ public:
     // Serialize a MailMessage to JSON string
     static std::string MessageToJson(const MailMessage& msg);
 
-    // Write a MailMessage to a JSON file in %TEMP%/go-mapi/
+    // Write a MailMessage to a JSON file in %LOCALAPPDATA%\go-mapi\queue\
     // Returns the full path to the created file, empty string on failure
     static std::wstring WriteMailToFile(const MailMessage& msg);
+
+    // QUICK-260423-tk6 — variant that lets the caller supply the stem (no
+    // extension). Used by the DLL orchestration layer so the JSON file and
+    // its sibling attachments dir share a deterministic identity.
+    static std::wstring WriteMailToFileWithStem(const MailMessage& msg,
+                                                const std::wstring& stem);
 
 private:
     // Escape JSON string values (quotes, backslashes, newlines, etc.)

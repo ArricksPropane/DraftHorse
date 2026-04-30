@@ -127,13 +127,34 @@ std::wstring JsonWriter::WriteMailToFile(const MailMessage& msg) {
 
     // Generate unique filename
     std::wstring filename = FsUtils::GenerateUniqueFilename();
-    std::wstring outputDir = FsUtils::GetTempPath();
+    std::wstring outputDir = FsUtils::GetQueueDirectory();
     std::wstring fullPath = outputDir + filename;
 
     // Serialize message to JSON
     std::string jsonContent = MessageToJson(msg);
 
     // Write to file
+    if (FsUtils::WriteFile(fullPath, jsonContent)) {
+        return fullPath;
+    }
+
+    return L"";
+}
+
+std::wstring JsonWriter::WriteMailToFileWithStem(const MailMessage& msg,
+                                                 const std::wstring& stem) {
+    // QUICK-260423-tk6: variant that accepts a caller-supplied stem so the
+    // DLL orchestration layer can copy attachments into a sibling dir keyed
+    // off the same stem before writing the JSON.
+    if (stem.empty()) return L"";
+    if (!FsUtils::EnsureOutputDirectory()) {
+        return L"";
+    }
+
+    std::wstring outputDir = FsUtils::GetQueueDirectory();
+    std::wstring fullPath = outputDir + stem + L".json";
+
+    std::string jsonContent = MessageToJson(msg);
     if (FsUtils::WriteFile(fullPath, jsonContent)) {
         return fullPath;
     }

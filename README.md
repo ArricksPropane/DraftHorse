@@ -1,269 +1,176 @@
 # go-mapi
 
-[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/ndhoimoncoekjmldllpbjdanamdhemcl?label=Chrome%20Web%20Store)](https://chromewebstore.google.com/detail/go-mapi/ndhoimoncoekjmldllpbjdanamdhemcl)
-[![Edge Add-ons](https://img.shields.io/badge/Edge%20Add--ons-go--mapi-blue)](https://microsoftedge.microsoft.com/addons/detail/gomapi/jfpjjkihpciojgaohonjooengomfbpom)
-[![GitHub Release](https://img.shields.io/github/v/release/marcfargas/go-mapi)](https://github.com/marcfargas/go-mapi/releases/latest)
-[![License: LGPL-3.0](https://img.shields.io/badge/License-LGPL--3.0-blue.svg)](LICENSE)
-
-**The MAPI-to-Gmail bridge you always wanted.**
-
-## Overview
-
-[MAPI](https://en.wikipedia.org/wiki/MAPI) (Messaging Application Programming Interface) is a Microsoft Windows API that allows programs to become email-aware. It enables the "Send by Email" feature found in many Windows applications - from right-clicking a file in Explorer to printing to PDF and emailing it.
-
-**Gmail and Google Workspace have no native MAPI support.** Despite Google Workspace being a major enterprise email solution, there has never been an official MAPI-to-Gmail bridge.
-
-A few third-party tools have filled this gap over the years. The most notable, [Affixa](https://help.affixa.com/article/100-sunsetting-and-retirement-of-affixa), recently announced its shutdown - leaving Google Workspace users without a way to use "Send by Email" functionality.
-
-**go-mapi** is the open-source replacement.
+MAPI to Gmail bridge for Windows — a Wails (Go + WebView2) desktop app that routes legacy "Send to Mail recipient" calls to Gmail drafts.
 
 ## Status
 
-**v2.0.0** — First shipped milestone with a single-click Windows installer and a full Chromium-family browser extension. See [Installation](#installation) for the end-user flow.
+**Shipping: v3.0 (Wails pivot).** The v2.x Chrome/Edge extension + Go native-host is **retired** and lives only at the `v2.1.0` git tag for archaeology. The browser-store listings are frozen with deprecation messaging pointing here. **Do not run v2.x and v3.0 side-by-side** — uninstall v2.x first, then install v3.0.
 
-| Component | Status |
-|-----------|--------|
-| MAPI interception (ANSI + Unicode) | ✅ Stable |
-| Native messaging bridge | ✅ Stable |
-| Browser extension (popup + notifications) | ✅ Stable |
-| Gmail draft creation (with attachments) | ✅ Stable |
-| UTF-8 / codepage encoding | ✅ Stable |
-| Single-click Windows installer (Inno Setup 6) | ✅ v2.0.0 |
-| Chrome / Edge / Chromium / Brave / Vivaldi | ✅ v2.0.0 |
-| Windows Sandbox local repro | ✅ v2.0.0 (`tests/sandbox/`) |
+| Component | Status | Notes |
+|-----------|--------|-------|
+| MAPI interception (ANSI + Unicode) | Shipped | C++ DLL unchanged from v1 |
+| Wails desktop app (system tray + WebView2) | Shipped | Each go-mapi.exe process uses around 40–50 MB of RAM, making it a sound option for RDS / Citrix deployments |
+| OAuth desktop flow (PKCE loopback + Windows Credential Manager) | Shipped | Phase 8 closed 2026-04-18 |
+| Queue viewer + Auto-draft mode | Shipped | Phase 9 |
+| Windows toast notifications | Shipped | Phase 9 — XML-path WinRT toasts with `MarkProcessed`/`Delete` dispatch |
+| NSIS installer + WebView2 bootstrap + AppUserModelID | Shipped | Phase 10 — single-file `go-mapi-setup.exe`, machine-wide MAPI registration |
+| Notify-only autoupdate + release pipeline | Shipped | Phase 11 — stable `releases/latest/download/go-mapi-setup.exe`, in-app "update available" banner |
+| Playwright/CDP end-to-end harness | Shipped | Phase 11 — fake Gmail + fake OAuth, 5/5 E2E specs green on CI |
 
-## Architecture
+To inspect the retired v2.x source: `git checkout v2.1.0`. No further v2.x fixes will land.
 
-go-mapi uses a three-component architecture optimized for enterprise deployment:
+## Install
+
+> **Upgrading from go-mapi v2.x?**
+> Please uninstall any prior **go-mapi v2.x** **before** installing v3.0 — via **Settings → Apps → Installed apps** (this removes the Chrome/Edge extension + native-host). The v3.0 installer does not migrate v2 artifacts; running both side-by-side is unsupported. **v2.x is retired** and will not receive further updates.
+
+### End-user install
+
+1. Download the latest installer: <https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe>
+2. Run it as administrator (required because the installer registers go-mapi as a machine-wide MAPI handler under `HKLM\SOFTWARE\Clients\Mail`).
+3. On first launch, sign in with your Google account — the app opens your default browser for OAuth consent.
+
+The installer bundles the Microsoft Edge WebView2 Evergreen Runtime bootstrapper and the C++ MAPI DLL. No manual dependencies are required on end-user machines.
+
+### Updates
+
+go-mapi checks for new releases against the public GitHub Releases feed and surfaces an in-app "update available" banner when a newer version is published. **Updates are manual, not in-process:** clicking the banner opens the GitHub Release page in your default browser, and you download and run the new installer yourself. go-mapi does not replace its own binary.
+
+### Uninstalling on multi-user machines (RDS / shared Windows Server)
+
+When you run the uninstaller on a multi-user host, only the **uninstalling user's** stored Gmail credentials and per-user settings are removed:
+
+- `%APPDATA%\go-mapi\` (settings.json, app.log) — per-user, scrubbed for the uninstalling user only.
+- Windows Credential Manager target `go-mapi:oauth-tokens` — per-user (DPAPI-scoped), scrubbed for the uninstalling user only.
+
+Other users on the same machine who signed in to go-mapi retain their own credentials and settings after uninstall. To scrub those, each affected user should manually remove their own `%APPDATA%\go-mapi\` directory and run `cmdkey /delete:go-mapi:oauth-tokens` in their own session.
+
+This limitation is by design: Credential Manager entries and `%APPDATA%` are protected by the Windows per-user data-protection model, and the uninstaller (even when elevated) cannot enumerate and impersonate every profile on the machine.
+
+> For unattended or managed deployments (RDS, MSI/SCCM/Intune fleet roll-outs), see [Enterprise installation](#enterprise-installation) below.
+
+## Enterprise installation
+
+For administrators deploying go-mapi to a fleet (Windows Server / RDS hosts, MSI / SCCM / Intune push, etc.). For single-user installs, the consumer instructions above cover everything.
+
+### Elevation and scope
+
+`go-mapi-setup.exe` is **All Users only**. The MAPI handler is registered under `HKLM\SOFTWARE\Clients\Mail\go-mapi`, which is inherently machine-wide; there is no per-user install path. The installer requires UAC elevation. Run as an administrator (or via a managed-deployment context that elevates) — there is no "Just for me" option.
+
+### Unattended (silent) install
+
+Silent install with all defaults:
 
 ```
-┌─────────────────────┐                      ┌─────────────────────┐
-│   Windows App       │                      │  Browser Extension  │
-│   (Explorer, etc.)  │                      │  (Chrome / Edge)    │
-│         │           │                      │         │           │
-│    MAPISendMail()   │                      │   React Popup UI    │
-│         ▼           │                      │         │           │
-│  ┌─────────────┐    │   %TEMP%\go-mapi\    │   ┌───────────┐     │
-│  │ go-mapi.dll │────┼──────────────────────┤   │ Gmail API │     │
-│  └─────────────┘    │         ▲            │   └───────────┘     │
-└─────────────────────┘         │            └─────────────────────┘
-                                │
-                     ┌──────────┴──────────┐
-                     │  Native Messaging   │
-                     │  Host (Go binary)   │
-                     │  Watches folder     │
-                     └─────────────────────┘
+go-mapi-setup.exe /S /D=C:\Program Files\go-mapi
 ```
 
-### Components
+Add `/AUTOUPDATE=1` to register a Windows Scheduled Task that keeps go-mapi updated automatically (see [Automatic updates](#automatic-updates) below):
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Interceptor DLL | C++ (MinGW) | Captures MAPI calls, writes JSON to `%TEMP%\go-mapi\` |
-| Native Host | Go | Watches folder, bridges to browser via Native Messaging |
-| Browser Extension | React + TypeScript | UI + Gmail API (Chrome & Edge) |
-
-### Why This Architecture?
-
-- **Enterprise-friendly**: DLL and host installed once with admin rights; extension updates independently
-- **Simple OAuth**: Extension uses Chrome Identity API — no separate auth flow needed
-- **Cross-browser**: Same extension works in Chrome and Edge
-- **Debuggable**: JSON files on disk make the IPC trivially inspectable
-
-## Installation
-
-**For end users.** No terminal, no toolchain, no admin PowerShell required.
-
-### Prerequisites
-
-- Windows 10 or 11
-- Chrome, Edge, Chromium, Brave, or Vivaldi
-- A Gmail or Google Workspace account
-
-### Install the Windows host
-
-1. Download `go-mapi-setup.exe` from the latest GitHub Release:
-
-   **[Direct download: go-mapi-setup.exe](https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe)**
-
-   This link always points at the latest stable release.
-
-2. Run the installer. You will see **one UAC prompt** — click **Yes**. The
-   installer copies the binaries to `C:\Program Files\go-mapi\`, registers
-   go-mapi as the default Windows Mail client, and writes native-messaging
-   registry entries for Chrome, Edge, Chromium, Brave, and Vivaldi in one
-   shot.
-
-3. Install the browser extension. For v2.0.0 the Chrome Web Store listing
-   is pending review — in the meantime, load the unpacked extension from
-   the release ZIP asset attached to the same GitHub Release.
-
-### If Windows SmartScreen blocks the installer
-
-You may see a blue **"Windows protected your PC"** dialog when you first
-run `go-mapi-setup.exe`. This happens because the v2.0.0 installer ships
-unsigned — the project's code-signing certificate (via the SignPath
-Foundation OSS program) is in review at the time of this release. The
-installer is safe: the source is public on GitHub, and every release is
-built from a reproducible GitHub Actions workflow (see
-`.github/workflows/installer-release.yml`).
-
-To continue the install:
-
-1. Click the small **More info** link in the SmartScreen dialog.
-2. A **Run anyway** button appears below the publisher line. Click it.
-3. Proceed with the normal UAC prompt and installer wizard.
-
-This is a one-time click-through per downloaded file — subsequent runs of
-the same `go-mapi-setup.exe` don't show the dialog again. A signed
-installer will ship as v2.0.1 once SignPath approval lands, at which
-point this section becomes unnecessary.
-
-## Usage
-
-1. Right-click any file in Windows Explorer → **Send to** → **Mail recipient**
-   (or trigger any other Windows "Send by Email" action).
-2. The email appears in the go-mapi browser extension popup as a Gmail
-   draft preview.
-3. Click **Save as Draft** to push it to your Gmail drafts folder (or
-   **Delete** to discard it).
-
-That's it. No per-user setup, no extra prompts, and the extension
-auto-detects the host once it's installed — if you install the extension
-first and then the host, the extension's "Install go-mapi" banner
-disappears within six seconds and a one-time success toast confirms the
-handshake.
-
-## Uninstall
-
-Windows **Settings → Apps → Installed apps → go-mapi → Uninstall**, or
-run the uninstaller directly at `C:\Program Files\go-mapi\unins000.exe`.
-
-Uninstall removes every file and registry entry the installer wrote
-(DLL, native host binary, all five browser registry trees, the MAPI
-handler registration, `%TEMP%\go-mapi\` leftovers) and restores the
-previous default Mail client from the backup file saved during install
-(`C:\ProgramData\go-mapi\uninst\previous-mail-client.json`).
-
-## Privacy
-
-go-mapi is privacy-first by design:
-
-- No telemetry of any kind. No update-check beacons, no crash reporting.
-- No long-term storage of message content. Transient JSON files under
-  `%TEMP%\go-mapi\` are deleted immediately after you click **Save as
-  Draft** or **Delete**.
-- No network calls except to the Gmail API, on your behalf, to create
-  the draft.
-- No background service, no tray icon, no auto-start.
-
-## Enterprise Deployment
-
-For managed Windows environments:
-
-- **Silent install**: `go-mapi-setup.exe /VERYSILENT /SUPPRESSMSGBOXES` — the Inno Setup installer supports the standard `/VERYSILENT`, `/SILENT`, and `/LOG=<path>` switches. See the [Inno Setup Setup command line](https://jrsoftware.org/ishelp/index.php?topic=setupcmdline) documentation for the full list.
-- **Extension deployment**: force-install via Chrome/Edge enterprise policy ([`ExtensionInstallForcelist`](https://chromeenterprise.google/policies/#ExtensionInstallForcelist)).
-- **Registry**: all state is under `HKLM\SOFTWARE\Clients\Mail\go-mapi` and the five `HKLM\SOFTWARE\*\NativeMessagingHosts\com.gomapi.host` trees. Export these keys from a reference machine for GPO-based deployment if needed.
-- **OAuth**: the extension uses the Chrome Identity API against a GCP OAuth client baked into `src/extension/public/manifest.json`. For enterprise deployments, fork the extension and replace the OAuth client ID with your own GCP project's credentials.
-
-## Development
-
-**For contributors building from source.** If you're just installing
-go-mapi to use it, you want the [Installation](#installation) section
-above instead.
-
-### Prerequisites
-
-- Windows 10/11 + Admin PowerShell
-- Node 18+ and npm 9+
-- Go 1.21+
-- MinGW with gcc/g++ toolchain (for the C++ interceptor DLL)
-- CMake 3.16+
-- Chrome or Edge for extension testing
-
-### Build everything
-
-```powershell
-npm ci                         # install extension dev dependencies
-npm run build:interceptor      # MinGW + CMake → src/interceptor/build/bin/go-mapi.dll
-npm run build:native-host      # Go → src/native-host/build/go-mapi-host.exe
-npm run build:extension        # Vite → src/extension/dist/
+```
+go-mapi-setup.exe /S /AUTOUPDATE=1 /D=C:\Program Files\go-mapi
 ```
 
-### Install from local build (dev loop)
+Default is `/AUTOUPDATE=0` (no Scheduled Task; manual update notification only — same as the consumer install).
 
-```powershell
-# From an admin PowerShell on the build host:
-.\scripts\install.ps1 -Local
+### Automatic updates
+
+When installed with `/AUTOUPDATE=1` (or with the "Enable automatic updates" checkbox ticked during interactive install), the installer registers a Windows Scheduled Task:
+
+| Property | Value |
+|---|---|
+| Task name | `go-mapi Auto Update` |
+| Path | `\go-mapi Auto Update` (root of Task Scheduler) |
+| Run as | `SYSTEM` (no per-user credential, no logon required) |
+| Schedule | Daily 03:00 with ±30 minute random delay |
+| Also runs | At system startup (5 minute delay) |
+| Network | `RunOnlyIfNetworkAvailable=true` (skips offline runs) |
+| Catch-up | `StartWhenAvailable=true` (runs after wake/reboot if missed) |
+| Concurrency | `MultipleInstancesPolicy=IgnoreNew` (no overlapping runs) |
+| Time limit | 12 hours per run (`ExecutionTimeLimit=PT12H`) |
+
+The task fires `go-mapi.exe --update-check-silent`, which:
+
+1. Fetches `SHA256SUMS.txt` from the stable Release URL.
+2. Downloads the new binary (or installer) into `%ProgramData%\go-mapi\updates\staging\`.
+3. Verifies the SHA-256 digest **before** writing the binary into the install path.
+4. Atomically swaps the running `go-mapi.exe` (and the x64 + x86 `go-mapi.dll`) using `MoveFileEx`'s rename-while-running pattern. The interactive go-mapi instance keeps running with its old in-memory file mapping until next launch.
+5. Logs to `%ProgramData%\go-mapi\updates\update.log` (admin-readable; no PII, no message content, no hex digests).
+
+The task does **not** restart the running interactive go-mapi.exe. The new binary takes effect on the next launch.
+
+#### Managing the Scheduled Task post-install
+
+Disable temporarily (e.g. during maintenance windows):
+
+```
+schtasks /change /tn "go-mapi Auto Update" /disable
 ```
 
-The legacy `scripts/install.ps1` path is still supported for contributors
-who want to test an unreleased build without compiling the Inno Setup
-installer every iteration. It uses the same `.tmpl` native-messaging
-manifests as the production installer (FOUND-06), so the resulting
-registry state is identical.
+Re-enable:
 
-### Build the Inno Setup installer locally
-
-```powershell
-& "C:\Program Files (x86)\Inno Setup 6\iscc.exe" `
-    /DGOMAPIVersion=2.0.0-local `
-    src\installer\go-mapi.iss
-# → src\installer\dist\go-mapi-setup.exe
+```
+schtasks /change /tn "go-mapi Auto Update" /enable
 ```
 
-### Run the test suites
+Run the update check immediately (testing / forced refresh):
 
-```powershell
-cd src\native-host && go test ./... ; cd ..\..
-cd src\interceptor && cmake .. -G "MinGW Makefiles" -DBUILD_TESTS=ON && cmake --build . && ctest --output-on-failure ; cd ..\..
-cd src\extension && npm run test:run ; cd ..\..
-npx playwright test --config tests\e2e\playwright.config.ts
+```
+schtasks /run /tn "go-mapi Auto Update"
 ```
 
-### Local Windows Sandbox repro (REL-02)
+Inspect last run + status:
 
-See [`tests/sandbox/README.md`](tests/sandbox/README.md) for the local
-install → verify → uninstall repro path. Requires Windows 11 24H2+ and
-the `wsb` CLI.
+```
+schtasks /query /tn "go-mapi Auto Update" /v /fo LIST
+```
 
-### CI workflows
+Or open Task Scheduler (`taskschd.msc`) and navigate to `\go-mapi Auto Update`.
 
-- `.github/workflows/build.yml` — per-PR Go + C++ + TypeScript build and test
-- `.github/workflows/installer-smoke.yml` — per-PR Pester 5 installer smoke test on `windows-latest`
-- `.github/workflows/e2e.yml` — Playwright happy-path + install UX on `windows-latest`
-- `.github/workflows/go-race-nightly.yml` — nightly `go test -race` on `windows-latest` amd64
-- `.github/workflows/installer-release.yml` — tag-triggered SignPath-gated installer release
+The task is removed automatically by the go-mapi uninstaller. To convert an existing notify-only install to silent-update, re-run `go-mapi-setup.exe /AUTOUPDATE=1` over the existing install — the installer is idempotent.
 
-### Troubleshooting a local install
+### Integrity verification
 
-- **DLL not found** — verify `C:\Program Files\go-mapi\go-mapi.dll` exists and `HKLM\SOFTWARE\Clients\Mail\go-mapi\DLLPath` points at it.
-- **Extension shows "Install the go-mapi host" after installing** — wait up to 6 seconds for the reconnect alarm. If the prompt doesn't clear, check the service worker console in `chrome://extensions` and the host log at `%TEMP%\go-mapi\native-host.log`.
-- **"Send to → Mail recipient" doesn't appear** — restart Windows Explorer (`taskkill /im explorer.exe /f && start explorer.exe`) so the shell picks up the new MAPI handler registration.
+Every release publishes `SHA256SUMS.txt` alongside the installer at:
 
-## Why "go-mapi"?
+```
+https://github.com/marcfargas/go-mapi/releases/latest/download/SHA256SUMS.txt
+```
 
-The name is a nod to "Go(ogle)" and "let's go". The project started as a pragmatic solution to the [Affixa shutdown](https://help.affixa.com/article/100-sunsetting-and-retirement-of-affixa).
+Format follows the `sha256sum` convention (one line per asset, `<lowercase-hex>  <filename>`). The silent updater verifies downloads automatically; for manual verification:
+
+```
+$expected = (Invoke-WebRequest 'https://github.com/marcfargas/go-mapi/releases/latest/download/SHA256SUMS.txt').Content
+$actual = (Get-FileHash -Algorithm SHA256 .\go-mapi-setup.exe).Hash.ToLower()
+Write-Host "Expected: $expected"
+Write-Host "Actual:   $actual  go-mapi-setup.exe"
+```
+
+SignPath signing (when present on the release) is additive — verify both the SHA-256 digest AND the Authenticode signature for defense-in-depth.
+
+### Multi-user RDS limitation
+
+The uninstaller scrubs the running admin's profile and machine-wide locations (`HKLM\SOFTWARE\Clients\Mail\go-mapi`, `%ProgramFiles%\go-mapi\`, `%ProgramData%\go-mapi\`, `\go-mapi Auto Update`). It does **not** enumerate every user profile on a multi-user / RDS host to scrub `%APPDATA%\go-mapi\` or per-user shortcuts left by older builds. On RDS hosts where many users have run go-mapi, residue may persist in user profiles after uninstall.
+
+This is a known carry-forward limitation from Phase 10 (the v3.0 install milestone). Workaround: an admin can run `Remove-Item -Recurse -Force "$Profile\..\..\..\*\AppData\Roaming\go-mapi"` per RDP session as needed, or wait for the v3.x roadmap entry that adds enumerate-all-profiles uninstall.
+
+### Privacy posture
+
+go-mapi makes network calls only to:
+
+- `https://github.com/marcfargas/go-mapi/releases/latest/download/...` (update check + asset download).
+- Google OAuth + Gmail API (when the user signs in / drafts mail).
+
+No telemetry. No content retention. No hash-of-installed-binary reporting. Silent-update logs at `%ProgramData%\go-mapi\updates\update.log` record the version transition and download success/failure only — no message body, no recipient data, no SHA-256 digests of installed binaries.
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
-- Setting up the development environment
-- Building components
-- Submitting pull requests
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for architecture, build prerequisites, dev loop, and repository layout.
+
+## Known issues
+
+- **Settings persistence**: `SaveSettings` currently drops fields other than `Mode`. Tracked at `.planning/todos/pending/2026-04-29-savesettings-drops-fields-other-than-mode.md`. Workaround: Mode toggle is the only setting changed today; affected fields are not yet user-exposed.
 
 ## License
 
-go-mapi is Free Software licensed under the **GNU Lesser General Public License, version 3.0 or any later version** (`LGPL-3.0-or-later`).
-
-- `LICENSE` — the full LGPL-3.0 text (additional permissions)
-- `COPYING` — the full GPL-3.0 text (LGPL-3.0 is built on top of GPL-3.0)
-
-See https://www.gnu.org/licenses/lgpl-3.0.html for the canonical license text and https://www.gnu.org/licenses/gpl-3.0.html for the underlying GPL-3.0.
-
-## References
-
-- [Simple MAPI Documentation](https://learn.microsoft.com/en-us/previous-versions/dd296734(v=vs.85))
-- [Chrome Native Messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging)
-- [Gmail API](https://developers.google.com/gmail/api)
-- [Affixa Sunset Announcement](https://help.affixa.com/article/100-sunsetting-and-retirement-of-affixa)
+LGPL-3.0-or-later. See [LICENSE](LICENSE) for the full text.

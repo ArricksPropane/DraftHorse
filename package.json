@@ -1,56 +1,46 @@
 {
   "name": "go-mapi",
-  "version": "2.0.1",
-  "description": "MAPI to Gmail bridge for Windows - send emails via Gmail from any Windows application",
+  "description": "MAPI to Gmail bridge for Windows — a Wails (Go + WebView2) desktop app that routes legacy 'Send to Mail recipient' calls to Gmail as drafts",
   "private": true,
   "workspaces": [
-    "src/extension"
+    "src/app",
+    "src/app/frontend",
+    "tests/e2e"
   ],
   "scripts": {
-    "build": "npm run build:interceptor && npm run build:native-host && npm run build:extension",
-    "build:interceptor": "powershell -ExecutionPolicy Bypass -File src/interceptor/build.ps1 -Config Release",
-    "build:interceptor:debug": "powershell -ExecutionPolicy Bypass -File src/interceptor/build.ps1 -Config Debug -Tests",
-    "build:native-host": "powershell -ExecutionPolicy Bypass -Command \"$v=(Get-Content package.json -Raw|ConvertFrom-Json).version; cd src/native-host; go build -ldflags \\\"-s -w -X main.Version=$v\\\" -o build/go-mapi-host.exe .\"",
-    "build:native-host:debug": "powershell -ExecutionPolicy Bypass -Command \"$v=(Get-Content package.json -Raw|ConvertFrom-Json).version; cd src/native-host; go build -ldflags \\\"-X main.Version=$v\\\" -o build/go-mapi-host.exe .\"",
-    "build:extension": "npm run -w go-mapi-extension build",
-    "package:extension": "powershell -ExecutionPolicy Bypass -File scripts/package-extension.ps1",
-    "dev:extension": "npm run -w go-mapi-extension dev",
-    "lint": "eslint src/extension/src/ && cd src/native-host && go vet ./...",
-    "test": "npm run test:native-host && npm run test:extension",
-    "test:native-host": "cd src/native-host && go test -v ./...",
-    "test:extension": "npm run -w go-mapi-extension test:run",
-    "test:interceptor": "powershell -ExecutionPolicy Bypass -Command \"src/interceptor/build/bin/go-mapi-test-harness.exe src/interceptor/build/bin/go-mapi.dll\"",
-    "test:e2e": "npx playwright test --config tests/e2e/playwright.config.ts",
-    "test:coverage": "npm run -w go-mapi-extension test:coverage",
-    "clean": "npm run clean:interceptor && npm run clean:native-host && npm run clean:extension",
-    "clean:interceptor": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/interceptor/build -ErrorAction SilentlyContinue\"",
-    "clean:native-host": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/native-host/build -ErrorAction SilentlyContinue\"",
-    "clean:extension": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/extension/dist -ErrorAction SilentlyContinue\"",
-    "install:mapi": "powershell -ExecutionPolicy Bypass -File scripts/install.ps1",
-    "uninstall:mapi": "powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Uninstall",
-    "test:dll:sandbox": "powershell -ExecutionPolicy Bypass -File tests/sandbox/run-sandbox-test.ps1"
+    "build": "npm run build:interceptor && powershell -ExecutionPolicy Bypass -File scripts/build-wails.ps1",
+    "build:interceptor": "npm run build:interceptor:x64 && npm run build:interceptor:x86",
+    "build:interceptor:x64": "powershell -ExecutionPolicy Bypass -File src/interceptor/build.ps1 -Arch x64 -Config Release",
+    "build:interceptor:x86": "powershell -ExecutionPolicy Bypass -File src/interceptor/build.ps1 -Arch x86 -Config Release",
+    "build:interceptor:debug": "powershell -ExecutionPolicy Bypass -File src/interceptor/build.ps1 -Arch x64 -Config Debug -Tests",
+    "build:installer": "cd src/installer && makensis -DGOMAPI_VERSION=3.0.0-dev go-mapi.nsi",
+    "test": "npm run -w @marcfargas/go-mapi-app-frontend build && go test ./internal/mapi/... ./src/app/... && npm run -w @marcfargas/go-mapi-app-frontend test:run",
+    "test:interceptor": "powershell -ExecutionPolicy Bypass -Command \"src/interceptor/build-x64/bin/go-mapi-test-harness.exe src/interceptor/build-x64/bin/go-mapi.dll\"",
+    "test:dll:sandbox": "powershell -ExecutionPolicy Bypass -File tests/sandbox/run-sandbox-test.ps1",
+    "e2e": "npm run -w @marcfargas/go-mapi-e2e test",
+    "check": "npm run -w @marcfargas/go-mapi-app-frontend build && go vet ./internal/mapi/... ./src/app/... && npm run -w @marcfargas/go-mapi-app-frontend check",
+    "clean": "npm run clean:interceptor",
+    "clean:interceptor": "powershell -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force src/interceptor/build-x64, src/interceptor/build-x86 -ErrorAction SilentlyContinue\""
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/anthropics/go-mapi.git"
+    "url": "https://github.com/marcfargas/go-mapi.git"
   },
   "keywords": [
     "mapi",
     "gmail",
     "windows",
     "email",
-    "google-workspace"
+    "google-workspace",
+    "wails",
+    "desktop"
   ],
-  "author": "",
+  "author": "Marc Fargas <https://github.com/marcfargas>",
   "license": "LGPL-3.0-or-later",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.0.0",
-    "@playwright/test": "^1.58.0",
-    "eslint": "^9.0.0",
-    "sharp": "^0.34.5",
-    "typescript-eslint": "^8.55.0"
+    "@changesets/cli": "^2.30.0"
   }
 }

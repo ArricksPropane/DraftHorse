@@ -1,24 +1,26 @@
 import { defineConfig } from '@playwright/test';
 
-// E2E-01: Playwright configuration for Phase 4.
+// Phase 11 plan 06 — Playwright config for the WebView2/CDP harness.
 //
-// Chromium extensions require `launchPersistentContext` + headed mode,
-// which in turn forces `workers: 1` (parallel contexts don't work with
-// extensions). CI retries are enabled per the E2E-05 spike findings;
-// local runs surface flakes immediately with retries: 0.
-
+// Single worker / non-parallel: WebView2 only exposes one CDP endpoint per
+// process and the e2e binary is not safe to run in parallel against the same
+// keyring service entry. Locked decision D-E2E-03.
+//
+// Trace retain-on-failure keeps debugging cheap without filling disk on
+// green runs; HTML reporter is opened explicitly via `npx playwright
+// show-report` so CI runs do not block on a browser launch.
 export default defineConfig({
   testDir: '.',
-  testMatch: '**/*.spec.ts',
-  timeout: 90_000, // 90s — leaves headroom for service-worker bootstrap
-  retries: process.env.CI ? 2 : 0,
-  workers: 1, // Extensions require single worker — Playwright limitation.
-
+  fullyParallel: false,
+  workers: 1,
+  retries: 0,
+  timeout: 30_000,
+  expect: { timeout: 5_000 },
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+  ],
   use: {
-    headless: false, // Chrome extensions require headed mode
-    viewport: { width: 400, height: 600 },
-    trace: process.env.CI ? 'retain-on-failure' : 'off',
+    trace: 'retain-on-failure',
   },
-
-  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
 });
