@@ -1,176 +1,68 @@
 # go-mapi
 
-MAPI to Gmail bridge for Windows — a Wails (Go + WebView2) desktop app that routes legacy "Send to Mail recipient" calls to Gmail drafts.
+> Right-click any file in Windows Explorer, click "Send to → Mail recipient",
+> and the email appears ready to send in Gmail.
+>
+> No configuration. No subscription fees. Completely open source.
 
-## Status
+## What it does
 
-**Shipping: v3.0 (Wails pivot).** The v2.x Chrome/Edge extension + Go native-host is **retired** and lives only at the `v2.1.0` git tag for archaeology. The browser-store listings are frozen with deprecation messaging pointing here. **Do not run v2.x and v3.0 side-by-side** — uninstall v2.x first, then install v3.0.
+Any Windows app that has a "Send to Mail recipient" option — File Explorer,
+Word, Excel, legacy line-of-business software — will route that action to Gmail
+instead of Outlook. go-mapi sits quietly in the background and creates a draft
+in your Gmail inbox, ready for you to review and send.
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| MAPI interception (ANSI + Unicode) | Shipped | C++ DLL unchanged from v1 |
-| Wails desktop app (system tray + WebView2) | Shipped | Each go-mapi.exe process uses around 40–50 MB of RAM, making it a sound option for RDS / Citrix deployments |
-| OAuth desktop flow (PKCE loopback + Windows Credential Manager) | Shipped | Phase 8 closed 2026-04-18 |
-| Queue viewer + Auto-draft mode | Shipped | Phase 9 |
-| Windows toast notifications | Shipped | Phase 9 — XML-path WinRT toasts with `MarkProcessed`/`Delete` dispatch |
-| NSIS installer + WebView2 bootstrap + AppUserModelID | Shipped | Phase 10 — single-file `go-mapi-setup.exe`, machine-wide MAPI registration |
-| Notify-only autoupdate + release pipeline | Shipped | Phase 11 — stable `releases/latest/download/go-mapi-setup.exe`, in-app "update available" banner |
-| Playwright/CDP end-to-end harness | Shipped | Phase 11 — fake Gmail + fake OAuth, 5/5 E2E specs green on CI |
-
-To inspect the retired v2.x source: `git checkout v2.1.0`. No further v2.x fixes will land.
+- Works with any Windows app that uses "Send to Mail recipient"
+- Drafts land in Gmail — review and send normally, nothing is sent automatically
+- Manual or automatic draft creation (your choice)
+- Privacy-first: no telemetry, email content never leaves the Gmail API
 
 ## Install
 
+1. Download `go-mapi-setup.exe` from the [latest release](https://github.com/marcfargas/go-mapi/releases/latest)
+2. Run it (administrator prompt required — go-mapi registers itself as the Windows mail handler)
+3. Sign in with your Gmail or Google Workspace account when prompted
+4. Done
+
+go-mapi runs quietly in the system tray. Nothing else changes — keep using
+your apps as normal.
+
 > **Upgrading from go-mapi v2.x?**
-> Please uninstall any prior **go-mapi v2.x** **before** installing v3.0 — via **Settings → Apps → Installed apps** (this removes the Chrome/Edge extension + native-host). The v3.0 installer does not migrate v2 artifacts; running both side-by-side is unsupported. **v2.x is retired** and will not receive further updates.
+> Uninstall v2.x first via **Settings → Apps → Installed apps**, then install
+> the new version. Running both side-by-side is not supported.
 
-### End-user install
+## How to use it
 
-1. Download the latest installer: <https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe>
-2. Run it as administrator (required because the installer registers go-mapi as a machine-wide MAPI handler under `HKLM\SOFTWARE\Clients\Mail`).
-3. On first launch, sign in with your Google account — the app opens your default browser for OAuth consent.
+Once installed, trigger "Send to Mail recipient" in any Windows app as you
+normally would. go-mapi intercepts the request and shows you the draft in its
+tray window before anything goes to Gmail.
 
-The installer bundles the Microsoft Edge WebView2 Evergreen Runtime bootstrapper and the C++ MAPI DLL. No manual dependencies are required on end-user machines.
+**Manual mode** (default): go-mapi shows you each email and waits for you to
+click "Create draft". Nothing reaches Gmail until you say so.
 
-### Updates
+**Auto mode**: go-mapi creates the draft immediately and tells you it's ready
+in your inbox. Switch between modes in the tray window.
 
-go-mapi checks for new releases against the public GitHub Releases feed and surfaces an in-app "update available" banner when a newer version is published. **Updates are manual, not in-process:** clicking the banner opens the GitHub Release page in your default browser, and you download and run the new installer yourself. go-mapi does not replace its own binary.
+## Updates
 
-### Uninstalling on multi-user machines (RDS / shared Windows Server)
-
-When you run the uninstaller on a multi-user host, only the **uninstalling user's** stored Gmail credentials and per-user settings are removed:
-
-- `%APPDATA%\go-mapi\` (settings.json, app.log) — per-user, scrubbed for the uninstalling user only.
-- Windows Credential Manager target `go-mapi:oauth-tokens` — per-user (DPAPI-scoped), scrubbed for the uninstalling user only.
-
-Other users on the same machine who signed in to go-mapi retain their own credentials and settings after uninstall. To scrub those, each affected user should manually remove their own `%APPDATA%\go-mapi\` directory and run `cmdkey /delete:go-mapi:oauth-tokens` in their own session.
-
-This limitation is by design: Credential Manager entries and `%APPDATA%` are protected by the Windows per-user data-protection model, and the uninstaller (even when elevated) cannot enumerate and impersonate every profile on the machine.
-
-> For unattended or managed deployments (RDS, MSI/SCCM/Intune fleet roll-outs), see [Enterprise installation](#enterprise-installation) below.
-
-## Enterprise installation
-
-For administrators deploying go-mapi to a fleet (Windows Server / RDS hosts, MSI / SCCM / Intune push, etc.). For single-user installs, the consumer instructions above cover everything.
-
-### Elevation and scope
-
-`go-mapi-setup.exe` is **All Users only**. The MAPI handler is registered under `HKLM\SOFTWARE\Clients\Mail\go-mapi`, which is inherently machine-wide; there is no per-user install path. The installer requires UAC elevation. Run as an administrator (or via a managed-deployment context that elevates) — there is no "Just for me" option.
-
-### Unattended (silent) install
-
-Silent install with all defaults:
-
-```
-go-mapi-setup.exe /S /D=C:\Program Files\go-mapi
-```
-
-Add `/AUTOUPDATE=1` to register a Windows Scheduled Task that keeps go-mapi updated automatically (see [Automatic updates](#automatic-updates) below):
-
-```
-go-mapi-setup.exe /S /AUTOUPDATE=1 /D=C:\Program Files\go-mapi
-```
-
-Default is `/AUTOUPDATE=0` (no Scheduled Task; manual update notification only — same as the consumer install).
-
-### Automatic updates
-
-When installed with `/AUTOUPDATE=1` (or with the "Enable automatic updates" checkbox ticked during interactive install), the installer registers a Windows Scheduled Task:
-
-| Property | Value |
-|---|---|
-| Task name | `go-mapi Auto Update` |
-| Path | `\go-mapi Auto Update` (root of Task Scheduler) |
-| Run as | `SYSTEM` (no per-user credential, no logon required) |
-| Schedule | Daily 03:00 with ±30 minute random delay |
-| Also runs | At system startup (5 minute delay) |
-| Network | `RunOnlyIfNetworkAvailable=true` (skips offline runs) |
-| Catch-up | `StartWhenAvailable=true` (runs after wake/reboot if missed) |
-| Concurrency | `MultipleInstancesPolicy=IgnoreNew` (no overlapping runs) |
-| Time limit | 12 hours per run (`ExecutionTimeLimit=PT12H`) |
-
-The task fires `go-mapi.exe --update-check-silent`, which:
-
-1. Fetches `SHA256SUMS.txt` from the stable Release URL.
-2. Downloads the new binary (or installer) into `%ProgramData%\go-mapi\updates\staging\`.
-3. Verifies the SHA-256 digest **before** writing the binary into the install path.
-4. Atomically swaps the running `go-mapi.exe` (and the x64 + x86 `go-mapi.dll`) using `MoveFileEx`'s rename-while-running pattern. The interactive go-mapi instance keeps running with its old in-memory file mapping until next launch.
-5. Logs to `%ProgramData%\go-mapi\updates\update.log` (admin-readable; no PII, no message content, no hex digests).
-
-The task does **not** restart the running interactive go-mapi.exe. The new binary takes effect on the next launch.
-
-#### Managing the Scheduled Task post-install
-
-Disable temporarily (e.g. during maintenance windows):
-
-```
-schtasks /change /tn "go-mapi Auto Update" /disable
-```
-
-Re-enable:
-
-```
-schtasks /change /tn "go-mapi Auto Update" /enable
-```
-
-Run the update check immediately (testing / forced refresh):
-
-```
-schtasks /run /tn "go-mapi Auto Update"
-```
-
-Inspect last run + status:
-
-```
-schtasks /query /tn "go-mapi Auto Update" /v /fo LIST
-```
-
-Or open Task Scheduler (`taskschd.msc`) and navigate to `\go-mapi Auto Update`.
-
-The task is removed automatically by the go-mapi uninstaller. To convert an existing notify-only install to silent-update, re-run `go-mapi-setup.exe /AUTOUPDATE=1` over the existing install — the installer is idempotent.
-
-### Integrity verification
-
-Every release publishes `SHA256SUMS.txt` alongside the installer at:
-
-```
-https://github.com/marcfargas/go-mapi/releases/latest/download/SHA256SUMS.txt
-```
-
-Format follows the `sha256sum` convention (one line per asset, `<lowercase-hex>  <filename>`). The silent updater verifies downloads automatically; for manual verification:
-
-```
-$expected = (Invoke-WebRequest 'https://github.com/marcfargas/go-mapi/releases/latest/download/SHA256SUMS.txt').Content
-$actual = (Get-FileHash -Algorithm SHA256 .\go-mapi-setup.exe).Hash.ToLower()
-Write-Host "Expected: $expected"
-Write-Host "Actual:   $actual  go-mapi-setup.exe"
-```
-
-SignPath signing (when present on the release) is additive — verify both the SHA-256 digest AND the Authenticode signature for defense-in-depth.
-
-### Multi-user RDS limitation
-
-The uninstaller scrubs the running admin's profile and machine-wide locations (`HKLM\SOFTWARE\Clients\Mail\go-mapi`, `%ProgramFiles%\go-mapi\`, `%ProgramData%\go-mapi\`, `\go-mapi Auto Update`). It does **not** enumerate every user profile on a multi-user / RDS host to scrub `%APPDATA%\go-mapi\` or per-user shortcuts left by older builds. On RDS hosts where many users have run go-mapi, residue may persist in user profiles after uninstall.
-
-This is a known carry-forward limitation from Phase 10 (the v3.0 install milestone). Workaround: an admin can run `Remove-Item -Recurse -Force "$Profile\..\..\..\*\AppData\Roaming\go-mapi"` per RDP session as needed, or wait for the v3.x roadmap entry that adds enumerate-all-profiles uninstall.
-
-### Privacy posture
-
-go-mapi makes network calls only to:
-
-- `https://github.com/marcfargas/go-mapi/releases/latest/download/...` (update check + asset download).
-- Google OAuth + Gmail API (when the user signs in / drafts mail).
-
-No telemetry. No content retention. No hash-of-installed-binary reporting. Silent-update logs at `%ProgramData%\go-mapi\updates\update.log` record the version transition and download success/failure only — no message body, no recipient data, no SHA-256 digests of installed binaries.
-
-## Contributing
-
-See [DEVELOPMENT.md](./DEVELOPMENT.md) for architecture, build prerequisites, dev loop, and repository layout.
+go-mapi checks for updates automatically and lets you know when one is ready.
+You stay in control — updates are never installed without your say-so. When a
+new version is available, click the banner to open the download page and run
+the new installer yourself.
 
 ## Known issues
 
-- **Settings persistence**: `SaveSettings` currently drops fields other than `Mode`. Tracked at `.planning/todos/pending/2026-04-29-savesettings-drops-fields-other-than-mode.md`. Workaround: Mode toggle is the only setting changed today; affected fields are not yet user-exposed.
+- **Saving preferences**: some settings beyond the Manual/Auto mode toggle may
+  not persist between sessions. The Mode toggle works correctly; other
+  settings are not yet user-exposed. This will be fixed in an upcoming release.
 
 ## License
 
-LGPL-3.0-or-later. See [LICENSE](LICENSE) for the full text.
+LGPL-3.0-or-later. See [LICENSE](LICENSE).
+
+---
+
+For IT departments and admins deploying go-mapi at scale (RDS, Citrix, silent
+install, group policy), see [ENTERPRISE.md](ENTERPRISE.md).
+
+For contributors and maintainers, see [DEVELOPMENT.md](DEVELOPMENT.md).
