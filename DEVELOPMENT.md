@@ -1,6 +1,6 @@
 # go-mapi — Development Guide
 
-Audience: contributors and maintainers. End users do not need any of this — see [README](./README.md) for installation.
+Audience: contributors and maintainers. End users do not need any of this — see [README](./README.md) for installation. IT admins deploying at scale should see [ENTERPRISE.md](./ENTERPRISE.md).
 
 ## Architecture
 
@@ -8,10 +8,10 @@ Two components linked by a filesystem drop:
 
 ```
 ┌─────────────────────┐       ┌─────────────────┐       ┌────────────────────┐
-│ Any Windows app     │       │ %TEMP%\go-mapi\ │       │ go-mapi (Wails)    │
-│ (Word, Excel,       │──────▶│ *.json (DLL     │──────▶│  • Go backend      │
-│  Outlook Express,   │       │  writes one     │       │  • Svelte 5 UI     │
-│  etc.)              │       │  file per send) │       │  • WebView2 window │
+│ Any Windows app     │       │ %LOCALAPPDATA%\ │       │ go-mapi (Wails)    │
+│ (Word, Excel,       │──────▶│ go-mapi\queue\  │──────▶│  • Go backend      │
+│  Outlook Express,   │       │ *.json (DLL     │       │  • Svelte 5 UI     │
+│  etc.)              │       │  writes one     │       │  • WebView2 window │
 └─────────────────────┘       └─────────────────┘       └────────────────────┘
          │                                                       │
          │ MAPISendMail / MAPISendMailW                          │ Gmail API (PKCE + Credential Manager)
@@ -25,7 +25,7 @@ Two components linked by a filesystem drop:
 
 | Component | Language | Location | Role |
 |-----------|----------|----------|------|
-| MAPI interceptor | C++17 | `src/interceptor/` | Intercepts `MAPISendMail`/`W`, writes email JSON to `%TEMP%\go-mapi\`. Unchanged from v1. |
+| MAPI interceptor | C++17 | `src/interceptor/` | Intercepts `MAPISendMail`/`W`, writes email JSON to `%LOCALAPPDATA%\go-mapi\queue\`. Unchanged from v1. |
 | Shared core | Go 1.25 | `internal/mapi/` | Email parsing, validation, watcher (`fsnotify`), Gmail HTTP client + RFC 2822 MIME builder |
 | Wails app (backend) | Go 1.25 | `src/app/` | Tray + window lifecycle, auth (OAuth PKCE loopback + Windows Credential Manager via `zalando/go-keyring`), watcher bridge, App-struct bindings |
 | Frontend | TypeScript + Svelte 5 | `src/app/frontend/` | WebView2 UI: welcome / sign-in / queue / Auto-draft toggle |
