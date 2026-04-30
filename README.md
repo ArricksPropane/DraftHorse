@@ -167,6 +167,10 @@ No telemetry. No content retention. No hash-of-installed-binary reporting. Silen
 
 See [DEVELOPMENT.md](./DEVELOPMENT.md) for architecture, build prerequisites, dev loop, and repository layout.
 
+## Known issues
+
+- **Settings persistence**: `SaveSettings` currently drops fields other than `Mode`. Tracked at `.planning/todos/pending/2026-04-29-savesettings-drops-fields-other-than-mode.md`. Workaround: Mode toggle is the only setting changed today; affected fields are not yet user-exposed.
+
 ## License
 
 LGPL-3.0-or-later. See [LICENSE](LICENSE) for the full text.
