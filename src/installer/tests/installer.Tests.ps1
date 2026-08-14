@@ -103,8 +103,12 @@ Describe "go-mapi installer round-trip" {
             $json = Get-Content $script:BackupJson -Raw | ConvertFrom-Json
             $json.PSObject.Properties.Name | Should -Contain 'previousClient'
             $json.PSObject.Properties.Name | Should -Contain 'backedUpAt'
-            # backedUpAt should look like an ISO-8601 timestamp
-            $json.backedUpAt | Should -Match '^\d{4}-\d{2}-\d{2}T'
+            # backedUpAt should look like an ISO-8601 timestamp. ARRICKS fix:
+            # assert against the raw JSON text — pwsh 7's ConvertFrom-Json
+            # coerces ISO-8601 strings into [datetime], which -Match then
+            # stringifies in culture format ('08/14/2026 ...'), failing the
+            # ISO regex even though the file content is correct.
+            Get-Content $script:BackupJson -Raw | Should -Match '"backedUpAt":"\d{4}-\d{2}-\d{2}T'
         }
 
         # D-21 item 5 — AUMID stamped on shortcut
