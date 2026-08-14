@@ -44,7 +44,14 @@ const (
 	// gitHubOwner / gitHubRepo are hardcoded to the repo slug so no user
 	// input or settings file can redirect update checks to a different
 	// origin (threat T-11-01-01 partial mitigation + Pitfall-4 guard).
-	gitHubOwner = "marcfargas"
+	//
+	// ARRICKS-06: repointed from marcfargas/go-mapi to our own fork. Upstream
+	// treats these constants as a security control, and for a fork they cut
+	// the other way: left unchanged, any surviving update path would pull a
+	// third party's binaries over our signed builds. Changed even though the
+	// silent updater has been removed, so that no code path can resolve to
+	// upstream.
+	gitHubOwner = "egkrateia247"
 	gitHubRepo  = "go-mapi"
 
 	// installerDownloadURL is the stable installer URL shown to users

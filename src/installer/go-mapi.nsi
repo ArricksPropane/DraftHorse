@@ -70,19 +70,15 @@ BrandingText "${PRODUCT_NAME} ${PRODUCT_VERSION} — LGPL-3.0"
 !include "nsDialogs.nsh"
 !include "LogicLib.nsh"
 
-; Phase 11.1 D-07: parsed in .onInit, propagated through the AutoUpdate page,
-; consumed by RegisterScheduledTask. Strict bool — only the literal "1" enables.
-Var AutoUpdateFlag
-Var AutoUpdateCheckboxState   ; nsDialogs handle for the FinishPage-adjacent checkbox.
+; ARRICKS-06: $AutoUpdateFlag / $AutoUpdateCheckboxState removed along with the
+; auto-update opt-in page and RegisterScheduledTask. This installer never
+; creates the "go-mapi Auto Update" Scheduled Task. See main.go for why.
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${__FILEDIR__}\..\..\LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
-; Phase 11.1 D-07: AutoUpdate opt-in checkbox page. Default OFF. /AUTOUPDATE=1
-; on the command line forces enable for silent installs (the page is skipped
-; in /S mode and when the flag is already set).
-Page custom AutoUpdatePage AutoUpdatePageLeave
+; ARRICKS-06: the AutoUpdate opt-in page has been removed.
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -90,60 +86,10 @@ Page custom AutoUpdatePage AutoUpdatePageLeave
 
 !insertmacro MUI_LANGUAGE "English"
 
-;------------------------------------------------------------------------------
-; .onInit — parse /AUTOUPDATE=N (Phase 11.1 D-07).
-;
-; Default OFF: empty string after GetOptions = parameter not specified.
-; Strict bool comparison downstream (StrCmp $AutoUpdateFlag "1") so any value
-; other than the literal "1" — including "0", "true", "yes", or anything else —
-; resolves to OFF. RESEARCH §T-11.1.05-03: the parsed value never flows into
-; ExecWait argument construction; only the fixed schtasks command line uses it.
-;------------------------------------------------------------------------------
-Function .onInit
-  ${GetParameters} $R0
-  ${GetOptions} $R0 "/AUTOUPDATE=" $AutoUpdateFlag
-FunctionEnd
-
-;------------------------------------------------------------------------------
-; AutoUpdatePage — interactive UI checkbox (Phase 11.1 D-07).
-;
-; Skipped if /S (silent install) — silent installs use /AUTOUPDATE=N only.
-; Skipped if /AUTOUPDATE=1 was already set on the command line — no need to
-; ask again. Default state is UNCHECKED per D-07.
-;------------------------------------------------------------------------------
-Function AutoUpdatePage
-  ; Skip if /S (silent install) — silent installs use /AUTOUPDATE only.
-  IfSilent 0 +2
-    Abort
-  ; Skip if /AUTOUPDATE=1 was already set on the command line.
-  StrCmp $AutoUpdateFlag "1" 0 +3
-    DetailPrint "Auto-update pre-set via /AUTOUPDATE=1 — skipping checkbox page"
-    Abort
-
-  !insertmacro MUI_HEADER_TEXT "Automatic updates" "Enable unattended updates for this machine"
-  nsDialogs::Create 1018
-  Pop $0
-
-  ${NSD_CreateLabel} 0 0 100% 40u "go-mapi can keep itself up-to-date automatically using a Windows Scheduled Task that runs as SYSTEM. The task downloads, verifies SHA-256 integrity, and applies updates without prompting users. Recommended for managed/RDS environments."
-  Pop $0
-
-  ${NSD_CreateCheckbox} 0 50u 100% 12u "Enable automatic updates (creates a Scheduled Task)"
-  Pop $1
-  ${NSD_SetState} $1 ${BST_UNCHECKED}    ; D-07 default OFF
-  StrCpy $AutoUpdateCheckboxState $1
-
-  nsDialogs::Show
-FunctionEnd
-
-Function AutoUpdatePageLeave
-  ${NSD_GetState} $AutoUpdateCheckboxState $0
-  ${If} $0 == ${BST_CHECKED}
-    StrCpy $AutoUpdateFlag "1"
-  ${Else}
-    StrCpy $AutoUpdateFlag "0"
-  ${EndIf}
-  DetailPrint "AutoUpdateFlag chosen: $AutoUpdateFlag"
-FunctionEnd
+; ARRICKS-06: .onInit (the /AUTOUPDATE= parser), AutoUpdatePage and
+; AutoUpdatePageLeave removed. /AUTOUPDATE=1 is now silently ignored rather
+; than honoured, so a deployment script carrying the old flag cannot re-arm
+; the updater.
 
 ;------------------------------------------------------------------------------
 ; Install section
@@ -244,7 +190,6 @@ Section "Install" SecInstall
   Call InstallWebView2           ; plan 10-02
   Call CreateShortcutAndAUMID    ; plan 10-03 (D-03)
   Call AddFirewallRule           ; plan 10-03
-  Call RegisterScheduledTask     ; Phase 11.1 D-08 (gated on $AutoUpdateFlag)
 SectionEnd
 
 ;------------------------------------------------------------------------------
@@ -724,110 +669,17 @@ Function AddFirewallRule
   ; auto-classifies loopback without the prompt on non-RDS sessions).
 FunctionEnd
 
-;------------------------------------------------------------------------------
-; RegisterScheduledTask — Phase 11.1 D-08 / D-09 / D-14
+; ARRICKS-06: RegisterScheduledTask removed.
 ;
-; Gated on $AutoUpdateFlag == "1" (D-07: default OFF, only the literal "1"
-; enables — the .onInit GetOptions parser keeps strict-bool semantics).
+; It generated a Task Scheduler XML running "$INSTDIR\go-mapi.exe
+; --update-check-silent" as S-1-5-18 (SYSTEM) with RunLevel HighestAvailable,
+; daily at 03:00 plus five minutes after every boot, and registered it with
+; schtasks /RU SYSTEM. That task downloaded binaries from GitHub and
+; MoveFileEx'd them over %ProgramFiles%, verified only against a SHA-256
+; manifest served from the same URL as the binaries.
 ;
-; Steps:
-;   1. Stage tasks/go-mapi-auto-update.xml into $INSTDIR.
-;   2. Substitute INSTDIR_PLACEHOLDER -> $INSTDIR via PowerShell 5.1.
-;      [regex]::Escape on the replacement value protects against any
-;      regex meta in $INSTDIR (RESEARCH §T-11.1.05-04). -Encoding Unicode
-;      preserves the UTF-16 LE BOM that schtasks /XML requires.
-;   3. schtasks /create /XML <path> /TN "go-mapi Auto Update" /F /RU SYSTEM
-;      /RL HIGHEST. /F suppresses "task already exists" → idempotent
-;      re-install (RESEARCH §Pitfall 3). /RU + /RL are defensive overrides
-;      of the XML <Principals> block (typo guard).
-;   4. Delete the staged XML — the definition lives in Task Scheduler now.
-;------------------------------------------------------------------------------
-
-Function RegisterScheduledTask
-  StrCmp $AutoUpdateFlag "1" 0 SkipTask
-  DetailPrint "Auto-update opt-in: registering Scheduled Task 'go-mapi Auto Update'"
-
-  ; Generate the Task Scheduler XML programmatically with $INSTDIR baked in.
-  ; The earlier "stage tasks/go-mapi-auto-update.xml + nsExec PowerShell
-  ; substitution" pattern shipped in Plan 11.1-05 e9b2693 proved unreliable —
-  ; the XML retained INSTDIR_PLACEHOLDER literal because the nested-quote
-  ; escaping in the nsExec command line prevented PowerShell from running the
-  ; substitution at all. Programmatic generation eliminates the entire
-  ; substitution step.
-  ;
-  ; FileWriteUTF16LE (with /BOM on the first call) writes proper UTF-16 LE
-  ; bytes preceded by the 0xFF 0xFE BOM — the encoding schtasks /XML requires
-  ; on Win 10/11. NOTE: NSIS Unicode-build's plain `FileWrite` writes ANSI/
-  ; UTF-8 bytes (single-byte per char), NOT UTF-16 LE, despite what some
-  ; older NSIS docs imply — verified empirically in Plan 11.1-05 sandbox UAT
-  ; (the staged file had a 0xFF 0xFE BOM followed by single-byte ASCII for
-  ; "<?xml...", which schtasks decoded as garbage Chinese characters and
-  ; rejected as malformed XML). FileWriteUTF16LE is the correct primitive.
-  ;
-  ; The committed src/installer/tasks/go-mapi-auto-update.xml file remains as
-  ; the canonical reference for the task shape — it is no longer staged at
-  ; install time, but downstream docs and future maintainers can read it.
-  FileOpen $0 "$INSTDIR\go-mapi-auto-update.xml" w
-  FileWriteUTF16LE /BOM $0 '<?xml version="1.0" encoding="UTF-16"?>$\r$\n'
-  FileWriteUTF16LE $0 '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">$\r$\n'
-  FileWriteUTF16LE $0 '  <RegistrationInfo>$\r$\n'
-  FileWriteUTF16LE $0 '    <Description>go-mapi silent auto-update — fetches and applies updates without elevating the interactive user.</Description>$\r$\n'
-  FileWriteUTF16LE $0 '    <URI>\go-mapi Auto Update</URI>$\r$\n'
-  FileWriteUTF16LE $0 '  </RegistrationInfo>$\r$\n'
-  FileWriteUTF16LE $0 '  <Triggers>$\r$\n'
-  FileWriteUTF16LE $0 '    <CalendarTrigger>$\r$\n'
-  FileWriteUTF16LE $0 '      <StartBoundary>2026-01-01T03:00:00</StartBoundary>$\r$\n'
-  FileWriteUTF16LE $0 '      <Enabled>true</Enabled>$\r$\n'
-  FileWriteUTF16LE $0 '      <RandomDelay>PT30M</RandomDelay>$\r$\n'
-  FileWriteUTF16LE $0 '      <ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>$\r$\n'
-  FileWriteUTF16LE $0 '    </CalendarTrigger>$\r$\n'
-  FileWriteUTF16LE $0 '    <BootTrigger>$\r$\n'
-  FileWriteUTF16LE $0 '      <Enabled>true</Enabled>$\r$\n'
-  FileWriteUTF16LE $0 '      <Delay>PT5M</Delay>$\r$\n'
-  FileWriteUTF16LE $0 '    </BootTrigger>$\r$\n'
-  FileWriteUTF16LE $0 '  </Triggers>$\r$\n'
-  FileWriteUTF16LE $0 '  <Principals>$\r$\n'
-  FileWriteUTF16LE $0 '    <Principal id="Author">$\r$\n'
-  FileWriteUTF16LE $0 '      <UserId>S-1-5-18</UserId>$\r$\n'
-  FileWriteUTF16LE $0 '      <RunLevel>HighestAvailable</RunLevel>$\r$\n'
-  FileWriteUTF16LE $0 '    </Principal>$\r$\n'
-  FileWriteUTF16LE $0 '  </Principals>$\r$\n'
-  FileWriteUTF16LE $0 '  <Settings>$\r$\n'
-  FileWriteUTF16LE $0 '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>$\r$\n'
-  FileWriteUTF16LE $0 '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>$\r$\n'
-  FileWriteUTF16LE $0 '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>$\r$\n'
-  FileWriteUTF16LE $0 '    <AllowHardTerminate>true</AllowHardTerminate>$\r$\n'
-  FileWriteUTF16LE $0 '    <StartWhenAvailable>true</StartWhenAvailable>$\r$\n'
-  FileWriteUTF16LE $0 '    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>$\r$\n'
-  FileWriteUTF16LE $0 '    <Enabled>true</Enabled>$\r$\n'
-  FileWriteUTF16LE $0 '    <ExecutionTimeLimit>PT12H</ExecutionTimeLimit>$\r$\n'
-  FileWriteUTF16LE $0 '  </Settings>$\r$\n'
-  FileWriteUTF16LE $0 '  <Actions Context="Author">$\r$\n'
-  FileWriteUTF16LE $0 '    <Exec>$\r$\n'
-  FileWriteUTF16LE $0 '      <Command>"$INSTDIR\go-mapi.exe"</Command>$\r$\n'
-  FileWriteUTF16LE $0 '      <Arguments>--update-check-silent</Arguments>$\r$\n'
-  FileWriteUTF16LE $0 '    </Exec>$\r$\n'
-  FileWriteUTF16LE $0 '  </Actions>$\r$\n'
-  FileWriteUTF16LE $0 '</Task>$\r$\n'
-  FileClose $0
-
-  ; /F idempotent re-install. /RU SYSTEM is defensive (XML already pins
-  ; <UserId>S-1-5-18</UserId>). NOTE: /RL is INCOMPATIBLE with /XML — schtasks
-  ; rejects with "la opción /XML solo puede usarse con /S /U /P /RU /RP /F /IT
-  ; /TN" if both are passed. RunLevel comes from <RunLevel>HighestAvailable</RunLevel>
-  ; in the XML instead.
-  ExecWait 'schtasks /create /XML "$INSTDIR\go-mapi-auto-update.xml" /TN "go-mapi Auto Update" /F /RU SYSTEM' $0
-  DetailPrint "schtasks /create rc=$0"
-
-  ; One-shot stage file — definition now lives in Task Scheduler database.
-  Delete "$INSTDIR\go-mapi-auto-update.xml"
-  Goto Done
-
-SkipTask:
-  DetailPrint "Auto-update opt-in not set (/AUTOUPDATE=0 or absent) — skipping Scheduled Task"
-
-Done:
-FunctionEnd
+; un.RemoveScheduledTask is deliberately KEPT below: uninstalling over a
+; machine that previously had an upstream build must still remove that task.
 
 ;------------------------------------------------------------------------------
 ; Uninstall section
