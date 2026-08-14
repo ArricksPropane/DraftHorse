@@ -34,6 +34,9 @@ typedef ULONG FLAGS;
 #define MAPI_E_INSUFFICIENT_MEMORY 5
 #define MAPI_E_ACCESS_DENIED 6
 #define MAPI_E_INVALID_MESSAGE 7
+#define MAPI_E_TOO_MANY_FILES 9
+#define MAPI_E_ATTACHMENT_NOT_FOUND 11
+#define MAPI_E_NOT_SUPPORTED 22
 
 #ifdef __cplusplus
 extern "C" {

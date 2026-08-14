@@ -162,6 +162,32 @@ bool FsUtils::CopyFileToDir(const std::string& srcUtf8,
     return true;
 }
 
+bool FsUtils::RemoveAttachmentsDirForStem(const std::wstring& stem) {
+    if (stem.empty()) return false;
+    std::wstring dir = GetAttachmentsDirForStem(stem);
+    if (dir.empty()) return false;
+
+    // Single-level enumeration is sufficient: CopyFileToDir only ever creates
+    // regular files directly inside <stem>\, never subdirectories.
+    WIN32_FIND_DATAW fd{};
+    HANDLE hFind = FindFirstFileW((dir + L"\\*").c_str(), &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) {
+                continue;
+            }
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                continue;  // not something we created; leave it alone
+            }
+            DeleteFileW((dir + L"\\" + fd.cFileName).c_str());
+        } while (FindNextFileW(hFind, &fd));
+        FindClose(hFind);
+    }
+
+    // Fails harmlessly if the directory was never created or is not empty.
+    return RemoveDirectoryW(dir.c_str()) != 0;
+}
+
 bool FsUtils::WriteErrorForStem(const std::wstring& stem,
                                 const std::string& reason) {
     if (stem.empty()) return false;
