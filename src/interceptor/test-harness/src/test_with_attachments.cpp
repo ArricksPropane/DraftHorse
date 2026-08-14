@@ -1,4 +1,6 @@
 #include <windows.h>
+#include <cstring>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <filesystem>
@@ -32,8 +34,27 @@ int test_with_attachments() {
     char toAddress[] = "test@example.com";
     char toName[] = "Test User";
 
-    // Create dummy attachment
-    char filePath[] = "C:\\test.txt";
+    // ARRICKS-05: this used a hardcoded C:\test.txt that does not exist on any
+    // clean machine. Since quick/260423-tk6 the DLL copies attachments before
+    // writing the JSON, so a missing source now fails the copy and returns
+    // MAPI_E_FAILURE — this test could not pass. Create a real file instead.
+    char filePath[MAX_PATH] = {};
+    {
+        wchar_t tempPathW[MAX_PATH];
+        GetTempPathW(MAX_PATH, tempPathW);
+        std::filesystem::path p =
+            std::filesystem::path(tempPathW) / "go-mapi-harness-attachment.txt";
+        std::string narrow = p.string();
+        strncpy(filePath, narrow.c_str(), MAX_PATH - 1);
+
+        std::ofstream f(p, std::ios::binary | std::ios::trunc);
+        if (!f) {
+            std::cerr << "Failed to create test attachment at " << narrow << std::endl;
+            FreeLibrary(hDll);
+            return 1;
+        }
+        f << "go-mapi test harness attachment payload\n";
+    }
     char fileName[] = "test.txt";
 
     MapiFileDesc attachment = {};

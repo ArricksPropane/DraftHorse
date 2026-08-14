@@ -1,4 +1,5 @@
 #include "test_utils.h"
+#include <shlobj.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -103,19 +104,30 @@ void TestUtilities::CleanupTestFiles(const std::string& tempDir) {
 }
 
 std::string TestUtilities::GetGoMapiTempDir() {
-    wchar_t tempPath[MAX_PATH];
-    if (GetTempPathW(MAX_PATH, tempPath) == 0) {
+    // ARRICKS-05: this returned %TEMP%\go-mapi, but the DLL moved its queue to
+    // %LOCALAPPDATA%\go-mapi\queue in quick/260423-msq. Every harness test has
+    // since been watching a directory the DLL never writes to. The harness is
+    // also not wired into CTest, so the breakage stayed invisible in CI.
+    //
+    // Must stay in step with FsUtils::GetBaseQueueDir().
+    wchar_t basePath[MAX_PATH];
+    HRESULT hr = SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr,
+                                  SHGFP_TYPE_CURRENT, basePath);
+    if (FAILED(hr)) {
         return "";
     }
 
     std::string result;
     // Convert wide string to narrow string
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, tempPath, -1, NULL, 0, NULL, NULL);
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, basePath, -1, NULL, 0, NULL, NULL);
+    if (size_needed <= 1) {
+        return "";
+    }
     result.resize(size_needed - 1);
-    WideCharToMultiByte(CP_UTF8, 0, tempPath, -1, &result[0], size_needed, NULL, NULL);
+    WideCharToMultiByte(CP_UTF8, 0, basePath, -1, &result[0], size_needed, NULL, NULL);
 
-    // Append go-mapi directory
-    result = fs::path(result).append("go-mapi").string();
+    // Append the queue directory: %LOCALAPPDATA%\go-mapi\queue
+    result = fs::path(result).append("go-mapi").append("queue").string();
     return result;
 }
 
