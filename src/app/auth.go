@@ -56,8 +56,11 @@ func (realKeyringStore) Delete(service, user string) error {
 
 // OAuth scopes (D-17 userinfo + AUTH-01 gmail).
 const (
-	scopeGmailCompose    = "https://www.googleapis.com/auth/gmail.compose"
-	scopeGmailSend       = "https://www.googleapis.com/auth/gmail.send"
+	scopeGmailCompose = "https://www.googleapis.com/auth/gmail.compose"
+	// ARRICKS-07: gmail.send removed. Nothing in this codebase ever sends
+	// mail — the only Gmail endpoint called is POST /users/me/drafts — so the
+	// scope bought nothing while telling every user at the consent screen
+	// that the app could send mail as them.
 	scopeUserinfoEmail   = "https://www.googleapis.com/auth/userinfo.email"
 	scopeUserinfoProfile = "https://www.googleapis.com/auth/userinfo.profile"
 	loopbackFlowTimeout  = 5 * time.Minute // Claude discretion per CONTEXT
@@ -243,7 +246,6 @@ func newOAuthConfig(redirectURL string) *oauth2.Config {
 		RedirectURL:  redirectURL,
 		Scopes: []string{
 			scopeGmailCompose,
-			scopeGmailSend,
 			scopeUserinfoEmail,
 			scopeUserinfoProfile,
 		},

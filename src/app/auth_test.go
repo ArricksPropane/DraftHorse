@@ -205,7 +205,8 @@ func TestAuthCodeURLHasPKCE(t *testing.T) {
 		t.Fatalf("expected access_type=offline, got %q", q.Get("access_type"))
 	}
 	scope := q.Get("scope")
-	for _, want := range []string{"gmail.compose", "gmail.send", "userinfo.email", "userinfo.profile"} {
+	// ARRICKS-07: gmail.send is deliberately absent — the app only creates drafts.
+	for _, want := range []string{"gmail.compose", "userinfo.email", "userinfo.profile"} {
 		if !strings.Contains(scope, want) {
 			t.Fatalf("scope missing %q: %q", want, scope)
 		}
