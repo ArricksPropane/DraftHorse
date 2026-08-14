@@ -145,9 +145,12 @@ func (m *automode) draftOne(e mapi.EmailWithId) error {
 	ctx, cancel := context.WithTimeout(m.app.shutdownCtx, 30*time.Second)
 	defer cancel()
 
+	// ARRICKS-08: capture the backing message id from the successful
+	// attempt so the open-in-browser deep link can target the draft.
+	var draftMessageID string
 	callErr := m.app.MakeAuthenticatedGmailCall(ctx, func(token string) (int, error) {
 		gc := mapi.NewGmailClientWithBase(token, gmailBaseURLOverride)
-		_, err := gc.CreateDraft(e.Message)
+		draft, err := gc.CreateDraftFull(e.Message)
 		if err != nil {
 			// RESEARCH §4 line 640-650: CreateDraft does not expose HTTP status code.
 			// "token expired" text means 401 (see gmail.go:91); everything else is 500.
@@ -157,6 +160,7 @@ func (m *automode) draftOne(e mapi.EmailWithId) error {
 			}
 			return 500, err
 		}
+		draftMessageID = draft.Message.ID
 		return 200, nil
 	})
 
@@ -196,6 +200,8 @@ func (m *automode) draftOne(e mapi.EmailWithId) error {
 	}
 	// Clear arrival + error toasts for this email from Action Center (NOTIF-05).
 	clearToastForEmail(e.Id)
+	// ARRICKS-08: surface the draft in the browser (no-op when toggled off).
+	m.app.openDraftInBrowser(draftMessageID)
 	m.emit("auto-draft-result", map[string]any{
 		"emailId": e.Id,
 		"success": true,

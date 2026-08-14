@@ -33,6 +33,7 @@ type AppSettings struct {
 	Mode                string `json:"mode"`                         // "manual" | "auto-draft"
 	UpdateChecksEnabled bool   `json:"update_checks_enabled"`        // ARRICKS-06 default off
 	LastUpdateCheck     string `json:"last_update_check,omitempty"`  // RFC3339, "" = never checked
+	OpenDraftInBrowser  bool   `json:"open_draft_in_browser"`        // ARRICKS-08 default on
 }
 
 const defaultMode = "manual"
@@ -48,6 +49,11 @@ func defaultAppSettings() AppSettings {
 		// deliberately through Intune, so the check has nothing useful to
 		// tell us and is one less outbound dependency on 12 machines.
 		UpdateChecksEnabled: false,
+		// ARRICKS-08: after a draft is created, open it in the default
+		// browser. Default on — the scan-to-email flow ends with the user
+		// finishing the draft in Gmail, so surfacing it immediately saves
+		// the hunt through mail.google.com. Toggleable from the tray menu.
+		OpenDraftInBrowser: true,
 	}
 }
 
@@ -77,6 +83,7 @@ func loadSettings() AppSettings {
 		Mode                string `json:"mode"`
 		UpdateChecksEnabled *bool  `json:"update_checks_enabled"`
 		LastUpdateCheck     string `json:"last_update_check"`
+		OpenDraftInBrowser  *bool  `json:"open_draft_in_browser"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		logError("settings: parse error, using defaults: %v", err)
@@ -89,6 +96,11 @@ func loadSettings() AppSettings {
 	// raw.Mode ∉ {"manual","auto-draft"}: keep defaultAppSettings().Mode.
 	if raw.UpdateChecksEnabled != nil {
 		out.UpdateChecksEnabled = *raw.UpdateChecksEnabled
+	}
+	// Absent → default true (pre-ARRICKS-08 settings files); explicit
+	// false = user opted out via the tray toggle.
+	if raw.OpenDraftInBrowser != nil {
+		out.OpenDraftInBrowser = *raw.OpenDraftInBrowser
 	}
 	out.LastUpdateCheck = raw.LastUpdateCheck
 	return out

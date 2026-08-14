@@ -123,6 +123,13 @@ func (a *App) onTrayReady() {
 	// Pause watching (D-14): suppresses toasts + halts automode; watcher keeps running.
 	// Session-only (D-15): label resets on restart. Placed between Show and Quit.
 	mPause := systray.AddMenuItem("Pause watching", "Silences toasts and auto-draft; queue still collecting")
+	// ARRICKS-08: open-draft-in-browser toggle. Writes through App settings
+	// (single persistence path, same as the update toggle below).
+	mOpenDraft := systray.AddMenuItemCheckbox(
+		"Open drafts in Gmail",
+		"After a draft is created, open it in your browser",
+		a.isOpenDraftInBrowserEnabled(),
+	)
 
 	// Phase 11 — update status rows + actions (D-05, D-06, D-07).
 	// Placement: between Pause and Quit, with a separator above and below to
@@ -154,7 +161,7 @@ func (a *App) onTrayReady() {
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit", "Exit go-mapi")
 
-	logInfo("tray ready: menu items registered (Show, Pause watching, update status + toggle + check-now, Quit)")
+	logInfo("tray ready: menu items registered (Show, Pause watching, open-drafts toggle, update status + toggle + check-now, Quit)")
 
 	go func() {
 		for {
@@ -170,6 +177,20 @@ func (a *App) onTrayReady() {
 				} else {
 					a.PauseWatching()
 					mPause.SetTitle("Resume watching")
+				}
+			case <-mOpenDraft.ClickedCh:
+				// ARRICKS-08 toggle. Same shape as the update toggle below:
+				// persist through App settings, Checked() flip stays on this
+				// goroutine (Win32 HWND affinity).
+				next := !mOpenDraft.Checked()
+				if err := a.setOpenDraftInBrowser(next); err != nil {
+					logError("tray: setOpenDraftInBrowser(%v): %v", next, err)
+					break
+				}
+				if next {
+					mOpenDraft.Check()
+				} else {
+					mOpenDraft.Uncheck()
 				}
 			case <-mToggleUpdates.ClickedCh:
 				// Flip the opt-out flag. setUpdateChecksEnabled writes through the
@@ -217,6 +238,13 @@ func (a *App) onTrayReady() {
 					mToggleUpdates.Check()
 				} else {
 					mToggleUpdates.Uncheck()
+				}
+				// ARRICKS-08: keep the open-drafts checkbox in sync when the
+				// toggle is flipped from a non-tray surface (Wails binding).
+				if a.isOpenDraftInBrowserEnabled() {
+					mOpenDraft.Check()
+				} else {
+					mOpenDraft.Uncheck()
 				}
 				if snap.UpdateAvailable {
 					mDownload.Show()
