@@ -425,3 +425,90 @@ TEST_CASE("ConvertWideMessage unknown recipient class routes to TO") {
     REQUIRE(result.toRecipients.size() == 1);
     CHECK(result.toRecipients[0].address == "unknown@x.com");
 }
+
+// ---------- SanitizeFilename (ARRICKS-02) ----------
+
+TEST_CASE("SanitizeFilename passes through an ordinary name") {
+    CHECK(SanitizeFilename("report.pdf") == "report.pdf");
+}
+
+TEST_CASE("SanitizeFilename replaces NTFS-illegal characters") {
+    // The realistic scanner case: a timestamped name containing colons.
+    // Previously this failed CopyFileW and dropped the entire message.
+    CHECK(SanitizeFilename("Scan 2026-08-14 09:12:33.pdf") ==
+          "Scan 2026-08-14 09_12_33.pdf");
+    CHECK(SanitizeFilename("a<b>c|d?e*f\"g.txt") == "a_b_c_d_e_f_g.txt");
+}
+
+TEST_CASE("SanitizeFilename strips path components (traversal)") {
+    CHECK(SanitizeFilename("..\\..\\..\\evil.lnk") == "evil.lnk");
+    CHECK(SanitizeFilename("C:\\TEMP\\scan.pdf") == "scan.pdf");
+    CHECK(SanitizeFilename("/etc/passwd") == "passwd");
+}
+
+TEST_CASE("SanitizeFilename handles the full-path fallback case") {
+    // mapi_impl falls back to att.path when lpszFileName is non-NULL but
+    // empty. The old code concatenated that whole path into the destination.
+    CHECK(SanitizeFilename("C:\\TEMP\\user\\1234\\attach.pdf") == "attach.pdf");
+}
+
+TEST_CASE("SanitizeFilename rejects alternate data streams") {
+    CHECK(SanitizeFilename("report.pdf:hidden") == "report.pdf_hidden");
+}
+
+TEST_CASE("SanitizeFilename strips control characters") {
+    CHECK(SanitizeFilename(std::string("bad\r\nname.txt")) == "bad__name.txt");
+    CHECK(SanitizeFilename(std::string("tab\there.txt")) == "tab_here.txt");
+}
+
+TEST_CASE("SanitizeFilename trims trailing dots and spaces") {
+    CHECK(SanitizeFilename("report.pdf.  ") == "report.pdf");
+    CHECK(SanitizeFilename("   report.pdf") == "report.pdf");
+    // A leading dot is legal on Windows and is preserved.
+    CHECK(SanitizeFilename(".hidden.txt") == ".hidden.txt");
+}
+
+TEST_CASE("SanitizeFilename rejects reserved device names") {
+    CHECK(SanitizeFilename("CON") == "attachment");
+    CHECK(SanitizeFilename("con.pdf") == "attachment");
+    CHECK(SanitizeFilename("LPT1.txt") == "attachment");
+    CHECK(SanitizeFilename("NUL") == "attachment");
+    // Not reserved — only an exact stem match counts.
+    CHECK(SanitizeFilename("CONTRACT.pdf") == "CONTRACT.pdf");
+}
+
+TEST_CASE("SanitizeFilename never returns empty") {
+    CHECK(SanitizeFilename("") == "attachment");
+    CHECK(SanitizeFilename("   ") == "attachment");
+    CHECK(SanitizeFilename("...") == "attachment");
+    CHECK(SanitizeFilename("C:\\dir\\") == "attachment");
+}
+
+TEST_CASE("SanitizeFilename caps length and keeps the extension") {
+    std::string longName(500, 'a');
+    std::string result = SanitizeFilename(longName + ".pdf");
+    CHECK(result.size() <= kMaxSanitizedBasename);
+    CHECK(result.substr(result.size() - 4) == ".pdf");
+}
+
+TEST_CASE("SanitizeFilename truncation preserves valid UTF-8") {
+    // 3-byte euro signs: a naive byte cut would leave a partial sequence,
+    // which corrupts the queue JSON downstream.
+    std::string euros;
+    for (int i = 0; i < 200; ++i) euros += "\xE2\x82\xAC";
+    std::string result = SanitizeFilename(euros + ".pdf");
+    CHECK(result.size() <= kMaxSanitizedBasename);
+    // Every byte that is not a continuation byte must start a valid sequence.
+    size_t i = 0;
+    while (i < result.size()) {
+        unsigned char c = static_cast<unsigned char>(result[i]);
+        size_t len = (c < 0x80) ? 1 : ((c & 0xE0) == 0xC0) ? 2
+                                  : ((c & 0xF0) == 0xE0)   ? 3
+                                  : ((c & 0xF8) == 0xF0)   ? 4
+                                                           : 0;
+        REQUIRE(len > 0);
+        REQUIRE(i + len <= result.size());
+        i += len;
+    }
+    CHECK(i == result.size());
+}

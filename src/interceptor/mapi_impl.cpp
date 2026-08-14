@@ -40,9 +40,24 @@ static bool CopyAttachmentsForStem(MailMessage& msg, const std::wstring& stem) {
             // will skip empty-path attachments). Still counts as success.
             continue;
         }
-        // Basename fallback: prefer explicit filename, else message_converter
-        // already derived it from the path via FilenameFromPath.
-        std::string basename = !att.filename.empty() ? att.filename : att.path;
+        // ARRICKS-02: prefer the caller's explicit filename, fall back to the
+        // path, then sanitise unconditionally.
+        //
+        // The previous code passed the raw value straight through to
+        // CopyFileToDir. Two bugs followed. First, message_converter guards on
+        // the lpszFileName *pointer* rather than on emptiness, so a non-NULL
+        // but empty lpszFileName (common in older MFC wrappers) left
+        // att.filename empty and this fell back to the full path — producing
+        // a destination of "...\queue\<stem>\C:\TEMP\scan.pdf", which fails to
+        // copy and drops the whole message. Second, nothing rejected NTFS
+        // -illegal characters or "..\" traversal.
+        //
+        // SanitizeFilename reduces a path to its leaf, so both cases collapse
+        // to the same safe answer. att.filename is deliberately left alone:
+        // it becomes the MIME filename in the draft, where the caller's
+        // original name is both valid and friendlier.
+        std::string basename = message_converter::SanitizeFilename(
+            !att.filename.empty() ? att.filename : att.path);
 
         std::wstring newPath;
         uint32_t newSize = 0;

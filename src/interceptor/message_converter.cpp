@@ -1,5 +1,6 @@
 #include "message_converter.h"
 #include <windows.h>
+#include <cctype>
 #include <string>
 
 namespace go_mapi {
@@ -32,6 +33,93 @@ std::string FilenameFromPath(const std::string& path) {
         return path.substr(pos + 1);
     }
     return path;
+}
+
+// ARRICKS-02 helper: reserved DOS device names are rejected by the filesystem
+// regardless of extension, so "CON", "con.pdf" and "NUL.txt" all fail.
+static bool IsReservedDeviceName(const std::string& name) {
+    // Compare only the stem, upper-cased.
+    std::string stem = name.substr(0, name.find('.'));
+    for (auto& c : stem) {
+        c = static_cast<char>(::toupper(static_cast<unsigned char>(c)));
+    }
+    static const char* kReserved[] = {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
+    for (const char* r : kReserved) {
+        if (stem == r) return true;
+    }
+    return false;
+}
+
+std::string SanitizeFilename(const std::string& nameOrPath) {
+    // Always reduce to a leaf name first. FilenameFromPath deliberately
+    // returns its input unchanged when the string ends in a separator (that
+    // behaviour is locked in by message_converter_tests.cpp), so strip
+    // separators here rather than relying on it. This also neutralises
+    // "..\..\" traversal and any drive-qualified path.
+    std::string name = nameOrPath;
+    auto pos = name.find_last_of("\\/");
+    if (pos != std::string::npos) {
+        name = name.substr(pos + 1);
+    }
+
+    // Replace everything NTFS rejects, plus control characters. Note ':' also
+    // closes off NTFS alternate data streams ("report.pdf:hidden").
+    static const std::string kIllegal = "<>:\"/\\|?*";
+    std::string out;
+    out.reserve(name.size());
+    for (unsigned char c : name) {
+        if (c < 0x20 || c == 0x7F ||
+            kIllegal.find(static_cast<char>(c)) != std::string::npos) {
+            out += '_';
+        } else {
+            out += static_cast<char>(c);
+        }
+    }
+
+    // Windows silently drops trailing dots and spaces, which would leave the
+    // recorded name and the name on disk disagreeing. Leading dots are legal
+    // and preserved; leading spaces are not useful and are dropped.
+    while (!out.empty() && (out.back() == '.' || out.back() == ' ')) {
+        out.pop_back();
+    }
+    size_t firstKeep = out.find_first_not_of(' ');
+    if (firstKeep == std::string::npos) {
+        out.clear();
+    } else if (firstKeep > 0) {
+        out = out.substr(firstKeep);
+    }
+
+    // Cap the length so destDir + basename stays clear of MAX_PATH, keeping
+    // the extension so the attachment still opens with the right application.
+    if (out.size() > kMaxSanitizedBasename) {
+        std::string ext;
+        auto dot = out.find_last_of('.');
+        if (dot != std::string::npos && dot > 0 && out.size() - dot <= 12) {
+            ext = out.substr(dot);
+        }
+        size_t keep = kMaxSanitizedBasename > ext.size()
+                          ? kMaxSanitizedBasename - ext.size()
+                          : 0;
+        // Never cut a multi-byte UTF-8 sequence in half — the result is
+        // serialised into JSON and would corrupt the queue file.
+        while (keep > 0 &&
+               (static_cast<unsigned char>(out[keep]) & 0xC0) == 0x80) {
+            --keep;
+        }
+        out = out.substr(0, keep) + ext;
+    }
+
+    if (out.empty() || out == "." || out == ".." || IsReservedDeviceName(out)) {
+        // "attachment" with no extension is deliberate: we have nothing
+        // trustworthy left to infer one from. The Gmail-side MIME filename
+        // still carries the caller's original name.
+        return "attachment";
+    }
+    return out;
 }
 
 // QUICK-260423-qpx: many legacy Simple MAPI callers (Spanish SendEmail-style
