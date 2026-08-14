@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ARRICKS-09: make go-mapi the mailto: handler fleet-wide.
+
+  Windows 11 hash-protects per-user UserChoice keys, so no installer can
+  seize a protocol default. The supported ways to set it:
+
+    - Per machine, by hand: Settings > Apps > Default apps > go-mapi >
+      mailto. One click, sticks until changed.
+
+    - Fleet-wide via Intune: deploy this file with the
+      "Default Associations Configuration" policy
+      (Settings Catalog: Administrative Templates > Windows Components >
+      File Explorer > Set a default associations configuration file),
+      pointing the policy at this XML's deployed path. Windows applies it
+      to each NEW user profile at first sign-in, and to existing profiles
+      that have not manually chosen a mailto handler.
+
+  Note: this covers mailto: links only. The Simple MAPI default (scanner
+  Scan-to-Email, Send to > Mail recipient) is registry-based and already
+  set machine-wide by the installer itself.
+-->
+<DefaultAssociations>
+  <Association Identifier="mailto" ProgId="go-mapi.mailto" ApplicationName="go-mapi" />
+</DefaultAssociations>

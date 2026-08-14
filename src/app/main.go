@@ -36,6 +36,19 @@ func main() {
 		os.Exit(0)
 	}
 
+	// ARRICKS-09: mailto protocol handler. Registered by the installer as
+	// `go-mapi.exe --mailto "%1"` (go-mapi.mailto ProgID). Opens Gmail web
+	// compose prefilled from the URL and exits — deliberately BEFORE the
+	// single-instance gate so a mailto click neither raises the tray app's
+	// window nor boots a second full instance. See mailto.go.
+	if len(os.Args) >= 2 && os.Args[1] == "--mailto" {
+		arg := ""
+		if len(os.Args) >= 3 {
+			arg = os.Args[2]
+		}
+		os.Exit(runMailtoHandler(arg))
+	}
+
 	raised, siErr := acquireSingleInstance()
 	if siErr != nil {
 		logError("single-instance: %v", siErr)

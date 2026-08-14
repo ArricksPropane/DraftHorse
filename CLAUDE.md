@@ -12,6 +12,15 @@ A fork of `marcfargas/go-mapi`, a Windows Simple MAPI → Gmail bridge. It
 registers a DLL as the system default mail client so "Send to → Mail recipient"
 in any Windows application creates a Gmail draft with the attachments in place.
 
+Fork additions on top of that: created drafts open in the browser
+(ARRICKS-08, `src/app/draftlink.go`, tray-toggleable), and the app registers
+as a `mailto:` handler through the Windows Default Apps model (ARRICKS-09,
+`go-mapi.mailto` ProgID + Capabilities/RegisteredApplications in the
+installer). A mailto click runs `go-mapi.exe --mailto "%1"`, which opens
+Gmail web compose prefilled from the URL and exits — no draft API call, no
+auth, still nothing ever sent. Fleet-wide default via Intune:
+`docs/mailto-default-associations.xml`.
+
 **Why a fork rather than upstream binaries:** it replaces Affixa, which retires
 **31 January 2027**. Owning the source is the entire point — the fork is what
 makes us independent of a single upstream maintainer.

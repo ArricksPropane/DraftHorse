@@ -84,6 +84,19 @@ Describe "go-mapi installer round-trip" {
             (Get-ItemProperty -Path $script:MapiKey -Name '(default)').'(default)' | Should -Be 'go-mapi'
         }
 
+        # ARRICKS-09: mailto handler + Default Apps (Capabilities/RegisteredApplications)
+        It "26. mailto ProgID and Default Apps registration exist" {
+            $cmdKey = 'HKLM:\SOFTWARE\Classes\go-mapi.mailto\shell\open\command'
+            Test-Path $cmdKey | Should -BeTrue
+            $cmd = (Get-ItemProperty -Path $cmdKey -Name '(default)').'(default)'
+            $cmd | Should -Match 'go-mapi\.exe'
+            $cmd | Should -Match '--mailto'
+            (Get-ItemProperty -Path "$script:MapiKey\Capabilities\URLAssociations" -Name 'mailto').'mailto' |
+                Should -Be 'go-mapi.mailto'
+            (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -Name 'go-mapi').'go-mapi' |
+                Should -Be 'SOFTWARE\Clients\Mail\go-mapi\Capabilities'
+        }
+
         # D-21 item 4
         It "4. previous-mail-client.json backup exists and parses with required fields" {
             Test-Path $script:BackupJson | Should -BeTrue
@@ -310,6 +323,13 @@ Describe "go-mapi installer round-trip" {
         # D-21 item 9
         It "9. MAPI handler key HKLM\SOFTWARE\Clients\Mail\go-mapi is gone" {
             Test-Path $script:MapiKey | Should -BeFalse
+        }
+
+        # ARRICKS-09: mailto registration removed with the app
+        It "27. mailto ProgID and RegisteredApplications entry are gone" {
+            Test-Path 'HKLM:\SOFTWARE\Classes\go-mapi.mailto' | Should -BeFalse
+            (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -ErrorAction SilentlyContinue).'go-mapi' |
+                Should -BeNullOrEmpty
         }
 
         # D-21 item 10

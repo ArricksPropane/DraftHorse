@@ -168,6 +168,29 @@ Section "Install" SecInstall
   WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "go-mapi"
   SetRegView default
 
+  ; ARRICKS-09 — mailto: protocol handler + Default Apps registration.
+  ; Three pieces, all machine-wide, native (64-bit) view only — Default Apps
+  ; and UserChoice resolve ProgIDs from the native Classes view:
+  ;
+  ;  1. The go-mapi.mailto ProgID: shell open command Windows invokes when
+  ;     go-mapi is the chosen mailto handler. --mailto opens Gmail web
+  ;     compose prefilled from the URL (see src/app/mailto.go) and exits.
+  ;  2. Capabilities under the existing Clients\Mail\go-mapi key (canonical
+  ;     location for mail clients), advertising the mailto association.
+  ;  3. The RegisteredApplications pointer that makes go-mapi appear in
+  ;     Settings > Default apps.
+  ;
+  ; Deliberately NOT written: HKCU\...\UserChoice. Windows 11 hash-protects
+  ; it; the user picks go-mapi once in Settings > Default apps, or Intune
+  ; sets it fleet-wide (docs\mailto-default-associations.xml).
+  WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto" "" "go-mapi mailto handler"
+  WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto\DefaultIcon" "" "$INSTDIR\go-mapi.exe,0"
+  WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto\shell\open\command" "" '"$INSTDIR\go-mapi.exe" --mailto "%1"'
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities" "ApplicationName" "go-mapi"
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities" "ApplicationDescription" "Creates Gmail drafts from Simple MAPI calls and opens Gmail compose for mailto: links"
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities\URLAssociations" "mailto" "go-mapi.mailto"
+  WriteRegStr HKLM "SOFTWARE\RegisteredApplications" "go-mapi" "SOFTWARE\Clients\Mail\go-mapi\Capabilities"
+
   ; Uninstaller binary
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
@@ -714,8 +737,15 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\go-mapi.lnk"
   SetShellVarContext current
 
-  ; 3. MAPI handler key (native view)
+  ; 3. MAPI handler key (native view). Also removes the ARRICKS-09
+  ; Capabilities subtree living under it.
   DeleteRegKey HKLM "SOFTWARE\Clients\Mail\go-mapi"
+
+  ; 3a. ARRICKS-09 — mailto ProgID + RegisteredApplications pointer.
+  ; Windows tolerates a dangling UserChoice (it falls back to asking the
+  ; user), but the ProgID and the Default Apps listing must go.
+  DeleteRegKey HKLM "SOFTWARE\Classes\go-mapi.mailto"
+  DeleteRegValue HKLM "SOFTWARE\RegisteredApplications" "go-mapi"
 
   ; 3b. QUICK-260423-ntu T3c — WOW6432 MAPI handler key (32-bit view)
   SetRegView 32
