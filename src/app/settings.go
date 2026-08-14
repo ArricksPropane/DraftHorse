@@ -20,8 +20,9 @@ import (
 // start to prevent "I paused a month ago and forgot" silent failure mode.
 //
 // Update-check fields (Phase 11, D-05/D-07/D-08):
-//   - UpdateChecksEnabled: user opt-out toggle (REL-05). Defaults to true so
-//     existing settings files missing the field still get update checks.
+//   - UpdateChecksEnabled: user opt-in toggle (REL-05). ARRICKS-06: defaults
+//     to false — this deployment updates through Intune, so the notify check
+//     is strictly opt-in (see defaultAppSettings).
 //   - LastUpdateCheck: RFC3339 timestamp of the most recent check attempt
 //     (success OR failure). Empty string on first run / never-checked.
 //     Consumed by the cadence gate and by tray/frontend "Last checked" status
@@ -30,7 +31,7 @@ import (
 //     that preserves the single-writer atomic-save invariant.
 type AppSettings struct {
 	Mode                string `json:"mode"`                         // "manual" | "auto-draft"
-	UpdateChecksEnabled bool   `json:"update_checks_enabled"`        // D-08 default enabled
+	UpdateChecksEnabled bool   `json:"update_checks_enabled"`        // ARRICKS-06 default off
 	LastUpdateCheck     string `json:"last_update_check,omitempty"`  // RFC3339, "" = never checked
 }
 
@@ -38,7 +39,7 @@ const defaultMode = "manual"
 
 // defaultAppSettings returns the settings used on first run, corrupt file,
 // or any other fallback path. Keeping this one builder means every fallback
-// code path gets the same defaults — notably D-08 UpdateChecksEnabled=true.
+// code path gets the same defaults — notably ARRICKS-06 UpdateChecksEnabled=false.
 func defaultAppSettings() AppSettings {
 	return AppSettings{
 		Mode:                defaultMode,

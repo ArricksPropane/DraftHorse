@@ -89,7 +89,7 @@ func TestUpdateNotificationFallsBackToReleasesLandingPage(t *testing.T) {
 	if url == installerDownloadURL {
 		t.Error("fallback must not point at the installer URL")
 	}
-	if !strings.Contains(url, "github.com/marcfargas/go-mapi/releases") {
+	if !strings.Contains(url, "github.com/"+gitHubOwner+"/"+gitHubRepo+"/releases") {
 		t.Errorf("fallback URL should point at the repo releases page; got %q", url)
 	}
 }

@@ -42,15 +42,17 @@ func (s *stubReleaseFetcher) FetchLatestRelease(ctx context.Context) (*latestRel
 	return s.release, nil
 }
 
-// Test 1: missing/corrupt settings normalize to UpdateChecksEnabled=true and
-// an empty last-checked value. Confirms D-08 default-enabled semantics.
+// Test 1: missing/corrupt settings normalize to UpdateChecksEnabled=false and
+// an empty last-checked value. ARRICKS-06 inverts upstream's D-08
+// default-enabled semantics: this deployment updates through Intune, so the
+// notify check defaults off and is strictly opt-in.
 func TestSettingsUpdateDefaultsEnabled(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOMAPI_APPDATA_DIR", dir)
 
 	got := loadSettings()
-	if !got.UpdateChecksEnabled {
-		t.Errorf("UpdateChecksEnabled should default to true on first run, got false")
+	if got.UpdateChecksEnabled {
+		t.Errorf("UpdateChecksEnabled should default to false on first run (ARRICKS-06), got true")
 	}
 	if got.LastUpdateCheck != "" {
 		t.Errorf("LastUpdateCheck should default to empty on first run, got %q", got.LastUpdateCheck)
@@ -58,7 +60,8 @@ func TestSettingsUpdateDefaultsEnabled(t *testing.T) {
 }
 
 // Test 1b: existing settings file missing the update fields should hydrate
-// with UpdateChecksEnabled=true (flat-fields back-compat for D-05).
+// with UpdateChecksEnabled=false (ARRICKS-06 default; flat-fields back-compat
+// for D-05).
 func TestSettingsUpdateBackCompatPartialJSON(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOMAPI_APPDATA_DIR", dir)
@@ -69,8 +72,8 @@ func TestSettingsUpdateBackCompatPartialJSON(t *testing.T) {
 	}
 
 	got := loadSettings()
-	if !got.UpdateChecksEnabled {
-		t.Errorf("UpdateChecksEnabled should default to true when field is absent, got false")
+	if got.UpdateChecksEnabled {
+		t.Errorf("UpdateChecksEnabled should default to false when field is absent (ARRICKS-06), got true")
 	}
 	if got.Mode != "manual" {
 		t.Errorf("Mode should be preserved across the settings load, got %q", got.Mode)
@@ -78,7 +81,7 @@ func TestSettingsUpdateBackCompatPartialJSON(t *testing.T) {
 }
 
 // Test 1c: corrupt JSON falls back to the full default AppSettings (Mode=manual,
-// UpdateChecksEnabled=true) without surfacing an error.
+// UpdateChecksEnabled=false per ARRICKS-06) without surfacing an error.
 func TestSettingsUpdateCorruptFallsBackToDefaults(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOMAPI_APPDATA_DIR", dir)
@@ -88,8 +91,8 @@ func TestSettingsUpdateCorruptFallsBackToDefaults(t *testing.T) {
 	}
 
 	got := loadSettings()
-	if !got.UpdateChecksEnabled {
-		t.Error("UpdateChecksEnabled should default to true on corrupt JSON")
+	if got.UpdateChecksEnabled {
+		t.Error("UpdateChecksEnabled should default to false on corrupt JSON (ARRICKS-06)")
 	}
 	if got.Mode != "manual" {
 		t.Errorf("Mode should default to manual on corrupt JSON, got %q", got.Mode)
