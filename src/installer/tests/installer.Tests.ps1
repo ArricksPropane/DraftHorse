@@ -192,9 +192,13 @@ Describe "go-mapi installer round-trip" {
             Test-Path $script:AppDataLnk  | Should -BeFalse -Because "D-03: per-user shortcut MUST NOT be created (%APPDATA%)"
         }
 
-        # Phase 11.1 D-08 / D-18 case 1 — /AUTOUPDATE=1 registers the Scheduled Task
-        It "22. /AUTOUPDATE=1 install registers the Scheduled Task with correct principal + triggers" {
-            # Self-contained: uninstall + reinstall with /AUTOUPDATE=1.
+        # ARRICKS-06 — /AUTOUPDATE=1 must now be INERT.
+        #
+        # Replaces the upstream test that asserted the flag registers a
+        # SYSTEM Scheduled Task. RegisterScheduledTask and the /AUTOUPDATE=
+        # parser have been removed, so a deployment script still carrying the
+        # old flag must not be able to re-arm the updater.
+        It "22. /AUTOUPDATE=1 install does NOT register a Scheduled Task (flag is inert)" {
             $uninst = Join-Path $script:InstallDir 'uninstall.exe'
             if (Test-Path $uninst) {
                 Start-Process -FilePath $uninst -ArgumentList '/S' -Wait | Out-Null
@@ -204,21 +208,17 @@ Describe "go-mapi installer round-trip" {
             $proc.ExitCode | Should -Be 0
             Start-Sleep -Seconds 1   # Pitfall 5: let Task Scheduler cache settle.
 
-            $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
-            $task | Should -Not -BeNullOrEmpty
-            # Get-ScheduledTask under PS5.1 resolves the principal SID to its
-            # friendly name and returns enum values as ints. Both the resolved
-            # form (SYSTEM / Highest / IgnoreNew) and the raw form (S-1-5-18 /
-            # 1 / 2) are equivalent — accept either to stay portable across
-            # PS5.1 vs PS7+ runners. Verified by Plan 11.1-05 sandbox UAT under
-            # PS5.1 (returned SYSTEM / 1 / 2).
-            $task.Principal.UserId                    | Should -BeIn @('S-1-5-18','SYSTEM')
-            $task.Principal.RunLevel                  | Should -BeIn @('Highest', 1)
-            $task.Settings.MultipleInstances          | Should -BeIn @('IgnoreNew', 2)
-            $task.Settings.RunOnlyIfNetworkAvailable  | Should -BeTrue
-            $task.Settings.StartWhenAvailable         | Should -BeTrue
-            $task.Triggers.Count                      | Should -Be 2   # CalendarTrigger + BootTrigger
-            ($task.Actions | Where-Object { $_.Execute -match 'go-mapi\.exe' }).Arguments | Should -Be '--update-check-silent'
+            Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue |
+                Should -BeNullOrEmpty -Because "ARRICKS-06: the installer must never create the auto-update task, even when the legacy flag is passed"
+        }
+
+        # ARRICKS-06 — the binary must ignore the silent-update flag entirely.
+        It "22b. go-mapi.exe --update-check-silent is a no-op" {
+            $exe = Join-Path $script:InstallDir 'go-mapi.exe'
+            $proc = Start-Process -FilePath $exe -ArgumentList '--update-check-silent' -Wait -PassThru
+            $proc.ExitCode | Should -Be 0
+            Test-Path (Join-Path $env:ProgramData 'go-mapi\updates\update.log') |
+                Should -BeFalse -Because "ARRICKS-06: no silent update routine should run, so no update log should be produced"
         }
 
         # Phase 11.1 D-07 / D-18 case 2 — /AUTOUPDATE absent: no Scheduled Task

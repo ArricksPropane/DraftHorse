@@ -11,6 +11,7 @@ extern int test_multiple_recipients();
 extern int test_unicode_wide();
 extern int test_ansi_encoding();
 extern int test_null_filename();
+extern int test_send_documents();
 
 using namespace mapi_test;
 
@@ -51,6 +52,7 @@ int main(int argc, char* argv[]) {
         { "Multiple Recipients", test_multiple_recipients },
         { "ANSI Codepage Encoding", test_ansi_encoding },
         { "Null Filename (path fallback)", test_null_filename },
+        { "MAPISendDocuments (scanner path)", test_send_documents },
     };
 
     for (const auto& test : tests) {

@@ -12,6 +12,11 @@
 
 namespace go_mapi {
 
+// ARRICKS-04: sanity bound on a caller-supplied attachment list. Gmail rejects
+// anything remotely near this, so a larger list means the caller handed us
+// garbage rather than a real message.
+static constexpr size_t kMaxAttachmentCount = 256;
+
 // QUICK-260423-tk6: copy attachments into a stable sibling dir keyed off the
 // supplied stem. On success, mutates msg.attachments in-place so each entry's
 // `path` points at the new copy and `size` reflects the copied byte count.
@@ -40,9 +45,24 @@ static bool CopyAttachmentsForStem(MailMessage& msg, const std::wstring& stem) {
             // will skip empty-path attachments). Still counts as success.
             continue;
         }
-        // Basename fallback: prefer explicit filename, else message_converter
-        // already derived it from the path via FilenameFromPath.
-        std::string basename = !att.filename.empty() ? att.filename : att.path;
+        // ARRICKS-02: prefer the caller's explicit filename, fall back to the
+        // path, then sanitise unconditionally.
+        //
+        // The previous code passed the raw value straight through to
+        // CopyFileToDir. Two bugs followed. First, message_converter guards on
+        // the lpszFileName *pointer* rather than on emptiness, so a non-NULL
+        // but empty lpszFileName (common in older MFC wrappers) left
+        // att.filename empty and this fell back to the full path — producing
+        // a destination of "...\queue\<stem>\C:\TEMP\scan.pdf", which fails to
+        // copy and drops the whole message. Second, nothing rejected NTFS
+        // -illegal characters or "..\" traversal.
+        //
+        // SanitizeFilename reduces a path to its leaf, so both cases collapse
+        // to the same safe answer. att.filename is deliberately left alone:
+        // it becomes the MIME filename in the draft, where the caller's
+        // original name is both valid and friendlier.
+        std::string basename = message_converter::SanitizeFilename(
+            !att.filename.empty() ? att.filename : att.path);
 
         std::wstring newPath;
         uint32_t newSize = 0;
@@ -73,6 +93,60 @@ static bool CopyAttachmentsForStem(MailMessage& msg, const std::wstring& stem) {
         att.size = newSize;
     }
     return true;
+}
+
+// ARRICKS-03: shared tail for every entry point that queues a message.
+// Generates the stem, copies attachments into the queue-owned sibling dir,
+// then writes the JSON.
+//
+// Also fixes the leak on the JSON-write failure path: the attachment-copy
+// failure path had careful rollback but this one had none, so a failed write
+// (disk full, AV lock, stem collision) left copies of the attachments in
+// %LOCALAPPDATA% with nothing to ever clean them up.
+static ULONG QueueMessage(MailMessage& msg) {
+    std::wstring stem = FsUtils::GenerateUniqueStem();
+    if (!CopyAttachmentsForStem(msg, stem)) {
+        // Error file already written by CopyAttachmentsForStem; do NOT write
+        // the JSON — half a message would silently drop attachments.
+        return MAPI_E_FAILURE;
+    }
+
+    std::wstring filePath = JsonWriter::WriteMailToFileWithStem(msg, stem);
+    if (filePath.empty()) {
+        FsUtils::RemoveAttachmentsDirForStem(stem);
+        FsUtils::WriteErrorForStem(stem, "failed to write queue JSON");
+        return MAPI_E_FAILURE;
+    }
+    return SUCCESS_SUCCESS;
+}
+
+// ARRICKS-04 helper: split a delimited list as supplied to MAPISendDocuments.
+// lpszDelimChar may name more than one delimiter character; any of them
+// separates entries. Surrounding whitespace is trimmed and empty entries are
+// dropped, since "a; b;" is common in the wild.
+static std::vector<std::string> SplitDelimited(const std::string& s,
+                                               const std::string& delims) {
+    std::vector<std::string> out;
+    if (s.empty()) return out;
+
+    const std::string effective = delims.empty() ? std::string(";") : delims;
+    size_t start = 0;
+    while (start <= s.size()) {
+        size_t pos = s.find_first_of(effective, start);
+        std::string piece = (pos == std::string::npos)
+                                ? s.substr(start)
+                                : s.substr(start, pos - start);
+
+        size_t b = piece.find_first_not_of(" \t");
+        size_t e = piece.find_last_not_of(" \t");
+        if (b != std::string::npos) {
+            out.push_back(piece.substr(b, e - b + 1));
+        }
+
+        if (pos == std::string::npos) break;
+        start = pos + 1;
+    }
+    return out;
 }
 
 std::string MapiImpl::GetOriginApplicationName() {
@@ -119,19 +193,7 @@ ULONG MapiImpl::MAPISendMailA(
         // BEFORE writing the JSON. The legacy Spanish MAPI caller deletes its
         // own TEMP directory as soon as this function returns, so the Wails
         // app would otherwise see "attachment not found" on draft creation.
-        std::wstring stem = FsUtils::GenerateUniqueStem();
-        if (!CopyAttachmentsForStem(msg, stem)) {
-            // Error file already written by CopyAttachmentsForStem; do NOT
-            // write the JSON — half-a-message would silently drop attachments.
-            return MAPI_E_FAILURE;
-        }
-        std::wstring filePath = JsonWriter::WriteMailToFileWithStem(msg, stem);
-
-        if (filePath.empty()) {
-            return MAPI_E_FAILURE;
-        }
-
-        return SUCCESS_SUCCESS;
+        return QueueMessage(msg);
     } catch (...) {
         return MAPI_E_FAILURE;
     }
@@ -157,17 +219,7 @@ ULONG MapiImpl::MAPISendMailW(
         // QUICK-260423-tk6: same lifetime fix as the ANSI path — copy
         // attachments into %LOCALAPPDATA%\go-mapi\queue\<stem>\ before the
         // caller's TEMP dir disappears on return.
-        std::wstring stem = FsUtils::GenerateUniqueStem();
-        if (!CopyAttachmentsForStem(msg, stem)) {
-            return MAPI_E_FAILURE;
-        }
-        std::wstring filePath = JsonWriter::WriteMailToFileWithStem(msg, stem);
-
-        if (filePath.empty()) {
-            return MAPI_E_FAILURE;
-        }
-
-        return SUCCESS_SUCCESS;
+        return QueueMessage(msg);
     } catch (...) {
         return MAPI_E_FAILURE;
     }
@@ -203,6 +255,19 @@ ULONG MapiImpl::MAPIFreeBuffer(LPVOID pv) {
     return SUCCESS_SUCCESS;
 }
 
+// ARRICKS-04: MAPISendDocuments was exported but was a stub that returned
+// SUCCESS_SUCCESS without doing anything. Callers were told the mail had been
+// handled, typically deleted their temp file, and nothing was ever queued —
+// silent data loss with a positive confirmation to the user.
+//
+// MAPISendDocuments is the simplest Simple MAPI entry point and is a common
+// choice for scanner / MFP "Scan to Email" software and older line-of-business
+// applications, which is precisely the population this deployment serves.
+//
+// Semantics: lpszFilePaths is a delimited list of full paths, lpszFileNames an
+// optional parallel list of display names, and lpszDelimChar names the
+// delimiter (semicolon when absent). There are no recipients, subject or body
+// — the user supplies those in the draft.
 ULONG MapiImpl::MAPISendDocuments(
     ULONG_PTR ulUIParam,
     LPSTR lpszDelimChar,
@@ -210,8 +275,52 @@ ULONG MapiImpl::MAPISendDocuments(
     LPSTR lpszFileNames,
     ULONG ulReserved
 ) {
-    // Stub: not implemented yet
-    return SUCCESS_SUCCESS;
+    if (!lpszFilePaths || !lpszFilePaths[0]) {
+        return MAPI_E_ATTACHMENT_NOT_FOUND;
+    }
+
+    try {
+        // Convert first, then split. Splitting the raw ANSI bytes risks
+        // cutting a lead-byte pair on a DBCS system code page; ASCII
+        // delimiters are unambiguous once the text is UTF-8.
+        const std::string pathsUtf8 = message_converter::AnsiToUtf8(lpszFilePaths);
+        const std::string namesUtf8 =
+            lpszFileNames ? message_converter::AnsiToUtf8(lpszFileNames) : std::string();
+        const std::string delims =
+            (lpszDelimChar && lpszDelimChar[0])
+                ? message_converter::AnsiToUtf8(lpszDelimChar)
+                : std::string(";");
+
+        const std::vector<std::string> paths = SplitDelimited(pathsUtf8, delims);
+        const std::vector<std::string> names = SplitDelimited(namesUtf8, delims);
+
+        if (paths.empty()) {
+            return MAPI_E_ATTACHMENT_NOT_FOUND;
+        }
+        if (paths.size() > kMaxAttachmentCount) {
+            return MAPI_E_TOO_MANY_FILES;
+        }
+
+        MailMessage msg;
+        msg.bodyFormat = "plain";
+        msg.originApp = GetOriginApplicationName();
+
+        for (size_t i = 0; i < paths.size(); ++i) {
+            Attachment att;
+            att.path = paths[i];
+            // The display-name list is optional and may be shorter than the
+            // path list; fall back to the leaf of the path.
+            att.filename = (i < names.size() && !names[i].empty())
+                               ? names[i]
+                               : message_converter::FilenameFromPath(paths[i]);
+            att.size = 0;
+            msg.attachments.push_back(att);
+        }
+
+        return QueueMessage(msg);
+    } catch (...) {
+        return MAPI_E_FAILURE;
+    }
 }
 
 } // namespace go_mapi

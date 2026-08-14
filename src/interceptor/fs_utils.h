@@ -51,6 +51,14 @@ public:
                               std::wstring& outNewPath,
                               uint32_t& outSize);
 
+    // ARRICKS-03: best-effort removal of the per-message attachments dir and
+    // everything in it. Used when the JSON write fails after attachments have
+    // already been copied — without this the copies stay in %LOCALAPPDATA%
+    // indefinitely, because the Go watcher only cleans <stem>\ as a side
+    // effect of processing <stem>.json and there is no orphan sweep anywhere.
+    // Scanned documents are exactly the content that should not linger.
+    static bool RemoveAttachmentsDirForStem(const std::wstring& stem);
+
     // Write a short, UTF-8 reason string to %LOCALAPPDATA%\go-mapi\queue\errors\<stem>.error.
     // Used when the DLL cannot land an attachment copy and must abort before
     // writing the JSON (see mapi_impl.cpp MAPISendMailA/W orchestration).

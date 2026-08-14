@@ -42,7 +42,11 @@ const defaultMode = "manual"
 func defaultAppSettings() AppSettings {
 	return AppSettings{
 		Mode:                defaultMode,
-		UpdateChecksEnabled: true,
+		// ARRICKS-06: default off. Upstream defaults this on, which contacts
+		// api.github.com every 24h from every user session. We deploy
+		// deliberately through Intune, so the check has nothing useful to
+		// tell us and is one less outbound dependency on 12 machines.
+		UpdateChecksEnabled: false,
 	}
 }
 

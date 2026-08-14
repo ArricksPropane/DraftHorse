@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"os"
-	"time"
 
 	"github.com/pkg/browser"
 	"github.com/wailsapp/wails/v2"
@@ -18,15 +16,24 @@ var assets embed.FS
 var Version = "0.0.0-dev" // overridden via -ldflags "-X main.Version=..."
 
 func main() {
-	// PHASE 11.1 (D-10, RESEARCH §Pitfall 7): silent-update guard. MUST be the
-	// first statement in main(). The Task Scheduler runs us as SYSTEM in
-	// session 0 — WebView2 init would crash there, single-instance acquire is
-	// not needed (separate session namespace), and no user is present to
-	// approve OAuth re-auth. The silent path runs its own routine and exits.
+	// ARRICKS-06: the silent-update dispatch that used to live here has been
+	// removed along with updates_silent.go. Upstream registered a Scheduled
+	// Task running as SYSTEM (S-1-5-18, HighestAvailable) that re-invoked this
+	// binary with --update-check-silent; that routine downloaded binaries from
+	// a hardcoded GitHub repo and MoveFileEx'd them over %ProgramFiles%.
+	//
+	// Its only integrity control was a SHA-256 manifest fetched from the same
+	// release URL as the binaries, which detects corruption but not a
+	// compromised or malicious release. No Authenticode verification was
+	// performed at any point. Upstream's own planning notes flag this as a
+	// requirement that was never implemented.
+	//
+	// The flag is retained as an explicit no-op so that a Scheduled Task left
+	// behind by a previously-installed upstream build cannot do anything if it
+	// ever fires against our binary. Updates here are deliberate: IT builds,
+	// signs, and deploys a new version through Intune.
 	if len(os.Args) >= 2 && os.Args[1] == "--update-check-silent" {
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
-		defer cancel()
-		os.Exit(runSilentUpdate(ctx))
+		os.Exit(0)
 	}
 
 	raised, siErr := acquireSingleInstance()
