@@ -127,4 +127,9 @@ function Get-ShortcutAumid {
     return [GoMapi.AumidReader.PublicReader]::GetAumid($absPath)
 }
 
-Export-ModuleMember -Function Get-ShortcutAumid -ErrorAction SilentlyContinue
+# ARRICKS fix 2: no Export-ModuleMember here. This file is dot-sourced by
+# installer.Tests.ps1, and Export-ModuleMember throws a terminating
+# InvalidOperationException outside a module context (-ErrorAction cannot
+# suppress it). It was unreachable dead code while the Add-Type above
+# failed; fixing the Add-Type exposed it. Dot-sourcing already puts
+# Get-ShortcutAumid in the caller's scope.
