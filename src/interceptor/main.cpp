@@ -63,18 +63,34 @@ ULONG STDAPICALLTYPE MAPISendDocuments(
 }  // extern "C"
 
 // DLL Entry Point
+//
+// ARRICKS-01: DllMain runs under the Windows loader lock. It must not touch
+// the filesystem, the registry, or shell APIs, and must not allocate in a way
+// that can throw — see "Dynamic-Link Library Best Practices" (Microsoft).
+//
+// The previous implementation called FsUtils::EnsureOutputDirectory() here,
+// which reaches SHGetFolderPathW + SHCreateDirectoryExW. Shell path resolution
+// dynamically loads further DLLs and reads the registry, all under the loader
+// lock, and the std::wstring it builds can throw bad_alloc straight into the
+// loader. This DLL is loaded in-process by every application that touches
+// Simple MAPI (including explorer.exe), so a deadlock here hangs the host
+// application at load time with no useful diagnostic.
+//
+// The call was also redundant: JsonWriter::WriteMailToFile and
+// WriteMailToFileWithStem both call EnsureOutputDirectory() at the point the
+// directory is actually needed (json_writer.cpp:124,150), which is the correct
+// place for it.
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH:
-        // Initialize on DLL load
-        go_mapi::FsUtils::EnsureOutputDirectory();
+        // Nothing to initialize. Queue directories are created lazily on first
+        // write. Opting out of thread notifications also avoids needless
+        // loader callbacks in thread-heavy host applications.
+        DisableThreadLibraryCalls(hModule);
         break;
     case DLL_PROCESS_DETACH:
-        // Cleanup on DLL unload
-        break;
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
-        // Thread-specific initialization/cleanup
         break;
     }
     return TRUE;
