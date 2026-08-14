@@ -149,6 +149,9 @@ Section "Install" SecInstall
 
   ; D-10 + T-10-01-01 — MUST run BEFORE the HKLM Mail (Default) overwrite below
   ; so the pre-install mail client name is captured correctly.
+  ; (ARRICKS fix: the function now resolves %PROGRAMDATA% via ReadEnvStr
+  ; into $9 — the old $APPDATA-relative walk landed in
+  ; <userprofile>\ProgramData under the default `current` shell context.)
   Call BackupPreviousMailClient
 
   ; D-09 — MAPI handler registration (machine-wide).
@@ -233,9 +236,14 @@ SectionEnd
 ;------------------------------------------------------------------------------
 
 Function BackupPreviousMailClient
-  ; `$APPDATA\..\..\ProgramData` resolves to `%ProgramData%` at install time
-  ; (admin context). Same primitive used by the uninstaller section stub.
-  CreateDirectory "$APPDATA\..\..\ProgramData\go-mapi\uninst"
+  ; ARRICKS fix: resolve %PROGRAMDATA% via ReadEnvStr (the same primitive
+  ; the uninstaller's D-18 scrub already uses — see its comment). The old
+  ; "$APPDATA\..\..\ProgramData" walk resolved to <userprofile>\ProgramData
+  ; under the default `current` shell context, so the backup landed where
+  ; the documented %ProgramData% location (D-12) never saw it. $9 carries
+  ; the resolved path for the rest of this function.
+  ReadEnvStr $9 PROGRAMDATA
+  CreateDirectory "$9\go-mapi\uninst"
 
   ReadRegStr $0 HKLM "SOFTWARE\Clients\Mail" ""
 
@@ -269,7 +277,7 @@ Function BackupPreviousMailClient
   Pop $3   ; stdout (timestamp + trailing CRLF)
   StrCpy $3 $3 -2   ; strip trailing \r\n
 
-  FileOpen  $1 "$APPDATA\..\..\ProgramData\go-mapi\uninst\previous-mail-client.json" w
+  FileOpen  $1 "$9\go-mapi\uninst\previous-mail-client.json" w
   StrCmp $4 "" BackupWriteNative32
   FileWrite $1 '{"previousClient":"$0","previousClient32":"$4","backedUpAt":"$3"}'
   Goto BackupWriteDone
@@ -292,7 +300,7 @@ BackupNull:
   Call EscapeJsonString
   Pop $4
 
-  FileOpen  $1 "$APPDATA\..\..\ProgramData\go-mapi\uninst\previous-mail-client.json" w
+  FileOpen  $1 "$9\go-mapi\uninst\previous-mail-client.json" w
   StrCmp $4 "" BackupNullNoWow
   FileWrite $1 '{"previousClient":null,"previousClient32":"$4","backedUpAt":"$3"}'
   Goto BackupNullDone
@@ -757,8 +765,8 @@ Section "Uninstall"
 
   ; Phase 11.1 D-18 case 6: scrub silent-update staging dir (Plan 11.1-04 writes
   ; here under SYSTEM context; Plan 11.1-05 owns the cleanup).
-  ; Use ReadEnvStr to read %PROGRAMDATA% directly. The `$APPDATA\..\..\ProgramData`
-  ; pattern used elsewhere in this file (BackupPreviousMailClient, RestorePreviousMailClient)
+  ; Use ReadEnvStr to read %PROGRAMDATA% directly. The old
+  ; `$APPDATA\..\..\ProgramData` pattern this file previously used
   ; resolves to `<userprofile>\ProgramData` under default `current` context — a
   ; non-existent path. Verified by Plan 11.1-05 sandbox UAT (Test B updates_dir_after=true
   ; while planted file remained at C:\ProgramData\go-mapi\updates). ReadEnvStr is
@@ -777,9 +785,12 @@ Section "Uninstall"
   Call un.ScrubOldOrphans
 
   ; 5. %ProgramData%\go-mapi\uninst\ — remove AFTER the restore (step 4) since
-  ; the restore reads from this directory
-  RMDir /r "$APPDATA\..\..\ProgramData\go-mapi\uninst"
-  RMDir    "$APPDATA\..\..\ProgramData\go-mapi"   ; only if empty (non-recursive)
+  ; the restore reads from this directory. ARRICKS fix: resolve %PROGRAMDATA%
+  ; via ReadEnvStr (see the D-18 comment above); re-read here because the
+  ; ScrubOldOrphans calls above may have clobbered registers.
+  ReadEnvStr $9 PROGRAMDATA
+  RMDir /r "$9\go-mapi\uninst"
+  RMDir    "$9\go-mapi"   ; only if empty (non-recursive)
 
   ; 6. %TEMP%\go-mapi\ — best-effort. Under elevated uninstall this is the
   ; SYSTEM user's TEMP, not the real user's. Real users' temp already
@@ -832,6 +843,11 @@ SectionEnd
 ;   3. the restoration target's subkey still exists under HKLM\SOFTWARE\Clients\Mail\
 ; Otherwise: try fallbacks (Microsoft Outlook -> Outlook -> Windows Mail) or clear to "".
 Function un.RestorePreviousMailClient
+  ; ARRICKS fix: resolve %PROGRAMDATA% via ReadEnvStr into $9 (used by the
+  ; backup-JSON reads below). The old $APPDATA-relative walk pointed at
+  ; <userprofile>\ProgramData and never matched where the backup lives.
+  ReadEnvStr $9 PROGRAMDATA
+
   ; Guard 1: only restore if current (Default) is still our claim
   ReadRegStr $0 HKLM "SOFTWARE\Clients\Mail" ""
   StrCmp $0 "go-mapi" 0 DoneRestore
@@ -853,8 +869,8 @@ Function un.RestorePreviousMailClient
   ;   - previousClient=null:        exit 0, stdout = "" (just trailing CRLF)
   ;   - previousClient="<name>":    exit 0, stdout = "<name>" + trailing CRLF
   StrCpy $1 ""  ; candidate name
-  IfFileExists "$APPDATA\..\..\ProgramData\go-mapi\uninst\previous-mail-client.json" 0 NoBackup
-  nsExec::ExecToStack 'powershell.exe -NoProfile -Command "try { $$j = Get-Content -LiteralPath ''$APPDATA\..\..\ProgramData\go-mapi\uninst\previous-mail-client.json'' -Raw | ConvertFrom-Json; if ($$null -ne $$j.previousClient) { Write-Output $$j.previousClient } exit 0 } catch { exit 1 }"'
+  IfFileExists "$9\go-mapi\uninst\previous-mail-client.json" 0 NoBackup
+  nsExec::ExecToStack 'powershell.exe -NoProfile -Command "try { $$j = Get-Content -LiteralPath ''$9\go-mapi\uninst\previous-mail-client.json'' -Raw | ConvertFrom-Json; if ($$null -ne $$j.previousClient) { Write-Output $$j.previousClient } exit 0 } catch { exit 1 }"'
   Pop $4    ; exit code
   Pop $1    ; stdout (empty if null or parse error)
   StrCmp $4 "0" 0 TryFallbacks
@@ -909,8 +925,8 @@ DoneRestore:
   ; is present and contains a non-null previousClient32 value, write it
   ; back to the 32-bit view's (Default). Parse via PowerShell's
   ; ConvertFrom-Json — same pattern as the native-view restore above.
-  IfFileExists "$APPDATA\..\..\ProgramData\go-mapi\uninst\previous-mail-client.json" 0 NoWow6432
-  nsExec::ExecToStack 'powershell.exe -NoProfile -Command "try { $$j = Get-Content -LiteralPath ''$APPDATA\..\..\ProgramData\go-mapi\uninst\previous-mail-client.json'' -Raw | ConvertFrom-Json; if ($$null -ne $$j.previousClient32) { Write-Output $$j.previousClient32 } exit 0 } catch { exit 1 }"'
+  IfFileExists "$9\go-mapi\uninst\previous-mail-client.json" 0 NoWow6432
+  nsExec::ExecToStack 'powershell.exe -NoProfile -Command "try { $$j = Get-Content -LiteralPath ''$9\go-mapi\uninst\previous-mail-client.json'' -Raw | ConvertFrom-Json; if ($$null -ne $$j.previousClient32) { Write-Output $$j.previousClient32 } exit 0 } catch { exit 1 }"'
   Pop $4    ; exit code
   Pop $1    ; stdout
   StrCmp $4 "0" 0 NoWow6432

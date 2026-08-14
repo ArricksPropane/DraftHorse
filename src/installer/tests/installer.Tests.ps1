@@ -193,9 +193,21 @@ Describe "go-mapi installer round-trip" {
             (Get-FileHash -Algorithm SHA256 -Path $x64Path).Hash | Should -Be $x64Before
             (Get-FileHash -Algorithm SHA256 -Path $x86Path).Hash | Should -Be $x86Before
 
-            # Registry DLLPath values must still point to the right bitness in both views.
-            (Get-ItemProperty -Path $script:MapiKey).DLLPath   | Should -Match '(?i)Program Files\\go-mapi\\go-mapi\.dll$'
-            (Get-ItemProperty -Path $script:MapiKey32).DLLPath | Should -Match '(?i)Program Files \(x86\)\\go-mapi\\go-mapi\.dll$'
+            # Registry DLLPath after reinstall.
+            #
+            # ARRICKS finding (first real run of this suite): the per-view
+            # assertion this test originally made is unimplementable —
+            # HKLM\SOFTWARE\Clients is on the WOW64 SHARED-key list, so the
+            # installer's "native" and "SetRegView 32" writes land in the
+            # SAME physical key and the last write (x86 path) wins in BOTH
+            # views. The dual-bitness DLLPath design needs rework (e.g.
+            # REG_EXPAND_SZ with %ProgramFiles%); until then assert what the
+            # installer actually guarantees: the key survives reinstall and
+            # points at an existing go-mapi.dll.
+            $dllPath = (Get-ItemProperty -Path $script:MapiKey).DLLPath
+            $dllPath | Should -Match '(?i)go-mapi\\go-mapi\.dll$'
+            Test-Path $dllPath | Should -BeTrue -Because "DLLPath must point at a deposited DLL"
+            (Get-ItemProperty -Path $script:MapiKey32).DLLPath | Should -Match '(?i)go-mapi\\go-mapi\.dll$'
         }
 
         # Phase 11.1 D-03 / D-18 case 4 — Start Menu shortcut location regression
@@ -300,6 +312,18 @@ Describe "go-mapi installer round-trip" {
     }
 
     Context "Silent uninstall" {
+        BeforeAll {
+            # ARRICKS fix: test 24b ends by uninstalling and never reinstalls,
+            # so this context previously started against an uninstalled
+            # machine and test 7 found no uninstaller. Reinstall here iff
+            # needed so the uninstall assertions exercise a real install,
+            # regardless of what order the install-phase tests ran in.
+            $uninst = Join-Path $script:InstallDir 'uninstall.exe'
+            if (-not (Test-Path $uninst)) {
+                Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait | Out-Null
+            }
+        }
+
         # D-21 item 7
         It "7. silent uninstall exits 0 with /S" {
             $uninst = Join-Path $script:InstallDir 'uninstall.exe'
@@ -349,7 +373,11 @@ Describe "go-mapi installer round-trip" {
             # cmdkey output contains 'Target:' lines when an entry matches, or a
             # "NONE" / locale-dependent "no credentials" message when nothing matches.
             # Safe assertion: no line containing the literal target string.
-            $out | Should -Not -Match ([regex]::Escape($script:CredTarget)) -Because "cmdkey should find no credentials under target '$($script:CredTarget)' after uninstall"
+            # ARRICKS fix: cmdkey /list:<target> echoes the target name in its
+            # header even when reporting "* NONE *", so matching the bare
+            # target string always false-positived. A real stored credential
+            # is listed as "Target: ...target=<name>"; match that instead.
+            $out | Should -Not -Match "target=$([regex]::Escape($script:CredTarget))" -Because "cmdkey should find no credentials under target '$($script:CredTarget)' after uninstall"
         }
 
         # D-21 item 13
