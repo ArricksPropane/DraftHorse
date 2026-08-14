@@ -536,15 +536,19 @@ func (a *App) CreateDraftForID(id string) error {
 	ctx, cancel := context.WithTimeout(a.shutdownCtx, 30*time.Second)
 	defer cancel()
 
+	// ARRICKS-08: capture the backing message id from the successful
+	// attempt so the open-in-browser deep link can target the draft.
+	var draftMessageID string
 	callErr := a.MakeAuthenticatedGmailCall(ctx, func(token string) (int, error) {
 		gc := mapi.NewGmailClientWithBase(token, gmailBaseURLOverride)
-		_, err := gc.CreateDraft(target.Message)
+		draft, err := gc.CreateDraftFull(target.Message)
 		if err != nil {
 			if err.Error() == "token expired" {
 				return 401, err
 			}
 			return 500, err
 		}
+		draftMessageID = draft.Message.ID
 		return 200, nil
 	})
 	if callErr != nil {
@@ -578,6 +582,8 @@ func (a *App) CreateDraftForID(id string) error {
 	}
 	// Clear the arrival + error toasts for this email from Action Center (NOTIF-05).
 	clearToastForEmail(id)
+	// ARRICKS-08: surface the draft in the browser (no-op when toggled off).
+	a.openDraftInBrowser(draftMessageID)
 	if a.ctx != nil {
 		wruntime.EventsEmit(a.ctx, "auto-draft-result", map[string]any{
 			"emailId": id,

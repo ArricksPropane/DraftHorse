@@ -47,18 +47,35 @@ func NewGmailClientWithBase(token, baseURL string) *GmailClient {
 	}
 }
 
-// DraftResponse represents a Gmail API draft creation response
+// DraftResponse represents a Gmail API draft creation response.
+// ID is the draft id (drafts.* API namespace). Message.ID is the immutable
+// message id backing the draft — it is the value mail.google.com's
+// ?compose= deep link expects (ARRICKS-08), NOT the draft id.
 type DraftResponse struct {
-	ID string `json:"id"`
+	ID      string `json:"id"`
+	Message struct {
+		ID string `json:"id"`
+	} `json:"message"`
 }
 
 // CreateDraft creates a Gmail draft from a MailMessage, including attachments.
-// Builds the full MIME message locally (one API call, no round-trips).
+// Returns the draft id only; callers that need the backing message id (for
+// the ARRICKS-08 open-in-browser deep link) should use CreateDraftFull.
 func (gc *GmailClient) CreateDraft(msg *MailMessage) (string, error) {
+	draft, err := gc.CreateDraftFull(msg)
+	if err != nil {
+		return "", err
+	}
+	return draft.ID, nil
+}
+
+// CreateDraftFull creates a Gmail draft and returns the full API response.
+// Builds the full MIME message locally (one API call, no round-trips).
+func (gc *GmailClient) CreateDraftFull(msg *MailMessage) (*DraftResponse, error) {
 	// Build full MIME message with attachments
 	mimeMsg, err := BuildFullMIME(msg)
 	if err != nil {
-		return "", fmt.Errorf("failed to build MIME message: %w", err)
+		return nil, fmt.Errorf("failed to build MIME message: %w", err)
 	}
 
 	encodedMsg := Base64URLEncode(mimeMsg)
@@ -70,37 +87,37 @@ func (gc *GmailClient) CreateDraft(msg *MailMessage) (string, error) {
 	}
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/drafts", gc.baseURL)
 	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyJSON))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+gc.token)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := gc.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to create draft: %w", err)
+		return nil, fmt.Errorf("failed to create draft: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 401 {
-		return "", fmt.Errorf("token expired")
+		return nil, fmt.Errorf("token expired")
 	}
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("Gmail API error (%d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("Gmail API error (%d): %s", resp.StatusCode, string(respBody))
 	}
 
 	var draft DraftResponse
 	if err := json.NewDecoder(resp.Body).Decode(&draft); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	return draft.ID, nil
+	return &draft, nil
 }
 
 // BuildFullMIME builds a complete RFC 2822 message from a MailMessage,

@@ -177,3 +177,36 @@ func TestGmailClient_CreateDraft_RequestBodyShape(t *testing.T) {
 		t.Errorf("message.raw contains non-base64url characters: %q", gotRaw)
 	}
 }
+
+// ARRICKS-08: CreateDraftFull surfaces the backing message id for the
+// open-in-browser deep link; CreateDraft keeps returning the draft id only.
+func TestGmailClient_CreateDraftFull_MessageID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"r-draft1","message":{"id":"18f0aa55","threadId":"t1","labelIds":["DRAFT"]}}`)
+	}))
+	defer srv.Close()
+
+	client := NewGmailClientWithBase("test-token", srv.URL)
+
+	draft, err := client.CreateDraftFull(newTestMail())
+	if err != nil {
+		t.Fatalf("CreateDraftFull error: %v", err)
+	}
+	if draft.ID != "r-draft1" {
+		t.Errorf("draft id = %q, want %q", draft.ID, "r-draft1")
+	}
+	if draft.Message.ID != "18f0aa55" {
+		t.Errorf("message id = %q, want %q", draft.Message.ID, "18f0aa55")
+	}
+
+	// The thin wrapper's contract is unchanged.
+	id, err := client.CreateDraft(newTestMail())
+	if err != nil {
+		t.Fatalf("CreateDraft error: %v", err)
+	}
+	if id != "r-draft1" {
+		t.Errorf("CreateDraft id = %q, want %q", id, "r-draft1")
+	}
+}
