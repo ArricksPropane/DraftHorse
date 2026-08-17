@@ -1,8 +1,13 @@
 <script lang="ts">
+  // ARRICKS-15: brand logo, bundled by Vite (resolves to a hashed asset URL
+  // inside the go:embed'd dist — no network fetch at runtime).
+  import logoUrl from '../../assets/images/drafthorse-logo.png';
+
   let { onSignIn }: { onSignIn: () => void } = $props();
 </script>
 
 <section class="signin">
+  <img class="logo" src={logoUrl} alt="DraftHorse logo" width="112" height="112" />
   <h1>DraftHorse</h1>
   <p class="tagline">Gmail drafts for Windows "Send to Mail recipient".</p>
   <p class="copy">
@@ -27,6 +32,14 @@
     padding: 3rem 2rem;
     min-height: 100%;
     text-align: center;
+  }
+  .logo {
+    width: 112px;
+    height: 112px;
+    /* The source art carries its own rounded-square white plate; the soft
+       shadow separates it from the app background without a hard border. */
+    border-radius: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   }
   .signin h1 { font-size: 2rem; margin: 0; }
   .tagline { color: var(--c-text-muted, #666); margin: 0; }

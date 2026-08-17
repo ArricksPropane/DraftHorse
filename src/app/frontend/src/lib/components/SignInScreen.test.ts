@@ -11,6 +11,15 @@ describe('SignInScreen', () => {
     expect(getByText(/Sign in with Google/i)).toBeInTheDocument();
   });
 
+  // ARRICKS-15: brand logo above the heading.
+  it('renders the DraftHorse logo', () => {
+    const onSignIn = vi.fn();
+    const { getByRole } = render(SignInScreen, { props: { onSignIn } });
+    const logo = getByRole('img', { name: /drafthorse logo/i });
+    expect(logo).toBeInTheDocument();
+    expect(logo.getAttribute('src')).toBeTruthy();
+  });
+
   it('calls onSignIn when the sign-in button is clicked', async () => {
     const onSignIn = vi.fn();
     const { getByRole } = render(SignInScreen, { props: { onSignIn } });
