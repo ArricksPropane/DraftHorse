@@ -64,7 +64,7 @@ func buildUpdateNotificationPlan(s UpdateState) *updateNotificationPlan {
 		// that link lives in the in-app panel per D-02.
 		url = "https://github.com/" + gitHubOwner + "/" + gitHubRepo + "/releases"
 	}
-	title := "go-mapi update available"
+	title := "Drafthorse update available"
 	body := "Version " + s.LatestVersion + " is ready on GitHub."
 	return &updateNotificationPlan{
 		Title: title,

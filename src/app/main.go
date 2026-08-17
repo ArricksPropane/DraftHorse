@@ -94,7 +94,7 @@ func main() {
 	// the X button fire OnBeforeClose, and our beforeClose hides the window AND updates
 	// visibility (return true = prevent the actual close).
 	err := wails.Run(&options.App{
-		Title:         "go-mapi",
+		Title:         "Drafthorse",
 		Width:         480,
 		Height:        600,
 		MinWidth:      360,

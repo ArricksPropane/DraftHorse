@@ -1,6 +1,9 @@
-# go-mapi
+# DraftHorse
 
-> Right-click any file in Windows Explorer, click "Send to → Mail recipient",
+>DraftHorse is a fork of [go-mapi](https://github.com/marcfargas/go-mapi) by [Marc Fargas](https://github.com/marcfargas)
+>
+>
+>Right-click any file in Windows Explorer, click "Send to → Mail recipient",
 > and the email appears ready to send in Gmail.
 >
 > No configuration. No subscription fees. [Completely open source](https://github.com/marcfargas/go-mapi).

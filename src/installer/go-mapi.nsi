@@ -33,9 +33,16 @@ Unicode True
 !endif
 
 !define PRODUCT_NAME      "go-mapi"
+; ARRICKS-11 — display-name rebrand. PRODUCT_DISPLAY is what humans see
+; (installer UI, ARP, Default Apps, shortcut, client display value).
+; PRODUCT_NAME remains the IDENTIFIER everywhere machines look: the
+; Clients\Mail subkey + resolver (Default), ProgID key, AUMID, binary and
+; artifact names, uninstall key path, firewall rule, credential target,
+; queue paths, Intune detection. Do not fold the two together.
+!define PRODUCT_DISPLAY   "Drafthorse"
 !define PRODUCT_VERSION   "${GOMAPI_VERSION}"
-!define PRODUCT_PUBLISHER "Marc Fargas"
-!define PRODUCT_WEB_SITE  "https://github.com/marcfargas/go-mapi"
+!define PRODUCT_PUBLISHER "Arrick's Propane"
+!define PRODUCT_WEB_SITE  "https://github.com/egkrateia247/go-mapi"
 !define AUMID             "com.marcfargas.gomapi"
 
 ;------------------------------------------------------------------------------
@@ -46,8 +53,8 @@ SetCompressor /SOLID lzma
 RequestExecutionLevel admin
 InstallDir   "$PROGRAMFILES64\go-mapi"
 OutFile      "go-mapi-setup.exe"
-Name         "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-BrandingText "${PRODUCT_NAME} ${PRODUCT_VERSION} — LGPL-3.0"
+Name         "${PRODUCT_DISPLAY} ${PRODUCT_VERSION}"
+BrandingText "${PRODUCT_DISPLAY} ${PRODUCT_VERSION} — LGPL-3.0"
 
 ; Repo-local plugin directory for vendored NSIS plugins (ApplicationID.dll).
 ; `${__FILEDIR__}` resolves to src\installer\ at makensis time.
@@ -194,8 +201,12 @@ MapiDllPinned:
   ; into "%ProgramFiles(x86)%" unless the key is opened with KEY_WOW64_64KEY
   ; (learn.microsoft.com "Registry Redirector"). Without it the stored value
   ; silently becomes the x86 path for everyone again.
+  ; ARRICKS-11: the client SUBKEY's (Default) is its human-facing display
+  ; name — rebranded. The Clients\Mail (Default) below is the RESOLVER: the
+  ; mapi32 stub opens the subkey named by that exact string, so it MUST stay
+  ; "go-mapi" (the subkey name), never the display name.
   SetRegView 64
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "" "go-mapi"
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "" "${PRODUCT_DISPLAY}"
   WriteRegExpandStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "DLLPath" "%ProgramFiles%\go-mapi\go-mapi.dll"
   WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "go-mapi"
   SetRegView default
@@ -215,10 +226,10 @@ MapiDllPinned:
   ; Deliberately NOT written: HKCU\...\UserChoice. Windows 11 hash-protects
   ; it; the user picks go-mapi once in Settings > Default apps, or Intune
   ; sets it fleet-wide (docs\mailto-default-associations.xml).
-  WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto" "" "go-mapi mailto handler"
+  WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto" "" "${PRODUCT_DISPLAY} mailto handler"
   WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto\DefaultIcon" "" "$INSTDIR\go-mapi.exe,0"
   WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto\shell\open\command" "" '"$INSTDIR\go-mapi.exe" --mailto "%1"'
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities" "ApplicationName" "go-mapi"
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities" "ApplicationName" "${PRODUCT_DISPLAY}"
   WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities" "ApplicationDescription" "Creates Gmail drafts from Simple MAPI calls and opens Gmail compose for mailto: links"
   WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities\URLAssociations" "mailto" "go-mapi.mailto"
   WriteRegStr HKLM "SOFTWARE\RegisteredApplications" "go-mapi" "SOFTWARE\Clients\Mail\go-mapi\Capabilities"
@@ -227,7 +238,9 @@ MapiDllPinned:
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   ; Add/Remove Programs metadata
-  WriteRegStr   HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName"     "${PRODUCT_NAME}"
+  ; ARRICKS-11: key path stays ${PRODUCT_NAME} (identifier — existing installs
+  ; upgrade onto the same ARP entry); DisplayName is the rebranded surface.
+  WriteRegStr   HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName"     "${PRODUCT_DISPLAY}"
   WriteRegStr   HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion"  "${PRODUCT_VERSION}"
   WriteRegStr   HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "Publisher"       "${PRODUCT_PUBLISHER}"
   WriteRegStr   HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "URLInfoAbout"    "${PRODUCT_WEB_SITE}"
@@ -656,7 +669,7 @@ FunctionEnd
 ;------------------------------------------------------------------------------
 ; CreateShortcutAndAUMID — D-13 / D-14 / D-15 / INST-01
 ;
-; Creates the all-users Start Menu shortcut at $SMPROGRAMS\go-mapi.lnk and
+; Creates the all-users Start Menu shortcut at $SMPROGRAMS\Drafthorse.lnk and
 ; stamps PKEY_AppUserModel_ID on it via the ApplicationID NSIS plugin. The
 ; stamped AUMID is what makes Phase 9's toast notifications persist in Action
 ; Center — the shortcut AUMID MUST match the Wails app's runtime AUMID
@@ -675,18 +688,23 @@ Function CreateShortcutAndAUMID
   ; $DESKTOP — keep the wrap tight so the existing %ProgramData% walk at
   ; lines 666-676 stays in default `current` context.
   SetShellVarContext all
-  CreateShortcut "$SMPROGRAMS\go-mapi.lnk" \
+  ; ARRICKS-11: shortcut renamed to the display name. The .lnk filename is
+  ; ALSO the app name Windows shows on toast notifications (the AUMID is
+  ; resolved to the stamped shortcut's display name). Clean up the old-name
+  ; shortcut first so upgrades don't leave both in the Start Menu.
+  Delete "$SMPROGRAMS\go-mapi.lnk"
+  CreateShortcut "$SMPROGRAMS\Drafthorse.lnk" \
       "$INSTDIR\go-mapi.exe" \
       "" \
       "$INSTDIR\go-mapi.exe" 0 \
       SW_SHOWNORMAL "" \
-      "go-mapi — MAPI-to-Gmail bridge"
+      "Drafthorse — creates Gmail drafts from Simple MAPI (never sends)"
 
   ; D-14: stamp PKEY_AppUserModel_ID via ApplicationID plugin. Plugin loaded
   ; from src/installer/plugins/x86-unicode/ApplicationID.dll (vendored in plan 10-01).
   ; ApplicationID::Set pushes "0" on success, "-1" on error.
   ; D-15: production AUMID is com.marcfargas.gomapi (matches the ${AUMID} define).
-  ApplicationID::Set "$SMPROGRAMS\go-mapi.lnk" "${AUMID}"
+  ApplicationID::Set "$SMPROGRAMS\Drafthorse.lnk" "${AUMID}"
   Pop $0
   SetShellVarContext current
   StrCmp $0 "0" AumidOk
@@ -769,8 +787,11 @@ Section "Uninstall"
   ExecWait 'netsh advfirewall firewall delete rule name="go-mapi OAuth loopback"' $0
   DetailPrint "firewall delete rule rc=$0"
 
-  ; 2. Start Menu shortcut (plan 10-03 stamped the AUMID on this .lnk)
+  ; 2. Start Menu shortcut (plan 10-03 stamped the AUMID on this .lnk).
+  ; ARRICKS-11: current name is Drafthorse.lnk; the go-mapi.lnk delete stays
+  ; as belt-and-braces for installs that predate the rebrand.
   SetShellVarContext all
+  Delete "$SMPROGRAMS\Drafthorse.lnk"
   Delete "$SMPROGRAMS\go-mapi.lnk"
   SetShellVarContext current
 

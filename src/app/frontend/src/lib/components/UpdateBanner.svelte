@@ -28,7 +28,7 @@
 
 <section class="banner" aria-label="Update available">
   <span class="msg">
-    Update available — <strong>go-mapi {latestVersion}</strong>
+    Update available — <strong>Drafthorse {latestVersion}</strong>
   </span>
   <button type="button" class="view" onclick={onViewUpdate}>
     View update

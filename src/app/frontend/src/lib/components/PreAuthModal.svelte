@@ -5,18 +5,21 @@
 <div class="backdrop" role="dialog" aria-modal="true" aria-labelledby="preauth-title">
   <div class="modal">
     <h2 id="preauth-title">One thing before we continue</h2>
+    <!-- ARRICKS-11: the two quoted strings below mirror Google's consent
+         screen verbatim, and Google renders the OAuth app name configured in
+         the GCP console — these must stay in lockstep with that setting. -->
     <p>
-      Google will show a warning that <strong>go-mapi isn't verified</strong>.
+      Google will show a warning that <strong>Drafthorse isn't verified</strong>.
       This is expected — verification takes several weeks for small open-source apps
       and is in progress.
     </p>
     <p>To continue, click:</p>
     <ol class="steps">
       <li><strong>Advanced</strong></li>
-      <li><strong>Go to go-mapi (unsafe)</strong></li>
+      <li><strong>Go to Drafthorse (unsafe)</strong></li>
     </ol>
     <p class="note">
-      go-mapi only requests permission to create Gmail drafts on your behalf.
+      Drafthorse only requests permission to create Gmail drafts on your behalf.
       You can revoke this access at any time from your Google account settings.
     </p>
     <div class="actions">

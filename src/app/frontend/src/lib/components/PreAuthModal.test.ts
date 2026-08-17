@@ -4,12 +4,12 @@ import { render, fireEvent } from '@testing-library/svelte';
 import PreAuthModal from './PreAuthModal.svelte';
 
 describe('PreAuthModal', () => {
-  it('renders the explainer copy including the Advanced + Go to go-mapi (unsafe) steps', () => {
+  it('renders the explainer copy including the Advanced + Go to Drafthorse (unsafe) steps', () => {
     const onContinue = vi.fn();
     const onCancel = vi.fn();
     const { getByText } = render(PreAuthModal, { props: { onContinue, onCancel } });
     expect(getByText('Advanced')).toBeInTheDocument();
-    expect(getByText('Go to go-mapi (unsafe)')).toBeInTheDocument();
+    expect(getByText('Go to Drafthorse (unsafe)')).toBeInTheDocument();
   });
 
   it('calls onContinue when the primary button is clicked', async () => {
