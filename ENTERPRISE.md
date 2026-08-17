@@ -3,18 +3,19 @@
 Audience: Windows / IT admins deploying DraftHorse at scale — Intune,
 managed desktops, RDS/Citrix, group policy.
 
-> DraftHorse is a hardened fork of upstream go-mapi. **Binary, artifact,
+> DraftHorse is a hardened fork of upstream go-mapi. **Installed binary
 > and registry identifier names intentionally remain `go-mapi*`** so
-> existing go-mapi 3.x installs upgrade in place; only display surfaces
-> (Add/Remove Programs, Start Menu, Default Apps, the app UI) say
-> DraftHorse. Deployment tooling should key off the `go-mapi` identifiers
-> throughout this document.
+> existing go-mapi 3.x installs upgrade in place; display surfaces —
+> including the installer filename `DraftHorse-setup.exe`, Add/Remove
+> Programs, Start Menu, Default Apps, and the app UI — say DraftHorse.
+> Deployment tooling should key off the `go-mapi` identifiers throughout
+> this document.
 
 ## At a glance
 
 **Operational facts**
 
-- Single-file NSIS installer (`go-mapi-setup.exe`) — All Users only, no MSI
+- Single-file NSIS installer (`DraftHorse-setup.exe`) — All Users only, no MSI
 - Silent install via `/S`
 - **No automatic updates.** This fork removed the upstream silent
   auto-updater (SYSTEM Scheduled Task) entirely. Updates are notify-only:
@@ -132,7 +133,7 @@ credentials involved.
 Silent install with all defaults:
 
 ```
-go-mapi-setup.exe /S
+DraftHorse-setup.exe /S
 ```
 
 Silent install to a custom path (`/D` last, unquoted — NSIS restriction;
@@ -141,7 +142,7 @@ locations regardless of `/D`, because the MAPI registration resolves
 there):
 
 ```
-go-mapi-setup.exe /S /D=C:\Program Files\go-mapi
+DraftHorse-setup.exe /S /D=C:\Program Files\go-mapi
 ```
 
 The installer is idempotent — running it over an existing install upgrades
@@ -165,7 +166,7 @@ actually makes the product functional, so it is the better health signal.)
 
 The app checks GitHub Releases daily and shows a banner when a newer
 version exists. Nothing is downloaded or installed automatically — the
-user (or your deployment pipeline) runs the new `go-mapi-setup.exe`.
+user (or your deployment pipeline) runs the new `DraftHorse-setup.exe`.
 
 For managed fleets, the recommended pattern is to treat updates like any
 other Win32 app revision: push the new installer via Intune with `/S`.
@@ -187,9 +188,9 @@ https://github.com/egkrateia247/DraftHorse/releases/latest/download/SHA256SUMS.t
 $base = "https://github.com/egkrateia247/DraftHorse/releases/download/vX.Y.Z"
 $sums = (Invoke-WebRequest "$base/SHA256SUMS.txt").Content
 $expected = ($sums -split "`n" |
-    Where-Object { $_ -match 'go-mapi-setup\.exe' } |
+    Where-Object { $_ -match 'DraftHorse-setup\.exe' } |
     ForEach-Object { ($_ -split '\s+')[0] })
-$actual = (Get-FileHash .\go-mapi-setup.exe -Algorithm SHA256).Hash.ToLower()
+$actual = (Get-FileHash .\DraftHorse-setup.exe -Algorithm SHA256).Hash.ToLower()
 if ($actual -eq $expected) {
     Write-Output "OK ($actual)"
 } else {

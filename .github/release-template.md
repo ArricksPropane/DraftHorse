@@ -1,24 +1,28 @@
-## go-mapi v3.0
+## DraftHorse
 
-A standalone Windows desktop app that routes legacy "Send to Mail recipient" calls to Gmail as drafts. Wails v2 + Svelte 5 + WebView2 + C++17 MAPI DLL.
-
-### ⚠️ v2.x is retired
-
-> **The v2.x Chrome/Edge extension + Go native-host is retired and receives no further updates.** Its store listings are frozen with deprecation messaging. If you are on v2.x:
->
-> 1. **Uninstall v2.x first** via **Settings → Apps → Installed apps** — this removes both the browser extension and the native-host.
-> 2. **Then install v3.0.** go-mapi does not migrate v2 artifacts, and running both side-by-side is unsupported.
+A hardened fork of go-mapi: routes Windows "Send to → Mail recipient" and
+scanner Scan-to-Email (Simple MAPI) calls to Gmail as **drafts**. Nothing is
+ever sent automatically. Wails v2 + Svelte 5 + WebView2 + C++17 MAPI DLL,
+both bitnesses.
 
 ### Install
 
-1. Download `go-mapi-setup.exe` from the assets below, or use the stable URL:
-   `https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe`
-2. Run the installer as administrator. Admin elevation is required because the installer registers go-mapi as a machine-wide MAPI handler under `HKLM\SOFTWARE\Clients\Mail`.
-3. First launch: sign in with your Google account — the app opens your default browser for OAuth consent.
+1. Download `DraftHorse-setup.exe` from the assets below, or use the stable URL:
+   `https://github.com/egkrateia247/DraftHorse/releases/latest/download/DraftHorse-setup.exe`
+2. Run the installer as administrator. Elevation is required because it
+   registers the machine-wide MAPI handler under `HKLM\SOFTWARE\Clients\Mail`.
+3. First launch: sign in with your Google account — the app opens your
+   default browser for OAuth consent (scope: create drafts only).
+
+Upgrading from any go-mapi/DraftHorse 3.x install: just run the new
+installer — it upgrades in place.
 
 ### Updates are manual
 
-go-mapi surfaces an in-app "update available" banner when a newer release is published, but does **not** replace its own binary. Clicking the banner opens this release page in your browser; you download and run the new installer yourself. Manual path is an explicit design decision, not a limitation.
+DraftHorse shows an in-app banner when a newer release is published but
+never replaces its own binary. Download and run the new installer yourself
+(or push it via Intune). This is an explicit design decision — the upstream
+silent auto-updater was removed in this fork.
 
 ### System requirements
 
@@ -28,12 +32,17 @@ go-mapi surfaces an in-app "update available" banner when a newer release is pub
 
 ### Release artifacts
 
-- `go-mapi-setup.exe` — single-file installer (~7 MB, bundles WebView2 bootstrapper + MAPI DLL + Wails binary)
+- `DraftHorse-setup.exe` — single-file installer (bundles WebView2 bootstrapper, both MAPI DLLs, and the app)
+- `go-mapi.exe`, `go-mapi-x64.dll`, `go-mapi-x86.dll` — individual binaries (for verification; the installer is the supported install path)
+- `SHA256SUMS.txt` — checksum manifest for everything above
 
 ### License
 
-LGPL-3.0 — see [LICENSE](https://github.com/marcfargas/go-mapi/blob/main/LICENSE).
+LGPL-3.0 — see [LICENSE](https://github.com/egkrateia247/DraftHorse/blob/main/LICENSE).
+Fork of [marcfargas/go-mapi](https://github.com/marcfargas/go-mapi).
 
 ---
 
-Full docs: [README](https://github.com/marcfargas/go-mapi#readme). Privacy model, uninstall steps, and the v2.x → v3.0 cutover note live there.
+Full docs: [README](https://github.com/egkrateia247/DraftHorse#readme) ·
+[IT/Enterprise deployment](https://github.com/egkrateia247/DraftHorse/blob/main/ENTERPRISE.md) ·
+[fork rationale](https://github.com/egkrateia247/DraftHorse/blob/main/PATCHES.md)

@@ -136,7 +136,7 @@ describe('settings.ts', () => {
       currentVersion: '3.0.0',
       latestVersion: '3.0.1',
       latestReleaseUrl: 'https://github.com/marcfargas/go-mapi/releases/tag/v3.0.1',
-      installerUrl: 'https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe',
+      installerUrl: 'https://github.com/marcfargas/go-mapi/releases/latest/download/DraftHorse-setup.exe',
       updateAvailable: true,
       lastCheckedAt: '2026-04-21T12:00:00Z',
       enabled: true,
@@ -162,7 +162,7 @@ describe('settings.ts', () => {
       expect(last).toBe('2026-04-21T12:00:00Z');
       expect(enabled).toBe(true);
       expect(release).toContain('releases/tag/');
-      expect(installer).toContain('go-mapi-setup.exe');
+      expect(installer).toContain('DraftHorse-setup.exe');
     });
 
     it('checkForUpdatesNow forwards to CheckForUpdatesNow without requiring a context argument', async () => {

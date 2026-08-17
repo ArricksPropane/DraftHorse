@@ -15,7 +15,7 @@ on:
         default: 'false'
 
 # D-27 release pipeline. Tag-triggered on v* (e.g. v3.0.0). Produces a signed
-# go-mapi-setup.exe and attaches it to the GitHub Release.
+# DraftHorse-setup.exe and attaches it to the GitHub Release.
 #
 # SignPath is gated on secrets.SIGNPATH_API_TOKEN (D-24) — if empty, the pipeline
 # publishes unsigned. Required SignPath secrets: SIGNPATH_API_TOKEN, SIGNPATH_ORG_ID,
@@ -199,15 +199,15 @@ jobs:
           makensis /DGOMAPI_VERSION=${{ steps.version.outputs.version }} go-mapi.nsi
           if ($LASTEXITCODE -ne 0) { Pop-Location; throw "makensis failed (exit $LASTEXITCODE)" }
           Pop-Location
-          Move-Item src/installer/go-mapi-setup.exe go-mapi-setup.exe -Force
+          Move-Item src/installer/DraftHorse-setup.exe DraftHorse-setup.exe -Force
 
       - name: Upload installer for SignPath (pass 2)
         if: ${{ env.HAS_SIGNPATH == 'true' }}
         id: upload-installer
         uses: actions/upload-artifact@v4
         with:
-          name: go-mapi-setup-unsigned
-          path: go-mapi-setup.exe
+          name: DraftHorse-setup-unsigned
+          path: DraftHorse-setup.exe
 
       - name: SignPath — sign installer (pass 2 of 2)
         if: ${{ env.HAS_SIGNPATH == 'true' }}
@@ -225,8 +225,8 @@ jobs:
         id: final
         shell: pwsh
         run: |
-          $signed = 'final/go-mapi-setup.exe'
-          $unsigned = 'go-mapi-setup.exe'
+          $signed = 'final/DraftHorse-setup.exe'
+          $unsigned = 'DraftHorse-setup.exe'
           if (Test-Path $signed) {
             "path=$signed" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
             Write-Host "Using SIGNED installer: $signed"
@@ -247,7 +247,7 @@ jobs:
           # (https://github.com/marcfargas/go-mapi/releases/latest/download/<name>).
 
           $assets = @(
-            @{ Path = '${{ steps.final.outputs.path }}';              Name = 'go-mapi-setup.exe' }
+            @{ Path = '${{ steps.final.outputs.path }}';              Name = 'DraftHorse-setup.exe' }
             @{ Path = 'src/app/build/bin/go-mapi.exe';                Name = 'go-mapi.exe' }
             @{ Path = 'src/interceptor/build-x64/bin/go-mapi.dll';    Name = 'go-mapi-x64.dll' }
             @{ Path = 'src/interceptor/build-x86/bin/go-mapi.dll';    Name = 'go-mapi-x86.dll' }
@@ -305,6 +305,6 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' || github.event.inputs.dry_run == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: go-mapi-setup-release-${{ github.sha }}
+          name: DraftHorse-setup-release-${{ github.sha }}
           path: ${{ steps.final.outputs.path }}
           retention-days: 7

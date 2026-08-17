@@ -35,12 +35,17 @@ DisplayName, Start Menu shortcut `DraftHorse.lnk`, Default Apps
 ApplicationName, the `Clients\Mail\go-mapi` subkey's `(Default)` value, tray,
 toasts, frontend) say DraftHorse. Every **identifier** stays `go-mapi`: the
 `Clients\Mail\go-mapi` key name and the `Clients\Mail` `(Default)` resolver
-value (the mapi32 stub opens the subkey named by that string), binary/DLL and
-artifact names, AUMID `com.marcfargas.gomapi`, `go-mapi.mailto` ProgID,
+value (the mapi32 stub opens the subkey named by that string), installed
+binary/DLL names, AUMID `com.marcfargas.gomapi`, `go-mapi.mailto` ProgID,
 credential target, queue/config paths, firewall rule, uninstall key path,
 Intune detection. Do not rename identifiers as part of branding work — the
 split is deliberate (upgrade continuity + everything above was CI-verified
-under these names). The GCP OAuth consent-screen app name must match the
+under these names). One deliberate exception (ARRICKS-14): the installer
+FILENAME is `DraftHorse-setup.exe` — it's a download-facing display surface,
+not an installed identifier. Release binaries older than that change carry
+the old `go-mapi-setup.exe` stable-download URL baked in; their "Download
+installer" button 404s once newer releases ship (their release-page link
+still works). The GCP OAuth consent-screen app name must match the
 DraftHorse copy in `PreAuthModal.svelte`.
 
 **Why a fork rather than upstream binaries:** it replaces Affixa, which retires
@@ -194,7 +199,7 @@ The follow-up items originally listed here landed as one series:
 
 ## Deployment
 
-All-users install, `go-mapi-setup.exe /S`, deployed via Intune. Detection rule:
+All-users install, `DraftHorse-setup.exe /S`, deployed via Intune. Detection rule:
 `HKLM\SOFTWARE\Clients\Mail\go-mapi` → `DLLPath`. Sign the binaries first, then
 the installer that wraps them, always timestamped (`signtool /tr`).
 

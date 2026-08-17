@@ -25,7 +25,7 @@ isn't available.
   `.wsb` file directly — it dynamically shares `$PSScriptRoot | Split-Path | Split-Path`
   — so only the "double-click the .wsb" workflow is affected.
 - **Inno Setup 6 on the host** (`iscc.exe`) — the sandbox reads the
-  compiled `go-mapi-setup.exe` through the read-only project share, it
+  compiled `DraftHorse-setup.exe` through the read-only project share, it
   does NOT compile it. Compile on the host first (see next section).
 
 ## Entry points
@@ -65,7 +65,7 @@ This:
 4. Shares `$env:TEMP\go-mapi-sandbox-output` as writable `C:\output` for log retrieval.
 5. Runs `test-dll-registration.ps1` (DLL sanity check).
 6. Runs `install-and-verify.ps1`:
-   - Silent install of `go-mapi-setup.exe` with `/VERYSILENT /SUPPRESSMSGBOXES`
+   - Silent install of `DraftHorse-setup.exe` with `/VERYSILENT /SUPPRESSMSGBOXES`
    - Asserts 6 HKLM registry keys (Clients\Mail\go-mapi + 5 browser native messaging hosts)
    - Asserts installed files (`go-mapi.dll`, `go-mapi-host.exe`, `com.gomapi.host.json`, `previous-mail-client.json`)
    - Silent uninstall via `unins000.exe /VERYSILENT`
@@ -96,7 +96,7 @@ Windows Defender scanning the sandbox template.
   sandbox before launching a new one. If `wsb stop` hangs, restart
   explorer.exe or reboot.
 - **Installer not compiled** — the `-FullTest` branch checks for
-  `src\installer\dist\go-mapi-setup.exe` on the host BEFORE starting
+  `src\installer\dist\DraftHorse-setup.exe` on the host BEFORE starting
   the sandbox and exits with a compile-command hint if missing.
 - **Silent install exit code non-zero** — check
   `$env:TEMP\go-mapi-sandbox-output\inno-install.log` (copied from

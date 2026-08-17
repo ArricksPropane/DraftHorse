@@ -52,7 +52,7 @@ Unicode True
 SetCompressor /SOLID lzma
 RequestExecutionLevel admin
 InstallDir   "$PROGRAMFILES64\go-mapi"
-OutFile      "go-mapi-setup.exe"
+OutFile      "DraftHorse-setup.exe"
 Name         "${PRODUCT_DISPLAY} ${PRODUCT_VERSION}"
 BrandingText "${PRODUCT_DISPLAY} ${PRODUCT_VERSION} — LGPL-3.0"
 

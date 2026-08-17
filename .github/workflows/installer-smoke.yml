@@ -34,7 +34,7 @@ jobs:
     # go-mapi.exe (D-22 excludes live-UI tests) — only the installer + uninstaller
     # round-trip is exercised. Injecting real OAuth secrets via ldflags would
     # embed the client_secret in the string table of go-mapi.exe, which then
-    # gets bundled into go-mapi-setup.exe and uploaded as a workflow artifact
+    # gets bundled into DraftHorse-setup.exe and uploaded as a workflow artifact
     # (retention-days: 7). Artifacts on public repos are read-by-anyone; the
     # release workflow (installer-release.yml) is the only intentional path
     # for publishing a binary that contains the injected secrets.
@@ -141,16 +141,16 @@ jobs:
           makensis /DGOMAPI_VERSION=0.0.0-smoke go-mapi.nsi
           if ($LASTEXITCODE -ne 0) { Pop-Location; throw "makensis failed (exit $LASTEXITCODE)" }
           Pop-Location
-          Move-Item src/installer/go-mapi-setup.exe go-mapi-setup.exe -Force
+          Move-Item src/installer/DraftHorse-setup.exe DraftHorse-setup.exe -Force
 
       - name: Confirm installer artifact produced
         shell: pwsh
         run: |
-          if (-not (Test-Path 'go-mapi-setup.exe')) {
-            throw "go-mapi-setup.exe not produced by makensis"
+          if (-not (Test-Path 'DraftHorse-setup.exe')) {
+            throw "DraftHorse-setup.exe not produced by makensis"
           }
-          $size = (Get-Item 'go-mapi-setup.exe').Length
-          Write-Host "go-mapi-setup.exe size: $size bytes"
+          $size = (Get-Item 'DraftHorse-setup.exe').Length
+          Write-Host "DraftHorse-setup.exe size: $size bytes"
 
       - name: Run Pester smoke tests
         shell: pwsh
@@ -165,7 +165,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: go-mapi-setup-smoke-${{ github.sha }}
-          path: go-mapi-setup.exe
+          name: DraftHorse-setup-smoke-${{ github.sha }}
+          path: DraftHorse-setup.exe
           if-no-files-found: warn
           retention-days: 7
