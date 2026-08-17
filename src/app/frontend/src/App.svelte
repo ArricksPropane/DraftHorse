@@ -20,10 +20,13 @@
     subscribePauseChanged,
     fetchUpdateState,
     subscribeUpdateState,
+    fetchDefaultsStatus,
+    openDefaultAppsSettings,
     type Mode,
     type ErrorCategory,
     type AutoDraftResult,
     type UpdateState,
+    type DefaultsStatus,
   } from './lib/settings';
   import SignInScreen from './lib/components/SignInScreen.svelte';
   import PreAuthModal from './lib/components/PreAuthModal.svelte';
@@ -32,6 +35,7 @@
   import QueueRow from './lib/components/QueueRow.svelte';
   import UpdateBanner from './lib/components/UpdateBanner.svelte';
   import UpdatePanel from './lib/components/UpdatePanel.svelte';
+  import DefaultsBanner from './lib/components/DefaultsBanner.svelte';
   import './lib/styles.css';
 
   // Existing state
@@ -54,6 +58,11 @@
   let flashingIds = $state(new Set<string>());
   let inflightIds = $state(new Set<string>());
 
+  // ARRICKS-13 state — mailto-default nudge. The MAPI default self-heals
+  // silently in Go; this banner covers only the Settings-gated mailto half.
+  let defaultsStatus = $state<DefaultsStatus | null>(null);
+  let defaultsBannerDismissed = $state(false);
+
   // Phase 11-03 state — notify-only update UX (D-01/D-02/D-07/D-08).
   let updateState = $state<UpdateState | null>(null);
   let showUpdatePanel = $state(false);
@@ -64,7 +73,7 @@
 
   onMount(async () => {
     // Fetch initial state in parallel.
-    const [initialAuth, initialQueue, initialSettings, initialPaused, initialUpdate] =
+    const [initialAuth, initialQueue, initialSettings, initialPaused, initialUpdate, initialDefaults] =
       await Promise.all([
         fetchAuthStatus(),
         fetchQueue().catch((e) => { errorMsg = (e as Error).message; return []; }),
@@ -72,6 +81,9 @@
         getPausedState().catch(() => false),
         // D-04 silent-failure: never block startup on update hydration.
         fetchUpdateState().catch(() => null),
+        // ARRICKS-13: same silent-failure rule — a failed defaults read just
+        // hides the banner.
+        fetchDefaultsStatus().catch(() => null),
       ]);
 
     auth = initialAuth as AuthStatus;
@@ -80,6 +92,7 @@
     mode = ((initialSettings as { mode: string }).mode === 'auto-draft' ? 'auto-draft' : 'manual');
     paused = initialPaused as boolean;
     updateState = initialUpdate as UpdateState | null;
+    defaultsStatus = initialDefaults as DefaultsStatus | null;
 
     // Subscribe to queue updates — prune stale state entries on each update.
     unsubs.push(subscribeQueue(
@@ -262,12 +275,31 @@
     // remains persistent across panel open/close cycles).
     void bannerDismissedForVersion; // silence "assigned but never read" without removing the state field
   }
+
+  /** ARRICKS-13: deep-link to Settings > Default apps, then re-check on a
+   *  short delay so the banner clears by itself once the user picks
+   *  DraftHorse there. Fire-and-forget; failures just leave the banner. */
+  function handleOpenDefaultApps() {
+    void openDefaultAppsSettings().catch(() => undefined);
+    setTimeout(() => {
+      void fetchDefaultsStatus()
+        .then((s) => { defaultsStatus = s; })
+        .catch(() => undefined);
+    }, 15000);
+  }
 </script>
 
 {#if updateState && updateState.updateAvailable}
   <UpdateBanner
     latestVersion={updateState.latestVersion}
     onViewUpdate={handleOpenUpdatePanel}
+  />
+{/if}
+
+{#if auth.authenticated && defaultsStatus && !defaultsStatus.mailtoDefault && !defaultsBannerDismissed}
+  <DefaultsBanner
+    onOpenSettings={handleOpenDefaultApps}
+    onDismiss={() => { defaultsBannerDismissed = true; }}
   />
 {/if}
 

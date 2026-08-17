@@ -1,5 +1,20 @@
 export namespace main {
 	
+	export class DefaultsStatus {
+	    mapiDefault: boolean;
+	    mailtoDefault: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new DefaultsStatus(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mapiDefault = source["mapiDefault"];
+	        this.mailtoDefault = source["mailtoDefault"];
+	    }
+	}
+
 	export class AppSettings {
 	    mode: string;
 	    update_checks_enabled: boolean;

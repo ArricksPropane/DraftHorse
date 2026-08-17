@@ -18,6 +18,10 @@ export function GetAuthStatus() {
   return window['go']['main']['App']['GetAuthStatus']();
 }
 
+export function GetDefaultsStatus() {
+  return window['go']['main']['App']['GetDefaultsStatus']();
+}
+
 export function GetMode() {
   return window['go']['main']['App']['GetMode']();
 }
@@ -40,6 +44,10 @@ export function GetUpdateState() {
 
 export function MakeAuthenticatedGmailCall(arg1, arg2) {
   return window['go']['main']['App']['MakeAuthenticatedGmailCall'](arg1, arg2);
+}
+
+export function OpenDefaultAppsSettings() {
+  return window['go']['main']['App']['OpenDefaultAppsSettings']();
 }
 
 export function PauseWatching() {

@@ -21,6 +21,14 @@ Gmail web compose prefilled from the URL and exits — no draft API call, no
 auth, still nothing ever sent. Fleet-wide default via Intune:
 `docs/mailto-default-associations.xml`.
 
+A default-mail guard (ARRICKS-13, `src/app/defaultmail.go`) checks at startup
+and hourly that the Simple MAPI default still resolves to this app, and
+self-heals a stolen default through an unelevated HKCU mirror (the stub reads
+HKCU\Software\Clients\Mail before HKLM — proven end-to-end by installer-smoke
+test 30). The mailto default CANNOT be set programmatically (hash-protected
+UserChoice + the UCPD driver — deliberate Windows policy, do not fight it);
+the app only detects it and deep-links the user to Settings > Default apps.
+
 **Branding (ARRICKS-11):** the app's display name is **DraftHorse** — it only
 ever creates drafts; nothing sends. Display surfaces (installer UI, ARP
 DisplayName, Start Menu shortcut `DraftHorse.lnk`, Default Apps

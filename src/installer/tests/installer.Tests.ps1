@@ -276,6 +276,36 @@ Describe "go-mapi installer round-trip" {
             $out | Should -Match 'MAPIRC=0\s'
         }
 
+        # ARRICKS-13 item 30 — empirical proof of the self-heal mechanism.
+        # The app's default-mail guard (src/app/defaultmail.go) repairs a
+        # stolen MAPI default by writing an HKCU mirror + pointer, on the
+        # premise that the stub reads HKCU\Software\Clients\Mail before
+        # HKLM's. This test writes EXACTLY what the guard writes, sabotages
+        # the HKLM default the way a competing installer would, and proves
+        # through the real mapi32 stub that both bitness callers still
+        # resolve our DLLs. If this fails, the self-heal premise is wrong —
+        # do not weaken the assertion; redesign the guard.
+        It "30. HKCU Clients\Mail override outranks a stolen HKLM default (self-heal premise)" {
+            try {
+                & reg.exe add 'HKCU\Software\Clients\Mail\go-mapi' /ve /d 'DraftHorse' /f | Out-Null
+                & reg.exe add 'HKCU\Software\Clients\Mail\go-mapi' /v DLLPath /t REG_EXPAND_SZ /d '%ProgramFiles%\go-mapi\go-mapi.dll' /f | Out-Null
+                & reg.exe add 'HKCU\Software\Clients\Mail' /ve /d 'go-mapi' /f | Out-Null
+                & reg.exe add 'HKLM\SOFTWARE\Clients\Mail' /ve /d 'SomeStolenClient' /f | Out-Null
+
+                foreach ($probeExe in 'mapiprobe64.exe', 'mapiprobe32.exe') {
+                    $probe = Join-Path $PSScriptRoot "..\..\..\$probeExe" | Resolve-Path -ErrorAction Stop | ForEach-Object Path
+                    $out = & $probe 2>&1 | Out-String
+                    Write-Host "[HKCU override] $probeExe`n$out"
+                    $LASTEXITCODE | Should -Be 0 -Because "$probeExe must resolve via the HKCU override while HKLM points elsewhere"
+                    $out | Should -Match 'MAPIRC=0\s'
+                }
+            } finally {
+                & reg.exe add 'HKLM\SOFTWARE\Clients\Mail' /ve /d 'go-mapi' /f | Out-Null
+                & reg.exe delete 'HKCU\Software\Clients\Mail\go-mapi' /f 2>$null | Out-Null
+                & reg.exe delete 'HKCU\Software\Clients\Mail' /ve /f 2>$null | Out-Null
+            }
+        }
+
         # ARRICKS-06 — /AUTOUPDATE=1 must now be INERT.
         #
         # Replaces the upstream test that asserted the flag registers a
@@ -381,6 +411,13 @@ Describe "go-mapi installer round-trip" {
             if (-not (Test-Path $uninst)) {
                 Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait | Out-Null
             }
+
+            # ARRICKS-13: seed the HKCU self-heal mirror exactly as the app's
+            # default-mail guard writes it, so item 31 can assert the
+            # uninstaller cleans up a self-healed machine.
+            & reg.exe add 'HKCU\Software\Clients\Mail\go-mapi' /ve /d 'DraftHorse' /f | Out-Null
+            & reg.exe add 'HKCU\Software\Clients\Mail\go-mapi' /v DLLPath /t REG_EXPAND_SZ /d '%ProgramFiles%\go-mapi\go-mapi.dll' /f | Out-Null
+            & reg.exe add 'HKCU\Software\Clients\Mail' /ve /d 'go-mapi' /f | Out-Null
         }
 
         # D-21 item 7
@@ -409,6 +446,15 @@ Describe "go-mapi installer round-trip" {
         }
 
         # ARRICKS-09: mailto registration removed with the app
+        # ARRICKS-13 item 31 — the HKCU self-heal mirror seeded in BeforeAll
+        # must be removed by uninstall: the subkey deleted, and the (Default)
+        # pointer cleared (it named us, so it was ours to clear).
+        It "31. HKCU self-heal mirror and pointer are gone after uninstall" {
+            Test-Path 'HKCU:\Software\Clients\Mail\go-mapi' | Should -BeFalse
+            $ptr = (Get-ItemProperty -Path 'HKCU:\Software\Clients\Mail' -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
+            $ptr | Should -Not -Be 'go-mapi'
+        }
+
         It "27. mailto ProgID and RegisteredApplications entry are gone" {
             Test-Path 'HKLM:\SOFTWARE\Classes\go-mapi.mailto' | Should -BeFalse
             (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -ErrorAction SilentlyContinue).'go-mapi' |
