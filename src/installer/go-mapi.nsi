@@ -265,6 +265,20 @@ MapiDllPinned:
   Call InstallWebView2           ; plan 10-02
   Call CreateShortcutAndAUMID    ; plan 10-03 (D-03)
   Call AddFirewallRule           ; plan 10-03
+
+  ; ARRICKS-17 — flush the shell icon cache after upgrades. Explorer and the
+  ; Start Menu cache icons keyed on the exe PATH, which is identical across
+  ; in-place upgrades — so a changed embedded icon (ARRICKS-16) keeps
+  ; rendering as the old art until the cache refreshes. SHChangeNotify
+  ; broadcasts the association/icon change; ie4uinit -show is the Win10/11
+  ; icon-cache rebuild trigger. Both best-effort: a failure must never fail
+  ; the install (already-correct machines are a no-op).
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
+  ClearErrors
+  ExecWait '"$SYSDIR\ie4uinit.exe" -show' $0
+  IfErrors 0 +2
+  StrCpy $0 "launch-failed"
+  DetailPrint "icon-cache refresh (ie4uinit -show) rc=$0"
 SectionEnd
 
 ;------------------------------------------------------------------------------
