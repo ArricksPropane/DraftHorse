@@ -95,6 +95,20 @@ jobs:
       - name: Build interceptor DLL
         run: npm run build:interceptor
 
+      - name: Build MAPI caller probes (x64 + x86)
+        shell: pwsh
+        # ARRICKS-10: tiny Simple MAPI callers that go through the real
+        # mapi32.dll stub. Pester items 28/29 run them post-install to prove
+        # the REG_EXPAND_SZ DLLPath resolves to the matching-bitness DLL for
+        # each caller — the empirical check the registry reads can't provide.
+        # Same clang drivers as build.ps1 (path hardcoded there too).
+        run: |
+          $bin = "$env:USERPROFILE\scoop\apps\mingw-mstorsjo-llvm-ucrt\current\bin"
+          & "$bin\x86_64-w64-mingw32-clang.exe" -O1 -Wall -Werror -o mapiprobe64.exe src/installer/tests/probe/mapiprobe.c
+          if ($LASTEXITCODE -ne 0) { throw "x64 probe build failed (exit $LASTEXITCODE)" }
+          & "$bin\i686-w64-mingw32-clang.exe" -O1 -Wall -Werror -o mapiprobe32.exe src/installer/tests/probe/mapiprobe.c
+          if ($LASTEXITCODE -ne 0) { throw "x86 probe build failed (exit $LASTEXITCODE)" }
+
       - name: Build Wails app (dev ldflags - unsigned, AUMID only, no OAuth secrets)
         working-directory: src/app
         shell: pwsh

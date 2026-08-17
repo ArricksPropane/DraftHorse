@@ -111,8 +111,9 @@ Section "Install" SecInstall
   ;
   ; QUICK-260423-ntu T3c — dual-bitness layout: x64 DLL lands in $INSTDIR
   ; (= $PROGRAMFILES64\go-mapi) for native MAPI callers; x86 DLL lands in
-  ; $PROGRAMFILES32\go-mapi for legacy 32-bit MAPI callers. Registry
-  ; DLLPath writes below route each view to the matching-bitness DLL.
+  ; $PROGRAMFILES32\go-mapi for legacy 32-bit MAPI callers. The single
+  ; REG_EXPAND_SZ DLLPath write below (ARRICKS-10) routes each caller to the
+  ; matching-bitness DLL via its own %ProgramFiles% expansion.
   ; PHASE 11.1 T4 (D-04): explicit Delete + SetOverwrite try collapses transient
   ; AV/filter holds into a no-op rather than aborting the installer. RESEARCH
   ; §Pattern 1 + §Pitfall 1. NSIS default SetOverwrite is `on`, which makes
@@ -134,6 +135,23 @@ Section "Install" SecInstall
   SetOverwrite try
   File "${__FILEDIR__}\..\interceptor\build-x86\bin\go-mapi.dll"
   SetOverwrite on
+
+  ; ARRICKS-10 — the REG_EXPAND_SZ DLLPath (see D-09 below) resolves 64-bit
+  ; callers to %ProgramFiles%\go-mapi\go-mapi.dll unconditionally, so a
+  ; custom /D= install dir must still deposit the x64 DLL at that fixed
+  ; path (mirroring how the x86 DLL is always at $PROGRAMFILES32\go-mapi).
+  ; NSIS StrCmp is case-insensitive, matching NTFS path semantics. Skipped
+  ; entirely for the default dir, where $INSTDIR already IS that path.
+  StrCmp "$INSTDIR" "$PROGRAMFILES64\go-mapi" MapiDllPinned
+  CreateDirectory "$PROGRAMFILES64\go-mapi"
+  SetOutPath "$PROGRAMFILES64\go-mapi"
+  ClearErrors
+  Delete "$PROGRAMFILES64\go-mapi\go-mapi.dll"
+  SetOverwrite try
+  File "${__FILEDIR__}\..\interceptor\build-x64\bin\go-mapi.dll"
+  SetOverwrite on
+  DetailPrint "Non-default InstallDir: x64 MAPI DLL also pinned to $PROGRAMFILES64\go-mapi"
+MapiDllPinned:
 
   ; Reset $OUTDIR for the rest of the install section
   SetOutPath "$INSTDIR"
@@ -157,17 +175,28 @@ Section "Install" SecInstall
   ; D-09 — MAPI handler registration (machine-wide).
   ; Subkey + DLLPath are set first; the HKLM\SOFTWARE\Clients\Mail\(Default)
   ; overwrite happens AFTER the backup call above.
+  ;
+  ; ARRICKS-10 — dual-bitness registration via a single REG_EXPAND_SZ value.
+  ; HKLM\SOFTWARE\Clients is on the WOW64 SHARED-key list since Windows 7
+  ; (learn.microsoft.com "Registry Keys Affected by WOW64"), so the previous
+  ; native + SetRegView 32 write pair landed in ONE physical key and the last
+  ; write (x86 path) won for ALL callers — 64-bit MAPI callers then failed to
+  ; load the x86 DLL (proved by installer-smoke test 21's first real run; the
+  ; per-view pattern dates from XP/Vista where Clients really was redirected).
+  ; The mapi32.dll stub expands a REG_EXPAND_SZ DLLPath with the CALLER's own
+  ; environment (RegQueryWszExpand -> ExpandEnvironmentStringsW in Microsoft's
+  ; published MAPIStubLibrary), and WOW64 gives 32-bit processes
+  ; %ProgramFiles% = "Program Files (x86)", so one value routes each caller
+  ; to the matching-bitness DLL.
+  ;
+  ; SetRegView 64 is LOAD-BEARING, not stylistic: this installer is a 32-bit
+  ; process, and WOW64 rewrites a 32-bit writer's leading "%ProgramFiles%"
+  ; into "%ProgramFiles(x86)%" unless the key is opened with KEY_WOW64_64KEY
+  ; (learn.microsoft.com "Registry Redirector"). Without it the stored value
+  ; silently becomes the x86 path for everyone again.
+  SetRegView 64
   WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "" "go-mapi"
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "DLLPath" "$INSTDIR\go-mapi.dll"
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "go-mapi"
-
-  ; QUICK-260423-ntu T3c — 32-bit registry view. SetRegView 32 redirects
-  ; HKLM reads/writes into the WOW6432Node subtree, matching the existing
-  ; pattern used by DetectWebView2 (lines 269/282/292/300). This routes
-  ; 32-bit MAPI callers to the i686 DLL at $PROGRAMFILES32\go-mapi.
-  SetRegView 32
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "" "go-mapi"
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "DLLPath" "$PROGRAMFILES32\go-mapi\go-mapi.dll"
+  WriteRegExpandStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "DLLPath" "%ProgramFiles%\go-mapi\go-mapi.dll"
   WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "go-mapi"
   SetRegView default
 
@@ -745,8 +774,10 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\go-mapi.lnk"
   SetShellVarContext current
 
-  ; 3. MAPI handler key (native view). Also removes the ARRICKS-09
-  ; Capabilities subtree living under it.
+  ; 3. MAPI handler key. Also removes the ARRICKS-09 Capabilities subtree
+  ; living under it. ARRICKS-10: HKLM\SOFTWARE\Clients is a WOW64 SHARED
+  ; key — one physical key serves both views, so a single delete suffices
+  ; (the old follow-up SetRegView 32 delete hit the same key twice).
   DeleteRegKey HKLM "SOFTWARE\Clients\Mail\go-mapi"
 
   ; 3a. ARRICKS-09 — mailto ProgID + RegisteredApplications pointer.
@@ -754,11 +785,6 @@ Section "Uninstall"
   ; user), but the ProgID and the Default Apps listing must go.
   DeleteRegKey HKLM "SOFTWARE\Classes\go-mapi.mailto"
   DeleteRegValue HKLM "SOFTWARE\RegisteredApplications" "go-mapi"
-
-  ; 3b. QUICK-260423-ntu T3c — WOW6432 MAPI handler key (32-bit view)
-  SetRegView 32
-  DeleteRegKey HKLM "SOFTWARE\Clients\Mail\go-mapi"
-  SetRegView default
 
   ; 4. Restore (Default) Mail client from backup (D-11)
   Call un.RestorePreviousMailClient
@@ -826,6 +852,12 @@ Section "Uninstall"
   ; 9c. QUICK-260423-ntu T3c — x86 DLL + its parallel install dir
   Delete "$PROGRAMFILES32\go-mapi\go-mapi.dll"
   RMDir  "$PROGRAMFILES32\go-mapi"
+
+  ; 9d. ARRICKS-10 — x64 DLL pinned at the fixed %ProgramFiles% path for
+  ; non-default /D= installs. No-ops for default installs (step 9 already
+  ; deleted it as $INSTDIR\go-mapi.dll; RMDir skips non-empty dirs).
+  Delete "$PROGRAMFILES64\go-mapi\go-mapi.dll"
+  RMDir  "$PROGRAMFILES64\go-mapi"
 
   ; 10. Install dir (RMDir non-recursive — only removes if empty)
   RMDir "$INSTDIR"
