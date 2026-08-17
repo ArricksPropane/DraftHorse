@@ -33,7 +33,7 @@ import (
 //     the service stays a pure consumer of the (already-defaulted) settings.
 //
 // Why not go-selfupdate's DetectLatest flow? The current release layout
-// publishes `go-mapi-setup.exe` only, and DetectLatest's asset matcher
+// publishes `DraftHorse-setup.exe` only, and DetectLatest's asset matcher
 // expects `{cmd}_{goos}_{goarch}` or archived variants and reports
 // found=false when no matching asset exists (11-RESEARCH.md Pitfall 1). We
 // therefore use ListReleases as a GitHub client layer, do our own
@@ -59,7 +59,7 @@ const (
 	// never constructed from release metadata so a tampered release name
 	// cannot redirect downloads (T-11-01-01).
 	installerDownloadURL = "https://github.com/" + gitHubOwner + "/" + gitHubRepo +
-		"/releases/latest/download/go-mapi-setup.exe"
+		"/releases/latest/download/DraftHorse-setup.exe"
 
 	// updateCheckWindow is the cadence floor between background checks
 	// (REL-03: "every 24h").

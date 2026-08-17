@@ -17,7 +17,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
     currentVersion: '3.0.0',
     latestVersion: '',
     latestReleaseUrl: '',
-    installerUrl: 'https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe',
+    installerUrl: 'https://github.com/marcfargas/go-mapi/releases/latest/download/DraftHorse-setup.exe',
     updateAvailable: false,
     lastCheckedAt: '',
     enabled: true,
@@ -65,7 +65,7 @@ vi.mock('./lib/settings', () => ({
     currentVersion: '3.0.0',
     latestVersion: '',
     latestReleaseUrl: '',
-    installerUrl: 'https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe',
+    installerUrl: 'https://github.com/marcfargas/go-mapi/releases/latest/download/DraftHorse-setup.exe',
     updateAvailable: false,
     lastCheckedAt: '',
     enabled: true,
@@ -254,7 +254,7 @@ describe('App.svelte — update UX (Phase 11-03)', () => {
     latestVersion: '3.0.1',
     latestReleaseUrl: 'https://github.com/marcfargas/go-mapi/releases/tag/v3.0.1',
     installerUrl:
-      'https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe',
+      'https://github.com/marcfargas/go-mapi/releases/latest/download/DraftHorse-setup.exe',
     updateAvailable: true,
     lastCheckedAt: '2026-04-21T12:00:00Z',
     enabled: true,
@@ -265,7 +265,7 @@ describe('App.svelte — update UX (Phase 11-03)', () => {
     latestVersion: '3.0.0',
     latestReleaseUrl: 'https://github.com/marcfargas/go-mapi/releases/tag/v3.0.0',
     installerUrl:
-      'https://github.com/marcfargas/go-mapi/releases/latest/download/go-mapi-setup.exe',
+      'https://github.com/marcfargas/go-mapi/releases/latest/download/DraftHorse-setup.exe',
     updateAvailable: false,
     lastCheckedAt: '2026-04-21T12:00:00Z',
     enabled: true,
@@ -313,7 +313,7 @@ describe('App.svelte — update UX (Phase 11-03)', () => {
 
     // The panel exposes both URLs (D-02).
     const releaseLink = await findByText(/release notes|release page/i);
-    const installerLink = await findByText(/download installer|download go-mapi-setup/i);
+    const installerLink = await findByText(/download installer|download DraftHorse-setup/i);
     expect(releaseLink).toBeInTheDocument();
     expect(installerLink).toBeInTheDocument();
   });
@@ -326,7 +326,7 @@ describe('App.svelte — update UX (Phase 11-03)', () => {
     await fireEvent.click(openPanelBtn);
 
     const releaseLink = await findByText(/release notes|release page/i);
-    const installerLink = await findByText(/download installer|download go-mapi-setup/i);
+    const installerLink = await findByText(/download installer|download DraftHorse-setup/i);
     await fireEvent.click(releaseLink);
     await fireEvent.click(installerLink);
 

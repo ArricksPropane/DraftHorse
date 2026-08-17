@@ -8,7 +8,7 @@
 #   1. Unblock mapped-folder scripts so PSSecurityException never fires.
 #   2. Create timestamped evidence dir under the mapped folder.
 #   3. Resolve the installer under test. The ONLY acceptable source is a
-#      pre-staged installer at C:\phase11\installer\go-mapi-setup.exe (staged
+#      pre-staged installer at C:\phase11\installer\DraftHorse-setup.exe (staged
 #      on the host by `build-rc.ps1` or a workflow_dispatch dry-run artifact).
 #      There is NO fallback to releases/latest/download/ — that URL serves
 #      whatever is the latest PUBLISHED release, which during v3.0 pre-GA is
@@ -35,7 +35,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$StagedInstaller = 'C:\phase11\installer\go-mapi-setup.exe',
+    [string]$StagedInstaller = 'C:\phase11\installer\DraftHorse-setup.exe',
     [string]$MappedRoot      = 'C:\phase11',
     [int]$OAuthWaitSeconds   = 300,
     [int]$DraftWaitSeconds   = 120,
@@ -100,14 +100,14 @@ No v3.0 installer staged. Expected at:
 
 The $Staged path must contain a locally-built or workflow_dispatch-produced
 v3.0 installer BEFORE the sandbox runs. Do NOT fall back to
-releases/latest/download/go-mapi-setup.exe — that serves whichever release is
+releases/latest/download/DraftHorse-setup.exe — that serves whichever release is
 currently published (v2.1.x during v3.0 pre-GA), and smoking the wrong version
 is worse than no smoke at all.
 
 To stage from the host:
     pwsh -File build-rc.ps1                    # build locally (requires NSIS)
   OR
-    gh run download --name go-mapi-setup-unsigned \
+    gh run download --name DraftHorse-setup-unsigned \
         -D tests\sandbox\phase11\installer       # from dispatch dry-run
 
 Then re-launch the sandbox.

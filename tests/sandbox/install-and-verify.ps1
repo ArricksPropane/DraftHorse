@@ -2,13 +2,13 @@
 # Runs inside the Windows Sandbox as SYSTEM via `wsb exec`.
 # Preconditions: C:\go-mapi is the project folder (read-only share), C:\output is writable.
 # The installer MUST have been compiled already - this script does NOT run iscc.exe.
-# Compile go-mapi-setup.exe on the HOST first (outside the sandbox) via
+# Compile DraftHorse-setup.exe on the HOST first (outside the sandbox) via
 #   iscc.exe /DGOMAPIVersion=2.0.0-local src/installer/go-mapi.iss
-# The resulting src/installer/dist/go-mapi-setup.exe is read through the C:\go-mapi share.
+# The resulting src/installer/dist/DraftHorse-setup.exe is read through the C:\go-mapi share.
 
 $ErrorActionPreference = "Stop"
 $OutputFile = "C:\output\install-and-verify.log"
-$InstallerPath = "C:\go-mapi\src\installer\dist\go-mapi-setup.exe"
+$InstallerPath = "C:\go-mapi\src\installer\dist\DraftHorse-setup.exe"
 
 function Log($msg) {
     Write-Host $msg

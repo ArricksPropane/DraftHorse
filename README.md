@@ -46,7 +46,7 @@ drafts on your behalf — with the narrowest scope Google offers for that
 
 ## Install
 
-1. Download `go-mapi-setup.exe` from the
+1. Download `DraftHorse-setup.exe` from the
    [latest release](https://github.com/egkrateia247/DraftHorse/releases/latest)
 2. Run it. Windows will ask for permission (UAC dialog) — click **Yes**.
    DraftHorse needs this to register itself as the Windows mail handler.
@@ -59,9 +59,10 @@ it your `mailto:` link handler, pick DraftHorse in **Settings > Default
 apps** — the app shows a one-click shortcut to that page when needed
 (Windows does not allow apps to set this themselves).
 
-> Binary and artifact names intentionally remain `go-mapi*` for upgrade
-> compatibility — installs of earlier go-mapi 3.x versions upgrade in
-> place.
+> The installer file is named `DraftHorse-setup.exe`; the binaries it
+> installs and every registry identifier intentionally remain `go-mapi*`
+> for upgrade compatibility — installs of earlier go-mapi 3.x versions
+> upgrade in place.
 
 ## How to use it
 
@@ -125,7 +126,7 @@ contributors.
 
 For IT departments deploying at scale (silent install, Intune, group
 policy), see [ENTERPRISE.md](ENTERPRISE.md) — note the fork deploys via
-`go-mapi-setup.exe /S` with detection on
+`DraftHorse-setup.exe /S` with detection on
 `HKLM\SOFTWARE\Clients\Mail\go-mapi`.
 
 For contributors and maintainers, see [DEVELOPMENT.md](DEVELOPMENT.md).

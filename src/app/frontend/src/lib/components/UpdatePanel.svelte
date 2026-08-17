@@ -5,7 +5,7 @@
   - Opened from UpdateBanner "View update" action in the root shell.
   - Exposes BOTH required links (D-02):
     1. GitHub release page (human-readable release notes)
-    2. Stable installer URL (direct download of go-mapi-setup.exe)
+    2. Stable installer URL (direct download of DraftHorse-setup.exe)
     Both route through Wails' BrowserOpenURL — we must NOT use plain
     <a href> because WebView2 would open the URL inside the app window
     rather than the user's system browser.
@@ -102,7 +102,7 @@
             class="primary link"
             onclick={openInstaller}
           >
-            Download installer (go-mapi-setup.exe)
+            Download installer (DraftHorse-setup.exe)
           </button>
           <button
             type="button"

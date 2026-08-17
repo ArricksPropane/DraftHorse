@@ -5,7 +5,7 @@
 # Pester 4 EnableExit switch is forbidden (D-30).
 #
 # MUST run on an ephemeral CI runner (windows-latest) — this suite invokes
-# go-mapi-setup.exe /S /D=... which actually writes to HKLM, ProgramFiles,
+# DraftHorse-setup.exe /S /D=... which actually writes to HKLM, ProgramFiles,
 # Start Menu, and Windows Firewall. Running on a developer workstation will
 # modify the system.
 #
@@ -30,7 +30,7 @@ BeforeAll {
     # via `makensis src\installer\go-mapi.nsi` at the repo root.
     # Path resolution:
     #   From src/installer/tests/installer.Tests.ps1 ..\..\..\ = repo root
-    $script:SetupExe     = Join-Path $PSScriptRoot '..\..\..\go-mapi-setup.exe' | Resolve-Path -ErrorAction Stop | ForEach-Object Path
+    $script:SetupExe     = Join-Path $PSScriptRoot '..\..\..\DraftHorse-setup.exe' | Resolve-Path -ErrorAction Stop | ForEach-Object Path
     $script:InstallDir   = "$env:ProgramFiles\go-mapi"
     $script:ProgramData  = "$env:ProgramData\go-mapi"
     $script:BackupJson   = "$script:ProgramData\uninst\previous-mail-client.json"

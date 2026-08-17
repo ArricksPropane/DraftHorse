@@ -180,7 +180,7 @@ if ($FullTest) {
     Write-Host "`n[5/5] Running REL-02 install -> verify -> uninstall flow..." -ForegroundColor Cyan
 
     # Sanity check: the host-side Inno Setup compile must have happened already
-    $hostInstaller = Join-Path $ProjectRoot 'src\installer\dist\go-mapi-setup.exe'
+    $hostInstaller = Join-Path $ProjectRoot 'src\installer\dist\DraftHorse-setup.exe'
     if (-not (Test-Path $hostInstaller)) {
         Write-Host "ERROR: $hostInstaller not found." -ForegroundColor Red
         Write-Host "Compile it on the host first:" -ForegroundColor Yellow

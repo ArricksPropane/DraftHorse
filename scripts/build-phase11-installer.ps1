@@ -4,7 +4,7 @@
 #
 # Why this script exists:
 # - The CI workflow `installer-release.yml` builds the signed/unsigned
-#   installer and uploads it as `go-mapi-setup-unsigned`. For Phase 11
+#   installer and uploads it as `DraftHorse-setup-unsigned`. For Phase 11
 #   pre-GA smoke we need a fresh v3.0 installer before the release is
 #   published, so we either download that CI artifact or build locally.
 # - `!addplugindir "${__FILEDIR__}\plugins"` in `src/installer/go-mapi.nsi`
@@ -31,7 +31,7 @@
 # - Fresh `go-mapi.dll` at `src\interceptor\build\bin\` (`npm run build:interceptor`).
 #
 # Output:
-# - Installer copied to `tests\sandbox\phase11\installer\go-mapi-setup.exe`
+# - Installer copied to `tests\sandbox\phase11\installer\DraftHorse-setup.exe`
 #   (gitignored path) so the sandbox's LogonCommand picks it up.
 
 [CmdletBinding()]
@@ -67,11 +67,11 @@ try {
     & makensis "/X$preamble" "/DGOMAPI_VERSION=$Version" go-mapi.nsi
     if ($LASTEXITCODE -ne 0) { throw "makensis exit $LASTEXITCODE" }
 
-    $out = Join-Path $InstallerDir 'go-mapi-setup.exe'
+    $out = Join-Path $InstallerDir 'DraftHorse-setup.exe'
     if (-not (Test-Path -LiteralPath $out)) { throw 'installer not produced' }
 
     New-Item -ItemType Directory -Force $StageDir | Out-Null
-    $dest = Join-Path $StageDir 'go-mapi-setup.exe'
+    $dest = Join-Path $StageDir 'DraftHorse-setup.exe'
     Copy-Item $out $dest -Force
     $sz = (Get-Item $dest).Length
     $hash = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
