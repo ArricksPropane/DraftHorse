@@ -72,10 +72,11 @@ Describe "go-mapi installer round-trip" {
             $proc.ExitCode | Should -Be 0
         }
 
-        # D-21 item 2
-        It "2. go-mapi.exe and go-mapi.dll are deposited in InstallDir" {
+        # D-21 item 2 (+ ARRICKS-16: the toast icon toastIconPath expects)
+        It "2. go-mapi.exe, go-mapi.dll and go-mapi.ico are deposited in InstallDir" {
             Test-Path (Join-Path $script:InstallDir 'go-mapi.exe') | Should -BeTrue
             Test-Path (Join-Path $script:InstallDir 'go-mapi.dll') | Should -BeTrue
+            Test-Path (Join-Path $script:InstallDir 'go-mapi.ico') | Should -BeTrue
         }
 
         # D-21 item 3 — tightened by ARRICKS-10. The old assertion matched only

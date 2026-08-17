@@ -129,9 +129,16 @@ Section "Install" SecInstall
   ClearErrors
   Delete "$INSTDIR\go-mapi.exe"
   Delete "$INSTDIR\go-mapi.dll"
+  Delete "$INSTDIR\go-mapi.ico"
   SetOverwrite try
   File "${__FILEDIR__}\..\app\build\bin\go-mapi.exe"
   File "${__FILEDIR__}\..\interceptor\build-x64\bin\go-mapi.dll"
+  ; ARRICKS-16 — toast icon. toast_windows.go (toastIconPath) has always
+  ; looked for $INSTDIR\go-mapi.ico next to the exe, but nothing ever
+  ; shipped it — toasts rendered without an app image. Same multi-res icon
+  ; Wails embeds into the exe (src/app/build/windows/icon.ico), deposited
+  ; under the name the Go code expects (identifier: stays go-mapi.ico).
+  File "/oname=go-mapi.ico" "${__FILEDIR__}\..\app\build\windows\icon.ico"
   SetOverwrite on
 
   ; x86 DLL — same T4 treatment in $PROGRAMFILES32 view.
@@ -873,6 +880,7 @@ Section "Uninstall"
   ; Deletes succeed.
   Delete "$INSTDIR\go-mapi.exe"
   Delete "$INSTDIR\go-mapi.dll"
+  Delete "$INSTDIR\go-mapi.ico"
   Delete "$INSTDIR\uninstall.exe"
   Delete "$INSTDIR\install.log"
 
