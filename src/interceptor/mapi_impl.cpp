@@ -182,9 +182,12 @@ std::string MapiImpl::GetOriginApplicationName() {
 // wrappers hold only the SEH frame. The split is mandatory — a function
 // cannot mix __try with objects needing unwinding (MSVC C2712; clang agrees).
 // An access violation from a garbage MapiMessage pointer graph is NOT a C++
-// exception, so the catch (...) below never sees it; only SEH does. Where
-// the toolchain has no SEH (__SEH__ undefined), the caps above the call are
-// the remaining guard and the body runs unwrapped, as it always did.
+// exception, so the catch (...) below never sees it; only SEH does. The
+// guard requires BOTH __SEH__ (SEH unwinding on this target) and __clang__
+// (GCC defines __SEH__ on x86_64 but has no __try keyword at all; clang has
+// it behind -fms-extensions, which CMakeLists.txt sets for this file).
+// Where the guard compiles out, the caps above the call are the remaining
+// protection and the body runs unwrapped, as it always did.
 // On AV inside the body, its objects are abandoned without unwinding —
 // leaking a string is the right trade against corrupting the host app.
 
@@ -218,7 +221,7 @@ static ULONG SendMailWBody(const MapiMessageW& message, const std::string& origi
 }
 
 static ULONG SendMailAGuarded(LPMapiMessage lpMessage, const std::string& originApp) {
-#if defined(__SEH__)
+#if defined(__SEH__) && defined(__clang__)
     __try {
         return SendMailABody(*lpMessage, originApp);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -230,7 +233,7 @@ static ULONG SendMailAGuarded(LPMapiMessage lpMessage, const std::string& origin
 }
 
 static ULONG SendMailWGuarded(LPMapiMessageW lpMessage, const std::string& originApp) {
-#if defined(__SEH__)
+#if defined(__SEH__) && defined(__clang__)
     __try {
         return SendMailWBody(*lpMessage, originApp);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -384,7 +387,7 @@ static ULONG SendDocumentsGuarded(
     LPSTR lpszFileNames,
     const std::string& originApp
 ) {
-#if defined(__SEH__)
+#if defined(__SEH__) && defined(__clang__)
     __try {
         return SendDocumentsBody(lpszDelimChar, lpszFilePaths, lpszFileNames, originApp);
     } __except (EXCEPTION_EXECUTE_HANDLER) {

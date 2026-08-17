@@ -81,6 +81,11 @@ if(MSVC)
 elseif(MINGW)
     # MinGW specific options
     target_compile_options(go-mapi PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    # ARRICKS-12 (R7): clang gates the SEH __try/__except keywords behind
+    # -fms-extensions on windows-gnu triples even when the target uses SEH
+    # unwinding (__SEH__ defined). Scoped to the one file with the guards so
+    # MS-isms can't creep into the rest of the codebase unnoticed.
+    set_source_files_properties(mapi_impl.cpp PROPERTIES COMPILE_OPTIONS "-fms-extensions")
     target_link_libraries(go-mapi PRIVATE kernel32 user32 shell32 -static-libgcc -static-libstdc++)
     set_target_properties(go-mapi PROPERTIES
         LINK_FLAGS "-Wl,--output-def,${CMAKE_BINARY_DIR}/bin/go-mapi.def -static"

@@ -118,7 +118,7 @@ func TestBuildFullMIME_PerFileSizeCap(t *testing.T) {
 func TestBuildFullMIME_TotalSizeCap(t *testing.T) {
 	dir := t.TempDir()
 	// Each file passes the per-file cap; together they exceed the total cap.
-	half := MaxTotalAttachmentSize/2 + 1024
+	half := int64(MaxTotalAttachmentSize)/2 + 1024
 	a := makeSizedFile(t, dir, "page1.pdf", half)
 	b := makeSizedFile(t, dir, "page2.pdf", half)
 	msg := &MailMessage{
