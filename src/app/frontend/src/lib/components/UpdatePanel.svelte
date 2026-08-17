@@ -80,7 +80,7 @@
         {#if update.updateAvailable}
           Update available
         {:else}
-          go-mapi is up to date
+          Drafthorse is up to date
         {/if}
       </h2>
       <button type="button" class="close" aria-label="Close" onclick={onClose}>×</button>
@@ -90,10 +90,10 @@
       {#if update.updateAvailable}
         <p class="lede">
           A newer release is available:
-          <strong>go-mapi {update.latestVersion}</strong>.
+          <strong>Drafthorse {update.latestVersion}</strong>.
         </p>
         <p>
-          Download and run the installer manually to update — go-mapi does not
+          Download and run the installer manually to update — Drafthorse does not
           install updates automatically in v3.0.
         </p>
         <div class="actions">
