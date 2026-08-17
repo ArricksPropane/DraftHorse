@@ -206,7 +206,7 @@ func TestUpdateServiceDetectsAvailableUpdate(t *testing.T) {
 	if state.LatestReleaseURL != "https://github.com/egkrateia247/go-mapi/releases/tag/v3.0.0" {
 		t.Errorf("unexpected LatestReleaseURL: %q", state.LatestReleaseURL)
 	}
-	if state.InstallerURL != "https://github.com/egkrateia247/go-mapi/releases/latest/download/go-mapi-setup.exe" {
+	if state.InstallerURL != "https://github.com/egkrateia247/DraftHorse/releases/latest/download/go-mapi-setup.exe" {
 		t.Errorf("InstallerURL must be the stable installer URL (D-02), got %q", state.InstallerURL)
 	}
 	if state.CurrentVersion != "2.1.0" {

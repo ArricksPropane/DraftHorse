@@ -28,7 +28,7 @@
 
 <section class="banner" aria-label="Update available">
   <span class="msg">
-    Update available — <strong>Drafthorse {latestVersion}</strong>
+    Update available — <strong>DraftHorse {latestVersion}</strong>
   </span>
   <button type="button" class="view" onclick={onViewUpdate}>
     View update

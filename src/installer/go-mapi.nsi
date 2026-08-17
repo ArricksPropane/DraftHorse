@@ -39,10 +39,10 @@ Unicode True
 ; Clients\Mail subkey + resolver (Default), ProgID key, AUMID, binary and
 ; artifact names, uninstall key path, firewall rule, credential target,
 ; queue paths, Intune detection. Do not fold the two together.
-!define PRODUCT_DISPLAY   "Drafthorse"
+!define PRODUCT_DISPLAY   "DraftHorse"
 !define PRODUCT_VERSION   "${GOMAPI_VERSION}"
 !define PRODUCT_PUBLISHER "Arrick's Propane"
-!define PRODUCT_WEB_SITE  "https://github.com/egkrateia247/go-mapi"
+!define PRODUCT_WEB_SITE  "https://github.com/egkrateia247/DraftHorse"
 !define AUMID             "com.marcfargas.gomapi"
 
 ;------------------------------------------------------------------------------
@@ -669,7 +669,7 @@ FunctionEnd
 ;------------------------------------------------------------------------------
 ; CreateShortcutAndAUMID — D-13 / D-14 / D-15 / INST-01
 ;
-; Creates the all-users Start Menu shortcut at $SMPROGRAMS\Drafthorse.lnk and
+; Creates the all-users Start Menu shortcut at $SMPROGRAMS\DraftHorse.lnk and
 ; stamps PKEY_AppUserModel_ID on it via the ApplicationID NSIS plugin. The
 ; stamped AUMID is what makes Phase 9's toast notifications persist in Action
 ; Center — the shortcut AUMID MUST match the Wails app's runtime AUMID
@@ -693,18 +693,18 @@ Function CreateShortcutAndAUMID
   ; resolved to the stamped shortcut's display name). Clean up the old-name
   ; shortcut first so upgrades don't leave both in the Start Menu.
   Delete "$SMPROGRAMS\go-mapi.lnk"
-  CreateShortcut "$SMPROGRAMS\Drafthorse.lnk" \
+  CreateShortcut "$SMPROGRAMS\DraftHorse.lnk" \
       "$INSTDIR\go-mapi.exe" \
       "" \
       "$INSTDIR\go-mapi.exe" 0 \
       SW_SHOWNORMAL "" \
-      "Drafthorse — creates Gmail drafts from Simple MAPI (never sends)"
+      "DraftHorse — creates Gmail drafts from Simple MAPI (never sends)"
 
   ; D-14: stamp PKEY_AppUserModel_ID via ApplicationID plugin. Plugin loaded
   ; from src/installer/plugins/x86-unicode/ApplicationID.dll (vendored in plan 10-01).
   ; ApplicationID::Set pushes "0" on success, "-1" on error.
   ; D-15: production AUMID is com.marcfargas.gomapi (matches the ${AUMID} define).
-  ApplicationID::Set "$SMPROGRAMS\Drafthorse.lnk" "${AUMID}"
+  ApplicationID::Set "$SMPROGRAMS\DraftHorse.lnk" "${AUMID}"
   Pop $0
   SetShellVarContext current
   StrCmp $0 "0" AumidOk
@@ -788,10 +788,10 @@ Section "Uninstall"
   DetailPrint "firewall delete rule rc=$0"
 
   ; 2. Start Menu shortcut (plan 10-03 stamped the AUMID on this .lnk).
-  ; ARRICKS-11: current name is Drafthorse.lnk; the go-mapi.lnk delete stays
+  ; ARRICKS-11: current name is DraftHorse.lnk; the go-mapi.lnk delete stays
   ; as belt-and-braces for installs that predate the rebrand.
   SetShellVarContext all
-  Delete "$SMPROGRAMS\Drafthorse.lnk"
+  Delete "$SMPROGRAMS\DraftHorse.lnk"
   Delete "$SMPROGRAMS\go-mapi.lnk"
   SetShellVarContext current
 

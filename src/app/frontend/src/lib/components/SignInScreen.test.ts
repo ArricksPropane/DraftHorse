@@ -7,7 +7,7 @@ describe('SignInScreen', () => {
   it('renders the welcome heading and sign-in button copy', () => {
     const onSignIn = vi.fn();
     const { getByRole, getByText } = render(SignInScreen, { props: { onSignIn } });
-    expect(getByRole('heading', { level: 1 })).toHaveTextContent('Drafthorse');
+    expect(getByRole('heading', { level: 1 })).toHaveTextContent('DraftHorse');
     expect(getByText(/Sign in with Google/i)).toBeInTheDocument();
   });
 

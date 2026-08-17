@@ -38,7 +38,7 @@ BeforeAll {
     $script:MailKey      = 'HKLM:\SOFTWARE\Clients\Mail'
     # ARRICKS-11: display-name rebrand — the shortcut carries the display
     # name (it is also what toasts show for the stamped AUMID).
-    $script:Shortcut     = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Drafthorse.lnk"
+    $script:Shortcut     = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\DraftHorse.lnk"
     $script:FirewallRule = 'go-mapi OAuth loopback'
     $script:ExpectedAumid = 'com.marcfargas.gomapi'
     $script:CredTarget   = 'go-mapi:oauth-tokens'
@@ -49,7 +49,7 @@ BeforeAll {
 
     # Phase 11.1 D-03 / D-18 case 4: %APPDATA% path is the negative-assertion target.
     # The %ProgramData% path is already $script:Shortcut (set by Phase 10).
-    $script:AppDataLnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Drafthorse.lnk'
+    $script:AppDataLnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DraftHorse.lnk'
 
     # Phase 11.1 Plan 11.1-05 — Scheduled Task assertions (D-08 / D-16 / D-18 cases 1, 2, 5, 6)
     $script:TaskName    = 'go-mapi Auto Update'
@@ -95,7 +95,7 @@ Describe "go-mapi installer round-trip" {
             # ARRICKS-11: the client subkey's (Default) is its DISPLAY name;
             # the resolver (Default) on Clients\Mail must stay the subkey
             # name 'go-mapi' — both asserted so a future edit can't swap them.
-            (Get-ItemProperty -Path $script:MapiKey -Name '(default)').'(default)' | Should -Be 'Drafthorse'
+            (Get-ItemProperty -Path $script:MapiKey -Name '(default)').'(default)' | Should -Be 'DraftHorse'
             (Get-ItemProperty -Path $script:MailKey -Name '(default)').'(default)' | Should -Be 'go-mapi'
         }
 

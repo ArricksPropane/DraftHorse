@@ -9,17 +9,17 @@
          screen verbatim, and Google renders the OAuth app name configured in
          the GCP console — these must stay in lockstep with that setting. -->
     <p>
-      Google will show a warning that <strong>Drafthorse isn't verified</strong>.
+      Google will show a warning that <strong>DraftHorse isn't verified</strong>.
       This is expected — verification takes several weeks for small open-source apps
       and is in progress.
     </p>
     <p>To continue, click:</p>
     <ol class="steps">
       <li><strong>Advanced</strong></li>
-      <li><strong>Go to Drafthorse (unsafe)</strong></li>
+      <li><strong>Go to DraftHorse (unsafe)</strong></li>
     </ol>
     <p class="note">
-      Drafthorse only requests permission to create Gmail drafts on your behalf.
+      DraftHorse only requests permission to create Gmail drafts on your behalf.
       You can revoke this access at any time from your Google account settings.
     </p>
     <div class="actions">

@@ -48,8 +48,8 @@ type trayState struct {
 //   error > has-queue > update-available > idle
 //
 // Tooltip (D-17 + Phase 11):
-//   "Drafthorse — {segment} — N pending"
-//   • error path overrides to "Drafthorse — <msg>"
+//   "DraftHorse — {segment} — N pending"
+//   • error path overrides to "DraftHorse — <msg>"
 //   • when UpdateAvailable (and no error), " • Update available" is appended
 //     so the tray transition is observable even when the icon variant
 //     cannot be visually distinguished from has-queue.
@@ -57,7 +57,7 @@ type trayState struct {
 // Segment priority (highest first): error > paused > signed-out > mode.
 func computeTrayVisual(s trayState) (icon []byte, tooltip string) {
 	if s.ErrorMsg != "" {
-		return trayErrorIcon, "Drafthorse — " + s.ErrorMsg
+		return trayErrorIcon, "DraftHorse — " + s.ErrorMsg
 	}
 	// D-17 segment selection: paused > signed-out > mode.
 	segment := "Manual"
@@ -69,7 +69,7 @@ func computeTrayVisual(s trayState) (icon []byte, tooltip string) {
 	case s.Mode == "auto-draft":
 		segment = "Auto-draft"
 	}
-	tooltip = fmt.Sprintf("Drafthorse — %s — %d pending", segment, s.Count)
+	tooltip = fmt.Sprintf("DraftHorse — %s — %d pending", segment, s.Count)
 	if s.UpdateAvailable {
 		tooltip += " • Update available"
 	}
@@ -159,7 +159,7 @@ func (a *App) onTrayReady() {
 	}
 
 	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("Quit", "Exit Drafthorse")
+	mQuit := systray.AddMenuItem("Quit", "Exit DraftHorse")
 
 	logInfo("tray ready: menu items registered (Show, Pause watching, open-drafts toggle, update status + toggle + check-now, Quit)")
 

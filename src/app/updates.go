@@ -52,7 +52,7 @@ const (
 	// silent updater has been removed, so that no code path can resolve to
 	// upstream.
 	gitHubOwner = "egkrateia247"
-	gitHubRepo  = "go-mapi"
+	gitHubRepo  = "DraftHorse"
 
 	// installerDownloadURL is the stable installer URL shown to users
 	// when an update is available (D-02, REL-02). Intentionally hardcoded;

@@ -157,7 +157,7 @@ func emitDraftSuccessToast(a *App, subject, emailID string) {
 func emitErrorToast(a *App, category, emailID string) {
 	n := toast.Notification{
 		AppID:               activeAUMID(),
-		Title:               "Drafthorse",
+		Title:               "DraftHorse",
 		Body:                toastErrorCopy(category),
 		Icon:                toastIconPath(mustExePath()),
 		ActivationType:      toast.Foreground,
@@ -175,7 +175,7 @@ func emitErrorToast(a *App, category, emailID string) {
 func emitSummaryInvalidGrantToast(_ *App) {
 	n := toast.Notification{
 		AppID:               activeAUMID(),
-		Title:               "Drafthorse",
+		Title:               "DraftHorse",
 		Body:                toastCopySummaryInvalidGrant,
 		Icon:                toastIconPath(mustExePath()),
 		ActivationType:      toast.Foreground,
@@ -216,5 +216,5 @@ func displayFrom(msg *mapi.MailMessage) string {
 	if msg.OriginApp != "" {
 		return msg.OriginApp
 	}
-	return "Drafthorse"
+	return "DraftHorse"
 }

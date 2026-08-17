@@ -58,7 +58,7 @@ func showWebView2MissingDialog() {
 	// discarded because the literals are compile-time constants with no NUL
 	// bytes. Prefer this over the deprecated syscall.StringToUTF16Ptr (matches
 	// sessionend.go, settings.go, singleinstance.go idiom).
-	title, _ := syscall.UTF16PtrFromString("Drafthorse — WebView2 required")
+	title, _ := syscall.UTF16PtrFromString("DraftHorse — WebView2 required")
 	body, _ := syscall.UTF16PtrFromString(
 		"Microsoft Edge WebView2 Runtime is required to run go-mapi.\r\n\r\n" +
 			"Your system browser will now open the Microsoft download page. " +

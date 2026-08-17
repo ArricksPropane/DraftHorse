@@ -3,10 +3,10 @@
 </script>
 
 <section class="signin">
-  <h1>Drafthorse</h1>
+  <h1>DraftHorse</h1>
   <p class="tagline">Gmail drafts for Windows "Send to Mail recipient".</p>
   <p class="copy">
-    Sign in with your Google account. Drafthorse will create drafts in your Gmail
+    Sign in with your Google account. DraftHorse will create drafts in your Gmail
     account; it never sends mail on its own and never stores message bodies.
   </p>
   <button class="signin-btn" type="button" onclick={onSignIn}>

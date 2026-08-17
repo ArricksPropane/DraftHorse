@@ -21,11 +21,11 @@ Gmail web compose prefilled from the URL and exits — no draft API call, no
 auth, still nothing ever sent. Fleet-wide default via Intune:
 `docs/mailto-default-associations.xml`.
 
-**Branding (ARRICKS-11):** the app's display name is **Drafthorse** — it only
+**Branding (ARRICKS-11):** the app's display name is **DraftHorse** — it only
 ever creates drafts; nothing sends. Display surfaces (installer UI, ARP
-DisplayName, Start Menu shortcut `Drafthorse.lnk`, Default Apps
+DisplayName, Start Menu shortcut `DraftHorse.lnk`, Default Apps
 ApplicationName, the `Clients\Mail\go-mapi` subkey's `(Default)` value, tray,
-toasts, frontend) say Drafthorse. Every **identifier** stays `go-mapi`: the
+toasts, frontend) say DraftHorse. Every **identifier** stays `go-mapi`: the
 `Clients\Mail\go-mapi` key name and the `Clients\Mail` `(Default)` resolver
 value (the mapi32 stub opens the subkey named by that string), binary/DLL and
 artifact names, AUMID `com.marcfargas.gomapi`, `go-mapi.mailto` ProgID,
@@ -33,7 +33,7 @@ credential target, queue/config paths, firewall rule, uninstall key path,
 Intune detection. Do not rename identifiers as part of branding work — the
 split is deliberate (upgrade continuity + everything above was CI-verified
 under these names). The GCP OAuth consent-screen app name must match the
-Drafthorse copy in `PreAuthModal.svelte`.
+DraftHorse copy in `PreAuthModal.svelte`.
 
 **Why a fork rather than upstream binaries:** it replaces Affixa, which retires
 **31 January 2027**. Owning the source is the entire point — the fork is what
