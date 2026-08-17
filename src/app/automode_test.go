@@ -324,6 +324,96 @@ func TestAutomodeGmail5xx(t *testing.T) {
 	}
 }
 
+// TestAutomodePermanentFailureRetryCap (ARRICKS-12 R10): an email that fails
+// with a permanent "gmail"-category error on every attempt is retried at most
+// maxAutoDraftFailures times, then backlog-skipped so the 30s ticker stops
+// hammering it (and stops re-toasting the same error forever).
+func TestAutomodePermanentFailureRetryCap(t *testing.T) {
+	gmailHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte(`{"error":"invalid attachment"}`))
+	})
+
+	app, watchDir, cap, am := setupAutomode(t, gmailHandler, nil)
+	id := seedEmailAndWait(t, app.watcher, watchDir, "email1.json", "Permanent Failure Test", "2024-01-01T00:00:00Z")
+
+	for i := 0; i < maxAutoDraftFailures; i++ {
+		if app.isBacklogSkipped(id) {
+			t.Fatalf("email backlog-skipped after only %d failures", i)
+		}
+		am.drain()
+	}
+	cap.waitCount(t, maxAutoDraftFailures, 3*time.Second)
+	if !app.isBacklogSkipped(id) {
+		t.Fatalf("expected email backlog-skipped after %d permanent failures", maxAutoDraftFailures)
+	}
+
+	// Capped: further drains must not retry (no new emits).
+	before := cap.count()
+	am.drain()
+	time.Sleep(100 * time.Millisecond)
+	if cap.count() != before {
+		t.Errorf("expected no further attempts after cap, got %d new emits", cap.count()-before)
+	}
+	// The row itself stays queued for manual review.
+	if len(app.watcher.Snapshot()) != 1 {
+		t.Error("email should remain in queue after being capped")
+	}
+}
+
+// TestAutomodeNetworkErrorsResetPermanentStreak (ARRICKS-12 R10): a
+// connection-refused failure classifies as "network" and resets the
+// permanent-failure streak — outages must never get scans backlog-skipped.
+func TestAutomodeNetworkErrorsResetPermanentStreak(t *testing.T) {
+	gmailHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte(`{"error":"internal"}`))
+	})
+	app, watchDir, _, am := setupAutomode(t, gmailHandler, nil)
+	id := seedEmailAndWait(t, app.watcher, watchDir, "email1.json", "Streak Reset Test", "2024-01-01T00:00:00Z")
+
+	// Build up a near-cap streak of permanent failures.
+	for i := 0; i < maxAutoDraftFailures-1; i++ {
+		am.drain()
+	}
+	am.inflightMu.Lock()
+	got := am.failCounts[id]
+	am.inflightMu.Unlock()
+	if got != maxAutoDraftFailures-1 {
+		t.Fatalf("expected %d recorded failures, got %d", maxAutoDraftFailures-1, got)
+	}
+
+	// Take the Gmail endpoint down: the next attempt is connection-refused,
+	// which must classify as "network" (not "gmail") and reset the streak
+	// instead of tripping the cap on what would be the maxth failure.
+	deadSrv := httptest.NewServer(http.NotFoundHandler())
+	deadURL := deadSrv.URL
+	deadSrv.Close() // port now refuses connections
+	prevOverride := gmailBaseURLOverride
+	gmailBaseURLOverride = deadURL
+	am.drain()
+	gmailBaseURLOverride = prevOverride
+
+	am.inflightMu.Lock()
+	got = am.failCounts[id]
+	am.inflightMu.Unlock()
+	if got != 0 {
+		t.Fatalf("expected streak reset to 0 after network failure, got %d", got)
+	}
+	if app.isBacklogSkipped(id) {
+		t.Error("email must not be backlog-skipped after a network failure")
+	}
+
+	// Service restored: the email is still retryable.
+	am.drain()
+	am.inflightMu.Lock()
+	got = am.failCounts[id]
+	am.inflightMu.Unlock()
+	if got != 1 {
+		t.Fatalf("expected streak restarted at 1 after recovery, got %d", got)
+	}
+}
+
 // TestAutomodePauseRespected: paused=true → drain returns immediately, zero emits.
 func TestAutomodePauseRespected(t *testing.T) {
 	app, watchDir, cap, am := setupAutomode(t, nil, nil)

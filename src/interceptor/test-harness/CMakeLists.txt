@@ -16,6 +16,7 @@ add_executable(go-mapi-test-harness
     src/test_ansi_encoding.cpp
     src/test_null_filename.cpp
     src/test_send_documents.cpp
+    src/test_garbage_counts.cpp
 )
 
 # Include directories (interceptor is now parent directory)

@@ -12,6 +12,7 @@ extern int test_unicode_wide();
 extern int test_ansi_encoding();
 extern int test_null_filename();
 extern int test_send_documents();
+extern int test_garbage_counts();
 
 using namespace mapi_test;
 
@@ -53,6 +54,7 @@ int main(int argc, char* argv[]) {
         { "ANSI Codepage Encoding", test_ansi_encoding },
         { "Null Filename (path fallback)", test_null_filename },
         { "MAPISendDocuments (scanner path)", test_send_documents },
+        { "Garbage counts rejected (R7 caps)", test_garbage_counts },
     };
 
     for (const auto& test : tests) {

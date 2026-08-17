@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
 	"sync"
 	"time"
 
@@ -33,6 +34,10 @@ type automode struct {
 	inflightMu sync.Mutex
 	inflight   map[string]struct{}
 
+	// ARRICKS-12 (R10): consecutive "gmail"-category failure count per email.
+	// Guarded by inflightMu (same goroutines touch both maps). See draftOne.
+	failCounts map[string]int
+
 	// emit is pluggable for tests — newAutomode uses wruntime.EventsEmit;
 	// tests inject a capturing function via newAutomodeWithEmitter.
 	emit func(event string, payload any)
@@ -46,13 +51,26 @@ func newAutomode(app *App, wake <-chan struct{}) *automode {
 
 func newAutomodeWithEmitter(app *App, wake <-chan struct{}, emit func(string, any)) *automode {
 	return &automode{
-		app:      app,
-		wake:     wake,
-		done:     make(chan struct{}),
-		inflight: make(map[string]struct{}),
-		emit:     emit,
+		app:        app,
+		wake:       wake,
+		done:       make(chan struct{}),
+		inflight:   make(map[string]struct{}),
+		failCounts: make(map[string]int),
+		emit:       emit,
 	}
 }
+
+// maxAutoDraftFailures is the R10 retry ceiling: after this many consecutive
+// "gmail"-category failures for one email, automode stops retrying it
+// (markBacklogSkipped) and leaves the row for manual review. Category
+// matters: "network" failures are transient by definition and never count
+// (a weekend-long outage must not permanently skip Monday's scans), and
+// "signed-out" already halts the drain via the invalid_grant path. What's
+// left is the permanent class — attachment too large, malformed content —
+// where every retry is a guaranteed repeat failure every 30 seconds,
+// spamming an error toast each time. 5 tries ≈ 2.5 minutes of benefit of
+// the doubt before the queue row goes quiet.
+const maxAutoDraftFailures = 5
 
 func (m *automode) start() { go m.loop() }
 
@@ -90,7 +108,9 @@ func (m *automode) drain() {
 	if m.app.watcher == nil {
 		return
 	}
-	for _, e := range m.app.watcher.Snapshot() {
+	snapshot := m.app.watcher.Snapshot()
+	m.pruneFailCounts(snapshot)
+	for _, e := range snapshot {
 		if m.app.shutdownCtx.Err() != nil {
 			return
 		}
@@ -113,6 +133,25 @@ func (m *automode) drain() {
 			// emitting auth-changed. D-10: one summary toast per drain, not per-email.
 			emitSummaryInvalidGrantToast(m.app)
 			return
+		}
+	}
+}
+
+// pruneFailCounts drops R10 failure streaks for emails no longer in the
+// queue (dismissed, drafted elsewhere) so the map tracks live rows only.
+func (m *automode) pruneFailCounts(snapshot []mapi.EmailWithId) {
+	m.inflightMu.Lock()
+	defer m.inflightMu.Unlock()
+	if len(m.failCounts) == 0 {
+		return
+	}
+	live := make(map[string]struct{}, len(snapshot))
+	for _, e := range snapshot {
+		live[e.Id] = struct{}{}
+	}
+	for id := range m.failCounts {
+		if _, ok := live[id]; !ok {
+			delete(m.failCounts, id)
 		}
 	}
 }
@@ -177,6 +216,28 @@ func (m *automode) draftOne(e mapi.EmailWithId) error {
 			// D-10: mark so post-re-auth drains skip this backlog row.
 			m.app.markBacklogSkipped(e.Id)
 		}
+		// ARRICKS-12 (R10): cap consecutive permanent failures. See the
+		// maxAutoDraftFailures comment for why only "gmail" counts.
+		if category == "gmail" {
+			m.inflightMu.Lock()
+			m.failCounts[e.Id]++
+			capped := m.failCounts[e.Id] >= maxAutoDraftFailures
+			if capped {
+				delete(m.failCounts, e.Id)
+			}
+			m.inflightMu.Unlock()
+			if capped {
+				logError("automode: draft %s failed %d times with a permanent error — skipping until manual action",
+					safeIDPrefix(e.Id), maxAutoDraftFailures)
+				m.app.markBacklogSkipped(e.Id)
+			}
+		} else {
+			// A transient (network) or auth failure resets the permanent-
+			// failure streak — "consecutive" means consecutive.
+			m.inflightMu.Lock()
+			delete(m.failCounts, e.Id)
+			m.inflightMu.Unlock()
+		}
 		m.emit("auto-draft-result", map[string]any{
 			"emailId":       e.Id,
 			"success":       false,
@@ -187,6 +248,11 @@ func (m *automode) draftOne(e mapi.EmailWithId) error {
 		emitErrorToast(m.app, category, e.Id)
 		return callErr
 	}
+
+	// Success clears any R10 failure streak for this email.
+	m.inflightMu.Lock()
+	delete(m.failCounts, e.Id)
+	m.inflightMu.Unlock()
 
 	if err := m.app.watcher.MarkProcessed(e.Id); err != nil {
 		// MarkProcessed is idempotent (Task 1) — a non-nil error here is unexpected.
@@ -223,8 +289,20 @@ func classifyAutomodeError(err error) string {
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return "network"
 	}
-	// Context deadline exceeded or connection refused are network-level failures.
 	if errors.Is(err, context.DeadlineExceeded) {
+		return "network"
+	}
+	// ARRICKS-12 (R10): connection refused/reset and DNS failures implement
+	// Timeout() but return false from it, so they used to fall through to
+	// the "gmail" catchall. Miscategorization now has teeth — "gmail"
+	// failures count toward the permanent-failure retry cap, and a weekend
+	// network outage must never get Monday's scans backlog-skipped.
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return "network"
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
 		return "network"
 	}
 	return "gmail"

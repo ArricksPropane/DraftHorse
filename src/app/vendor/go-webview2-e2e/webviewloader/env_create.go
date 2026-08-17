@@ -51,18 +51,16 @@ func CreateCoreWebView2EnvironmentWithOptions(environmentCompletedHandler ICoreW
 	//
 	// We read a project-scoped env var (not the protected WebView2 one) BEFORE
 	// preventEnvAndRegistryOverrides fires and append it to the COM-side
-	// additionalBrowserArguments. Inert when the env var is unset, which is
-	// the production case — release installers never set it.
+	// additionalBrowserArguments.
+	//
+	// ARRICKS-12 (R11): the hook is compiled in ONLY under
+	// -tags gomapi_debug_browser (see debug_args_on.go/debug_args_off.go);
+	// release builds get a no-op, so the env var cannot inject Chromium
+	// switches into production binaries.
 	//
 	// See .planning/phases/11-autoupdate-release/11-06-SUMMARY.md for the
 	// full audit trail.
-	if extra := os.Getenv("GOMAPI_DEBUG_BROWSER_ARGS"); extra != "" {
-		if params.additionalBrowserArguments == "" {
-			params.additionalBrowserArguments = extra
-		} else {
-			params.additionalBrowserArguments = params.additionalBrowserArguments + " " + extra
-		}
-	}
+	params.additionalBrowserArguments = debugBrowserArgs(params.additionalBrowserArguments)
 
 	var err error
 	var dllPath string

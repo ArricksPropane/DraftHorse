@@ -15,7 +15,15 @@ import (
 
 const (
 	GmailAPIBase = "https://www.googleapis.com/gmail/v1/users/me"
-	MaxFileSize  = 25 * 1024 * 1024 // 25MB Gmail limit
+
+	// ARRICKS-12 (R9): Gmail's 25MB limit applies to the ENCODED message.
+	// Base64 inflates raw bytes by 4/3, so a 25MB raw cap let 19-25MB scans
+	// through to a guaranteed Gmail rejection — which Auto mode then retried
+	// forever. 18MB raw ≈ 24MB encoded, leaving headroom for headers + body.
+	// MaxTotalAttachmentSize caps the SUM across attachments for the same
+	// reason: five 5MB pages fail exactly like one 25MB file.
+	MaxFileSize            = 18 * 1024 * 1024
+	MaxTotalAttachmentSize = 18 * 1024 * 1024
 )
 
 // GmailClient handles Gmail API operations
@@ -128,6 +136,20 @@ func BuildFullMIME(msg *MailMessage) ([]byte, error) {
 	hasAttachments := len(msg.Attachments) > 0
 	boundary := fmt.Sprintf("go_mapi_%d", os.Getpid())
 
+	// ARRICKS-12 (R4): addresses are written into headers verbatim below
+	// (RFC 2047 encoded-words are not legal inside an addr-spec, so encoding
+	// is not an option the way it is for names). A CR/LF or other control
+	// character in an address would let a hostile queue JSON inject arbitrary
+	// headers. Reject the message instead — it lands in errors\ and surfaces
+	// in the UI like any other invalid input.
+	for _, list := range [][]Recipient{msg.Recipients.To, msg.Recipients.CC, msg.Recipients.BCC} {
+		for _, r := range list {
+			if err := validateHeaderAddress(r.Address); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	// Headers
 	if len(msg.Recipients.To) > 0 {
 		buf.WriteString(fmt.Sprintf("To: %s\r\n", formatRecipients(msg.Recipients.To)))
@@ -157,6 +179,7 @@ func BuildFullMIME(msg *MailMessage) ([]byte, error) {
 		buf.WriteString("\r\n")
 
 		// Attachment parts
+		var totalAttachmentBytes int64
 		for _, att := range msg.Attachments {
 			info, err := os.Stat(att.Path)
 			if err != nil {
@@ -164,6 +187,11 @@ func BuildFullMIME(msg *MailMessage) ([]byte, error) {
 			}
 			if info.Size() > MaxFileSize {
 				return nil, fmt.Errorf("attachment too large (%d bytes): %s", info.Size(), att.Filename)
+			}
+			// ARRICKS-12 (R9): cumulative cap — see the constant's comment.
+			totalAttachmentBytes += info.Size()
+			if totalAttachmentBytes > MaxTotalAttachmentSize {
+				return nil, fmt.Errorf("attachments too large in total (%d bytes at %s)", totalAttachmentBytes, att.Filename)
 			}
 
 			fileData, err := os.ReadFile(att.Path)
@@ -200,6 +228,20 @@ func BuildFullMIME(msg *MailMessage) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+// validateHeaderAddress rejects addresses that cannot be written into a
+// header line safely: ASCII control characters (0x00-0x1F, 0x7F) enable
+// CRLF header injection; anything else is passed through untouched, since
+// scanners produce plain ASCII addresses and over-rejecting valid-but-odd
+// addresses would discard the whole message. ARRICKS-12 (R4).
+func validateHeaderAddress(addr string) error {
+	for _, c := range addr {
+		if c < 0x20 || c == 0x7F {
+			return fmt.Errorf("recipient address contains control characters")
+		}
+	}
+	return nil
 }
 
 // formatRecipients formats a list of recipients for an email header

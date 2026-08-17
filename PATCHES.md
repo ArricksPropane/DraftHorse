@@ -222,6 +222,17 @@ llvm-nm --extern-only src\interceptor\build-x86\bin\go-mapi.dll | Select-String 
 
 ## Deliberately not included
 
+> **Update (ARRICKS-12, 2026-08-17):** the R-series below has been implemented
+> as a second series — R3/R4/R9 in `internal/mapi` (queue-path containment,
+> header-address CTL rejection, 18MB per-file + cumulative caps), R5 in the
+> watcher (orphan-stem sweep with a 15-minute age floor), R7 in the
+> interceptor (count caps + SEH guard where `__SEH__` is available), R10 in
+> automode (permanent-failure retry cap; network-error classification fixed
+> so refused/DNS failures count as transient), R11 as the
+> `gomapi_debug_browser` build tag, and R12 by inverting credential
+> precedence (ldflags win). The table is kept as the historical record of
+> the original review.
+
 These are in the review but out of scope for this pass. Each is small; say the
 word and I will do them as a second series.
 
