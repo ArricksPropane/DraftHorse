@@ -12,6 +12,8 @@ export function DismissEmail(arg1:string):Promise<void>;
 
 export function GetAuthStatus():Promise<main.AuthStatus>;
 
+export function GetDefaultsStatus():Promise<main.DefaultsStatus>;
+
 export function GetMode():Promise<string>;
 
 export function GetPausedState():Promise<boolean>;
@@ -23,6 +25,8 @@ export function GetSettings():Promise<main.AppSettings>;
 export function GetUpdateState():Promise<main.UpdateState>;
 
 export function MakeAuthenticatedGmailCall(arg1:context.Context,arg2:main.GmailCall):Promise<void>;
+
+export function OpenDefaultAppsSettings():Promise<void>;
 
 export function PauseWatching():Promise<void>;
 

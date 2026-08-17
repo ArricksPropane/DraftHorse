@@ -194,6 +194,11 @@ func (a *App) startup(ctx context.Context) {
 	a.settingsMu.Unlock()
 	logInfo("settings loaded: mode=%s", a.settings.Mode)
 
+	// ARRICKS-13: default-mail guard — startup check + hourly self-heal of
+	// the Simple MAPI client default (see defaultmail.go). Needs shutdownCtx
+	// (set above) for its ticker goroutine.
+	a.startDefaultMailGuard()
+
 	// Phase 9: start automode goroutine. Gated on mode + paused at drain time.
 	// Wire pruneBacklogSkip after every queue-update emit (D-10: backlog cleanup).
 	if a.bridge != nil {

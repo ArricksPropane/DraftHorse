@@ -22,6 +22,8 @@ import {
   GetPausedState,
   GetUpdateState,
   CheckForUpdatesNow,
+  GetDefaultsStatus,
+  OpenDefaultAppsSettings,
 } from '../../wailsjs/go/main/App';
 import type { main } from '../../wailsjs/go/models';
 
@@ -50,6 +52,26 @@ export interface AutoDraftResult {
  * the auto-generated namespace into every component.
  */
 export type UpdateState = main.UpdateState;
+
+/**
+ * ARRICKS-13 — default-app status (`main.DefaultsStatus`). mapiDefault is
+ * self-healed Go-side; mailtoDefault gates the DefaultsBanner nudge.
+ */
+export type DefaultsStatus = main.DefaultsStatus;
+
+/** ARRICKS-13: snapshot of both Windows defaults. */
+export async function fetchDefaultsStatus(): Promise<DefaultsStatus> {
+  return await GetDefaultsStatus();
+}
+
+/**
+ * ARRICKS-13: deep-link to Settings > Default apps at DraftHorse's page —
+ * the only Windows-supported way to change the mailto default (UserChoice
+ * is hash-protected and UCPD blocks programmatic writes).
+ */
+export async function openDefaultAppsSettings(): Promise<void> {
+  await OpenDefaultAppsSettings();
+}
 
 /** Read persisted settings from Go (settings.json in %APPDATA%\go-mapi\). */
 export async function fetchSettings(): Promise<AppSettings> {

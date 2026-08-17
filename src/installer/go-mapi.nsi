@@ -801,6 +801,17 @@ Section "Uninstall"
   ; (the old follow-up SetRegView 32 delete hit the same key twice).
   DeleteRegKey HKLM "SOFTWARE\Clients\Mail\go-mapi"
 
+  ; 3z. ARRICKS-13 — per-user self-heal mirror written by the app's
+  ; default-mail guard (defaultmail.go). HKCU\Software is not
+  ; WOW64-redirected, so one delete suffices. The (Default) pointer is
+  ; cleared only if it still names us — another client's later claim is
+  ; not ours to clobber. D-19 multi-user caveat applies as with %APPDATA%:
+  ; only the uninstalling user's hive is cleaned.
+  DeleteRegKey HKCU "Software\Clients\Mail\go-mapi"
+  ReadRegStr $0 HKCU "Software\Clients\Mail" ""
+  StrCmp $0 "go-mapi" 0 +2
+  DeleteRegValue HKCU "Software\Clients\Mail" ""
+
   ; 3a. ARRICKS-09 — mailto ProgID + RegisteredApplications pointer.
   ; Windows tolerates a dangling UserChoice (it falls back to asking the
   ; user), but the ProgID and the Default Apps listing must go.

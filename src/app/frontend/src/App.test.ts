@@ -76,6 +76,10 @@ vi.mock('./lib/settings', () => ({
     eventHandlers['update-state-changed'].push(cb as (...args: unknown[]) => void);
     return () => {};
   }),
+  // ARRICKS-13 — defaults-status wrappers. mailtoDefault true keeps the
+  // DefaultsBanner out of unrelated tests' render trees.
+  fetchDefaultsStatus: vi.fn().mockResolvedValue({ mapiDefault: true, mailtoDefault: true }),
+  openDefaultAppsSettings: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock queue module
