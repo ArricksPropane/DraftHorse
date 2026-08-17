@@ -162,20 +162,27 @@ Verified: pure C++ logic under `clang++ -Wall -Wextra`, 30 passing assertions;
 `makensis` compiles the patched installer clean; `gofmt -e` clean; no dangling
 references to deleted symbols.
 
-### Not yet done — good next tasks
+### R-series hardening (ARRICKS-12) — done
 
-Small, contained, independently useful:
+The follow-up items originally listed here landed as one series:
 
-- Constrain queue attachment paths to the queue dir (`internal/mapi/gmail.go`
-  reads `att.Path` verbatim)
-- RFC-2047-encode the recipient address (CRLF header injection)
-- Startup sweep for orphaned stem directories (DLL side fixed, Go side not)
-- Cap `nRecipCount`/`nFileCount`; `__try/__except` around conversion — an
-  access violation is not a C++ exception, so the existing `catch (...)` does
-  not cover a caller passing a garbage count
-- Lower `MaxFileSize` to ~18MB — 25MB raw becomes ~33MB after base64, Gmail
-  rejects it, and Auto mode then retries forever
-- Retry cap for permanent failures in Auto mode
+- Attachment paths are constrained to the queue dir at watcher load
+  (`pathWithinDir`, `internal/mapi/watcher.go`) — a tampered JSON can no
+  longer point a draft at an arbitrary local file
+- Control characters in recipient addresses are rejected at MIME build
+  (CRLF header injection; error text never echoes the address per rule 7)
+- Startup sweep for orphaned stem directories (15-minute age floor — the
+  DLL copies attachments BEFORE writing JSON, so young dirs may be a write
+  in flight)
+- `nRecipCount`/`nFileCount` capped before element access; SEH
+  `__try/__except` around conversion where the toolchain defines `__SEH__`
+- `MaxFileSize` 18MB + cumulative `MaxTotalAttachmentSize` (base64 inflation
+  math is at the constants in `gmail.go`)
+- Auto mode caps consecutive permanent failures at 5, then backlog-skips the
+  row; refused-connection/DNS errors now classify as "network" and never
+  count toward the cap
+- `GOMAPI_DEBUG_BROWSER_ARGS` only exists under `-tags gomapi_debug_browser`
+- ldflags OAuth credentials win over environment variables
 
 ## Deployment
 

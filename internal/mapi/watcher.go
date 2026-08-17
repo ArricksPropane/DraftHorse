@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -14,6 +15,30 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 )
+
+// pathWithinDir reports whether p resolves inside root. Comparison is
+// case-folded on Windows (NTFS path semantics). This is a containment check
+// against tampered queue JSON, not a symlink-race boundary — the queue dir
+// is per-user under %LOCALAPPDATA%. ARRICKS-12 (R3).
+func pathWithinDir(root, p string) bool {
+	absRoot, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return false
+	}
+	absP, err := filepath.Abs(filepath.Clean(p))
+	if err != nil {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		absRoot = strings.ToLower(absRoot)
+		absP = strings.ToLower(absP)
+	}
+	rel, err := filepath.Rel(absRoot, absP)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
 
 // EmailWithId pairs the watcher's content-hash ID with the parsed message.
 type EmailWithId struct {
@@ -86,8 +111,46 @@ func (ew *EmailWatcher) Start() error {
 		_ = err
 	}
 
+	// ARRICKS-12 (R5): reap attachment dirs whose JSON never arrived (e.g.
+	// the DLL crashed between the attachment copy and the JSON write). The
+	// DLL-side sweep covers its own failure paths; this covers the ones it
+	// cannot see. Best-effort, after existing files are processed.
+	ew.sweepOrphanedStemDirs()
+
 	go ew.watchLoop()
 	return nil
+}
+
+// sweepOrphanedStemDirs removes queue subdirectories that have no matching
+// "<stem>.json". Layout invariant (QUICK-260423-tk6): attachments for
+// "<stem>.json" live in "<watchDir>\<stem>\", and the DLL copies attachments
+// BEFORE writing the JSON — so a young dir may be a write in flight, never
+// an orphan. The age floor keeps the sweep from racing that window; real
+// orphans are hours or days old by the time the app restarts.
+func (ew *EmailWatcher) sweepOrphanedStemDirs() {
+	const minOrphanAge = 15 * time.Minute
+	entries, err := os.ReadDir(ew.watchDir)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == "processed" || name == "errors" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(ew.watchDir, name+".json")); err == nil {
+			continue // JSON present — live queue entry, not an orphan
+		}
+		info, err := entry.Info()
+		if err != nil || now.Sub(info.ModTime()) < minOrphanAge {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(ew.watchDir, name))
+	}
 }
 
 // Stop stops the watcher. Idempotent: subsequent calls are no-ops.
@@ -360,6 +423,24 @@ func (ew *EmailWatcher) processFile(filename string) {
 		ew.moveToErrors(filename, fmt.Sprintf("validation error: %v", err))
 		ew.dispatchError(validErr)
 		return
+	}
+
+	// ARRICKS-12 (R3): every attachment path must live inside the queue dir.
+	// The DLL only ever writes them there (QUICK-260423-tk6), so a path
+	// outside it means a tampered or corrupt JSON — and gmail.go would
+	// otherwise read that path verbatim into a draft, exfiltrating any local
+	// file a hostile queue write names. Empty paths stay allowed (existing
+	// semantics: entries without a path are skipped at MIME build).
+	for _, att := range mail.Attachments {
+		if att.Path == "" {
+			continue
+		}
+		if !pathWithinDir(ew.watchDir, att.Path) {
+			escErr := fmt.Errorf("invalid email in %s: attachment path escapes queue directory", filename)
+			ew.moveToErrors(filename, "validation error: attachment path escapes queue directory")
+			ew.dispatchError(escErr)
+			return
+		}
 	}
 
 	// Generate unique ID from content

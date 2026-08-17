@@ -17,6 +17,12 @@ namespace go_mapi {
 // garbage rather than a real message.
 static constexpr size_t kMaxAttachmentCount = 256;
 
+// ARRICKS-12 (R7): same reasoning for recipients. A count beyond this is an
+// uninitialized or hostile MapiMessage, not mail — and iterating a garbage
+// nRecipCount walks lpRecips off the end of real memory. Checked BEFORE any
+// element is dereferenced.
+static constexpr ULONG kMaxRecipientCount = 500;
+
 // QUICK-260423-tk6: copy attachments into a stable sibling dir keyed off the
 // supplied stem. On success, mutates msg.attachments in-place so each entry's
 // `path` points at the new copy and `size` reflects the copied byte count.
@@ -172,6 +178,72 @@ std::string MapiImpl::GetOriginApplicationName() {
     return "unknown.exe";
 }
 
+// ARRICKS-12 (R7): the *Body functions hold all C++ objects; the *Guarded
+// wrappers hold only the SEH frame. The split is mandatory — a function
+// cannot mix __try with objects needing unwinding (MSVC C2712; clang agrees).
+// An access violation from a garbage MapiMessage pointer graph is NOT a C++
+// exception, so the catch (...) below never sees it; only SEH does. The
+// guard requires BOTH __SEH__ (SEH unwinding on this target) and __clang__
+// (GCC defines __SEH__ on x86_64 but has no __try keyword at all; clang has
+// it behind -fms-extensions, which CMakeLists.txt sets for this file).
+// Where the guard compiles out, the caps above the call are the remaining
+// protection and the body runs unwrapped, as it always did.
+// On AV inside the body, its objects are abandoned without unwinding —
+// leaking a string is the right trade against corrupting the host app.
+
+static ULONG SendMailABody(const MapiMessage& message, const std::string& originApp) {
+    try {
+        MailMessage msg = message_converter::ConvertAnsiMessage(message);
+        msg.originApp = originApp;
+
+        // QUICK-260423-tk6: copy attachments into a queue-owned sibling dir
+        // BEFORE writing the JSON. The legacy Spanish MAPI caller deletes its
+        // own TEMP directory as soon as this function returns, so the Wails
+        // app would otherwise see "attachment not found" on draft creation.
+        return QueueMessage(msg);
+    } catch (...) {
+        return MAPI_E_FAILURE;
+    }
+}
+
+static ULONG SendMailWBody(const MapiMessageW& message, const std::string& originApp) {
+    try {
+        MailMessage msg = message_converter::ConvertWideMessage(message);
+        msg.originApp = originApp;
+
+        // QUICK-260423-tk6: same lifetime fix as the ANSI path — copy
+        // attachments into %LOCALAPPDATA%\go-mapi\queue\<stem>\ before the
+        // caller's TEMP dir disappears on return.
+        return QueueMessage(msg);
+    } catch (...) {
+        return MAPI_E_FAILURE;
+    }
+}
+
+static ULONG SendMailAGuarded(LPMapiMessage lpMessage, const std::string& originApp) {
+#if defined(__SEH__) && defined(__clang__)
+    __try {
+        return SendMailABody(*lpMessage, originApp);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return MAPI_E_FAILURE;
+    }
+#else
+    return SendMailABody(*lpMessage, originApp);
+#endif
+}
+
+static ULONG SendMailWGuarded(LPMapiMessageW lpMessage, const std::string& originApp) {
+#if defined(__SEH__) && defined(__clang__)
+    __try {
+        return SendMailWBody(*lpMessage, originApp);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return MAPI_E_FAILURE;
+    }
+#else
+    return SendMailWBody(*lpMessage, originApp);
+#endif
+}
+
 ULONG MapiImpl::MAPISendMailA(
     LHANDLE lhSession,
     ULONG_PTR ulUIParam,
@@ -182,21 +254,16 @@ ULONG MapiImpl::MAPISendMailA(
     if (!lpMessage) {
         return MAPI_E_INVALID_MESSAGE;
     }
-
-    try {
-        MailMessage msg = message_converter::ConvertAnsiMessage(*lpMessage);
-        // originApp populated here because it requires live process context
-        // (out of scope for the pure message_converter module).
-        msg.originApp = GetOriginApplicationName();
-
-        // QUICK-260423-tk6: copy attachments into a queue-owned sibling dir
-        // BEFORE writing the JSON. The legacy Spanish MAPI caller deletes its
-        // own TEMP directory as soon as this function returns, so the Wails
-        // app would otherwise see "attachment not found" on draft creation.
-        return QueueMessage(msg);
-    } catch (...) {
-        return MAPI_E_FAILURE;
+    // ARRICKS-12 (R7): reject garbage counts before any element access.
+    if (lpMessage->nRecipCount > kMaxRecipientCount) {
+        return MAPI_E_TOO_MANY_RECIPIENTS;
     }
+    if (lpMessage->nFileCount > kMaxAttachmentCount) {
+        return MAPI_E_TOO_MANY_FILES;
+    }
+    // originApp resolved out here: it needs the private member (live process
+    // context), and it must not construct inside the SEH frame below.
+    return SendMailAGuarded(lpMessage, GetOriginApplicationName());
 }
 
 ULONG MapiImpl::MAPISendMailW(
@@ -209,20 +276,14 @@ ULONG MapiImpl::MAPISendMailW(
     if (!lpMessage) {
         return MAPI_E_INVALID_MESSAGE;
     }
-
-    try {
-        MailMessage msg = message_converter::ConvertWideMessage(*lpMessage);
-        // originApp populated here because it requires live process context
-        // (out of scope for the pure message_converter module).
-        msg.originApp = GetOriginApplicationName();
-
-        // QUICK-260423-tk6: same lifetime fix as the ANSI path — copy
-        // attachments into %LOCALAPPDATA%\go-mapi\queue\<stem>\ before the
-        // caller's TEMP dir disappears on return.
-        return QueueMessage(msg);
-    } catch (...) {
-        return MAPI_E_FAILURE;
+    // ARRICKS-12 (R7): reject garbage counts before any element access.
+    if (lpMessage->nRecipCount > kMaxRecipientCount) {
+        return MAPI_E_TOO_MANY_RECIPIENTS;
     }
+    if (lpMessage->nFileCount > kMaxAttachmentCount) {
+        return MAPI_E_TOO_MANY_FILES;
+    }
+    return SendMailWGuarded(lpMessage, GetOriginApplicationName());
 }
 
 ULONG MapiImpl::MAPILogon(
@@ -268,17 +329,14 @@ ULONG MapiImpl::MAPIFreeBuffer(LPVOID pv) {
 // optional parallel list of display names, and lpszDelimChar names the
 // delimiter (semicolon when absent). There are no recipients, subject or body
 // — the user supplies those in the draft.
-ULONG MapiImpl::MAPISendDocuments(
-    ULONG_PTR ulUIParam,
+// ARRICKS-12 (R7): same body/guard split as MAPISendMail — AnsiToUtf8 walks
+// caller-supplied C strings, so a non-terminated buffer can AV mid-scan.
+static ULONG SendDocumentsBody(
     LPSTR lpszDelimChar,
     LPSTR lpszFilePaths,
     LPSTR lpszFileNames,
-    ULONG ulReserved
+    const std::string& originApp
 ) {
-    if (!lpszFilePaths || !lpszFilePaths[0]) {
-        return MAPI_E_ATTACHMENT_NOT_FOUND;
-    }
-
     try {
         // Convert first, then split. Splitting the raw ANSI bytes risks
         // cutting a lead-byte pair on a DBCS system code page; ASCII
@@ -303,7 +361,7 @@ ULONG MapiImpl::MAPISendDocuments(
 
         MailMessage msg;
         msg.bodyFormat = "plain";
-        msg.originApp = GetOriginApplicationName();
+        msg.originApp = originApp;
 
         for (size_t i = 0; i < paths.size(); ++i) {
             Attachment att;
@@ -321,6 +379,37 @@ ULONG MapiImpl::MAPISendDocuments(
     } catch (...) {
         return MAPI_E_FAILURE;
     }
+}
+
+static ULONG SendDocumentsGuarded(
+    LPSTR lpszDelimChar,
+    LPSTR lpszFilePaths,
+    LPSTR lpszFileNames,
+    const std::string& originApp
+) {
+#if defined(__SEH__) && defined(__clang__)
+    __try {
+        return SendDocumentsBody(lpszDelimChar, lpszFilePaths, lpszFileNames, originApp);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return MAPI_E_FAILURE;
+    }
+#else
+    return SendDocumentsBody(lpszDelimChar, lpszFilePaths, lpszFileNames, originApp);
+#endif
+}
+
+ULONG MapiImpl::MAPISendDocuments(
+    ULONG_PTR ulUIParam,
+    LPSTR lpszDelimChar,
+    LPSTR lpszFilePaths,
+    LPSTR lpszFileNames,
+    ULONG ulReserved
+) {
+    if (!lpszFilePaths || !lpszFilePaths[0]) {
+        return MAPI_E_ATTACHMENT_NOT_FOUND;
+    }
+    return SendDocumentsGuarded(lpszDelimChar, lpszFilePaths, lpszFileNames,
+                                GetOriginApplicationName());
 }
 
 } // namespace go_mapi
