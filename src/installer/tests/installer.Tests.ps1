@@ -198,17 +198,24 @@ Describe "go-mapi installer round-trip" {
             $x64Before = (Get-FileHash -Algorithm SHA256 -Path $x64Path).Hash
             $x86Before = (Get-FileHash -Algorithm SHA256 -Path $x86Path).Hash
 
-            # Touch both files to a known earlier mtime so a silent skip leaves them stale.
-            (Get-Item $x64Path).LastWriteTime = (Get-Date).AddDays(-1)
-            (Get-Item $x86Path).LastWriteTime = (Get-Date).AddDays(-1)
+            # Touch both files to a known sentinel mtime so a silent skip leaves them stale.
+            $sentinel = (Get-Date).AddDays(-1)
+            (Get-Item $x64Path).LastWriteTime = $sentinel
+            (Get-Item $x86Path).LastWriteTime = $sentinel
 
             # Reinstall silently WITHOUT prior uninstall — this is the T4 repro case.
             $proc = Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait -PassThru
             $proc.ExitCode | Should -Be 0
 
-            # Both DLLs MUST have a fresh mtime (overwrite happened).
-            (Get-Item $x64Path).LastWriteTime | Should -BeGreaterThan (Get-Date).AddMinutes(-2)
-            (Get-Item $x86Path).LastWriteTime | Should -BeGreaterThan (Get-Date).AddMinutes(-2)
+            # Both DLLs MUST have moved off the sentinel (overwrite happened).
+            # NOT "fresh vs now": NSIS SetDateSave (default on) restores each
+            # file's stored BUILD-time mtime on extraction, so a freshness
+            # window fails whenever build-to-assert exceeds it (first seen at
+            # 4.4 min on a cache-cold runner — ARRICKS-12). A T4 silent skip
+            # leaves exactly the sentinel; an overwrite replaces it with the
+            # stored build time, which is always far newer than yesterday.
+            (Get-Item $x64Path).LastWriteTime | Should -BeGreaterThan $sentinel.AddHours(1)
+            (Get-Item $x86Path).LastWriteTime | Should -BeGreaterThan $sentinel.AddHours(1)
 
             # Hashes should match the prior install (same binaries shipped — confirms the
             # overwrite happened with a real File write rather than NSIS skipping).
