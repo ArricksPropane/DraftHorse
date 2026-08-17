@@ -199,8 +199,9 @@ All-users install, `go-mapi-setup.exe /S`, deployed via Intune. Detection rule:
 the installer that wraps them, always timestamped (`signtool /tr`).
 
 Firewall, if egress is filtered: `accounts.google.com`, `oauth2.googleapis.com`,
-`www.googleapis.com`. Upstream's `ENTERPRISE.md` lists `gmail.googleapis.com`,
-which is wrong — an allowlist built from that doc breaks sign-in.
+`www.googleapis.com`. `ENTERPRISE.md` now carries the correct allowlist (the
+upstream version listed `gmail.googleapis.com`, which broke sign-in — the
+fork rewrote that doc; keep the two lists in sync).
 
 Archive the signed installer, its SHA-256, the commit hash, and the toolchain
 versions with every tagged release. That archive is the independence.
