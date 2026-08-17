@@ -40,9 +40,10 @@ BeforeAll {
     $script:FirewallRule = 'go-mapi OAuth loopback'
     $script:ExpectedAumid = 'com.marcfargas.gomapi'
     $script:CredTarget   = 'go-mapi:oauth-tokens'
-    # QUICK-260423-ntu T3d — dual-bitness install surfaces
+    # QUICK-260423-ntu T3d — dual-bitness install surfaces. (The old
+    # $script:MapiKey32 WOW6432Node path is gone with ARRICKS-10: Clients is
+    # a shared key, so the 32-bit view is read via reg.exe /reg:32 instead.)
     $script:InstallDir32 = "${env:ProgramFiles(x86)}\go-mapi"
-    $script:MapiKey32    = 'HKLM:\SOFTWARE\WOW6432Node\Clients\Mail\go-mapi'
 
     # Phase 11.1 D-03 / D-18 case 4: %APPDATA% path is the negative-assertion target.
     # The %ProgramData% path is already $script:Shortcut (set by Phase 10).
@@ -75,13 +76,35 @@ Describe "go-mapi installer round-trip" {
             Test-Path (Join-Path $script:InstallDir 'go-mapi.dll') | Should -BeTrue
         }
 
-        # D-21 item 3
-        It "3. HKLM MAPI handler key is registered with DLLPath" {
+        # D-21 item 3 — tightened by ARRICKS-10. The old assertion matched only
+        # the 'go-mapi.dll' suffix, which is exactly what let the shared-key
+        # last-write-wins bug (x86 path served to ALL callers) go unnoticed.
+        # Assert the full raw value, its REG_EXPAND_SZ kind, and that this
+        # 64-bit pwsh's expansion lands on the deposited x64 DLL.
+        It "3. HKLM MAPI handler key is registered with expandable DLLPath" {
             Test-Path $script:MapiKey | Should -BeTrue
-            $props = Get-ItemProperty -Path $script:MapiKey
-            $props.DLLPath | Should -Match 'go-mapi\.dll$'
+            $key = Get-Item $script:MapiKey
+            $key.GetValueKind('DLLPath') | Should -Be 'ExpandString'
+            $key.GetValue('DLLPath', $null, 'DoNotExpandEnvironmentNames') |
+                Should -Be '%ProgramFiles%\go-mapi\go-mapi.dll' -Because 'a 32-bit installer writing outside SetRegView 64 gets %ProgramFiles% rewritten to %ProgramFiles(x86)% by WOW64'
+            $expanded = (Get-ItemProperty -Path $script:MapiKey).DLLPath
+            $expanded | Should -Be (Join-Path $env:ProgramFiles 'go-mapi\go-mapi.dll')
+            Test-Path $expanded | Should -BeTrue
             # (Default) value read via Get-ItemProperty with '(default)' property name
             (Get-ItemProperty -Path $script:MapiKey -Name '(default)').'(default)' | Should -Be 'go-mapi'
+        }
+
+        # ARRICKS-09: mailto handler + Default Apps (Capabilities/RegisteredApplications)
+        It "26. mailto ProgID and Default Apps registration exist" {
+            $cmdKey = 'HKLM:\SOFTWARE\Classes\go-mapi.mailto\shell\open\command'
+            Test-Path $cmdKey | Should -BeTrue
+            $cmd = (Get-ItemProperty -Path $cmdKey -Name '(default)').'(default)'
+            $cmd | Should -Match 'go-mapi\.exe'
+            $cmd | Should -Match '--mailto'
+            (Get-ItemProperty -Path "$script:MapiKey\Capabilities\URLAssociations" -Name 'mailto').'mailto' |
+                Should -Be 'go-mapi.mailto'
+            (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -Name 'go-mapi').'go-mapi' |
+                Should -Be 'SOFTWARE\Clients\Mail\go-mapi\Capabilities'
         }
 
         # D-21 item 4
@@ -90,8 +113,12 @@ Describe "go-mapi installer round-trip" {
             $json = Get-Content $script:BackupJson -Raw | ConvertFrom-Json
             $json.PSObject.Properties.Name | Should -Contain 'previousClient'
             $json.PSObject.Properties.Name | Should -Contain 'backedUpAt'
-            # backedUpAt should look like an ISO-8601 timestamp
-            $json.backedUpAt | Should -Match '^\d{4}-\d{2}-\d{2}T'
+            # backedUpAt should look like an ISO-8601 timestamp. ARRICKS fix:
+            # assert against the raw JSON text — pwsh 7's ConvertFrom-Json
+            # coerces ISO-8601 strings into [datetime], which -Match then
+            # stringifies in culture format ('08/14/2026 ...'), failing the
+            # ISO regex even though the file content is correct.
+            Get-Content $script:BackupJson -Raw | Should -Match '"backedUpAt":"\d{4}-\d{2}-\d{2}T'
         }
 
         # D-21 item 5 — AUMID stamped on shortcut
@@ -145,13 +172,16 @@ Describe "go-mapi installer round-trip" {
             Get-PeMagic (Join-Path $script:InstallDir32 'go-mapi.dll') | Should -Be 0x10B
         }
 
-        # QUICK-260423-ntu item 18 — WOW6432Node DLLPath points at the x86 DLL
-        It "18. HKLM WOW6432Node MAPI key is registered with 32-bit DLLPath" {
-            # Path-based read: HKLM:\SOFTWARE\WOW6432Node\... resolves directly
-            # without SetRegView, so Get-ItemProperty hits the 32-bit hive.
-            Test-Path $script:MapiKey32 | Should -BeTrue
-            $props = Get-ItemProperty -Path $script:MapiKey32
-            $props.DLLPath | Should -Match '(?i)Program Files \(x86\)\\go-mapi\\go-mapi\.dll$'
+        # QUICK-260423-ntu item 18, reworked by ARRICKS-10. Clients is a WOW64
+        # SHARED key (Win7+), so there is no separate 32-bit copy to assert
+        # on; what matters is that the 32-bit VIEW (KEY_WOW64_32KEY — the view
+        # the SysWOW64 mapi32.dll stub reads) sees the same unexpanded
+        # %ProgramFiles% value. reg.exe /reg:32 opens exactly that view. The
+        # actual x86 DLL routing is proven end-to-end by item 29.
+        It "18. 32-bit registry view sees the same unexpanded DLLPath (shared key)" {
+            $out = (& reg.exe query 'HKLM\SOFTWARE\Clients\Mail\go-mapi' /v DLLPath /reg:32) -join "`n"
+            $LASTEXITCODE | Should -Be 0
+            $out | Should -Match 'REG_EXPAND_SZ\s+%ProgramFiles%\\go-mapi\\go-mapi\.dll'
         }
 
         # Phase 11.1 D-05 / D-18 case 3 — silent reinstall overwrites both DLLs (T4 regression)
@@ -180,9 +210,23 @@ Describe "go-mapi installer round-trip" {
             (Get-FileHash -Algorithm SHA256 -Path $x64Path).Hash | Should -Be $x64Before
             (Get-FileHash -Algorithm SHA256 -Path $x86Path).Hash | Should -Be $x86Before
 
-            # Registry DLLPath values must still point to the right bitness in both views.
-            (Get-ItemProperty -Path $script:MapiKey).DLLPath   | Should -Match '(?i)Program Files\\go-mapi\\go-mapi\.dll$'
-            (Get-ItemProperty -Path $script:MapiKey32).DLLPath | Should -Match '(?i)Program Files \(x86\)\\go-mapi\\go-mapi\.dll$'
+            # Registry DLLPath after reinstall — strict again (ARRICKS-10).
+            # The first real run of this suite proved HKLM\SOFTWARE\Clients is
+            # a WOW64 SHARED key (the old per-view assertion was
+            # unimplementable: both installer writes hit one physical key and
+            # the x86 path won for all callers). The redesign registers a
+            # single REG_EXPAND_SZ value; reinstall must leave its raw text,
+            # kind, and both views' reads intact.
+            $key = Get-Item $script:MapiKey
+            $key.GetValueKind('DLLPath') | Should -Be 'ExpandString'
+            $key.GetValue('DLLPath', $null, 'DoNotExpandEnvironmentNames') |
+                Should -Be '%ProgramFiles%\go-mapi\go-mapi.dll'
+            $expanded = (Get-ItemProperty -Path $script:MapiKey).DLLPath
+            $expanded | Should -Be (Join-Path $env:ProgramFiles 'go-mapi\go-mapi.dll')
+            Test-Path $expanded | Should -BeTrue -Because "DLLPath must point at a deposited DLL"
+            $out32 = (& reg.exe query 'HKLM\SOFTWARE\Clients\Mail\go-mapi' /v DLLPath /reg:32) -join "`n"
+            $LASTEXITCODE | Should -Be 0
+            $out32 | Should -Match 'REG_EXPAND_SZ\s+%ProgramFiles%\\go-mapi\\go-mapi\.dll'
         }
 
         # Phase 11.1 D-03 / D-18 case 4 — Start Menu shortcut location regression
@@ -190,6 +234,34 @@ Describe "go-mapi installer round-trip" {
             # The reinstall above ensures the shortcut is in place — no extra setup needed.
             Test-Path $script:Shortcut    | Should -BeTrue  -Because "D-03: shortcut MUST be all-users (%ProgramData%)"
             Test-Path $script:AppDataLnk  | Should -BeFalse -Because "D-03: per-user shortcut MUST NOT be created (%APPDATA%)"
+        }
+
+        # ARRICKS-10 items 28/29 — end-to-end stub resolution, per bitness.
+        # mapiprobe{64,32}.exe (built by installer-smoke.yml from
+        # tests/probe/mapiprobe.c) call MAPISendMail through the in-box
+        # mapi32.dll stub exactly like 64-bit Explorer "Send to" and 32-bit
+        # scanner software do, then report which go-mapi.dll actually loaded
+        # in-process. This is the on-real-Windows proof that the stub reads
+        # Clients\Mail\<client>\DLLPath and expands REG_EXPAND_SZ with the
+        # CALLER's environment — the fact the whole ARRICKS-10 design rests on.
+        It "28. 64-bit Simple MAPI caller loads the x64 DLL through the stub" {
+            $probe = Join-Path $PSScriptRoot '..\..\..\mapiprobe64.exe' | Resolve-Path -ErrorAction Stop | ForEach-Object Path
+            $out = & $probe 2>&1 | Out-String
+            Write-Host $out
+            $LASTEXITCODE | Should -Be 0 -Because "the stub must resolve and load go-mapi.dll for a 64-bit caller"
+            $out | Should -Match ([regex]::Escape("PROGRAMFILES=$env:ProgramFiles") + '\s')
+            $out | Should -Match ([regex]::Escape("RESOLVED=$env:ProgramFiles\go-mapi\go-mapi.dll") + '\s')
+            $out | Should -Match 'MAPIRC=0\s'
+        }
+
+        It "29. 32-bit Simple MAPI caller loads the x86 DLL through the stub" {
+            $probe = Join-Path $PSScriptRoot '..\..\..\mapiprobe32.exe' | Resolve-Path -ErrorAction Stop | ForEach-Object Path
+            $out = & $probe 2>&1 | Out-String
+            Write-Host $out
+            $LASTEXITCODE | Should -Be 0 -Because "the stub must resolve and load go-mapi.dll for a 32-bit caller"
+            $out | Should -Match ([regex]::Escape("PROGRAMFILES=${env:ProgramFiles(x86)}") + '\s')
+            $out | Should -Match ([regex]::Escape("RESOLVED=${env:ProgramFiles(x86)}\go-mapi\go-mapi.dll") + '\s')
+            $out | Should -Match 'MAPIRC=0\s'
         }
 
         # ARRICKS-06 — /AUTOUPDATE=1 must now be INERT.
@@ -287,6 +359,18 @@ Describe "go-mapi installer round-trip" {
     }
 
     Context "Silent uninstall" {
+        BeforeAll {
+            # ARRICKS fix: test 24b ends by uninstalling and never reinstalls,
+            # so this context previously started against an uninstalled
+            # machine and test 7 found no uninstaller. Reinstall here iff
+            # needed so the uninstall assertions exercise a real install,
+            # regardless of what order the install-phase tests ran in.
+            $uninst = Join-Path $script:InstallDir 'uninstall.exe'
+            if (-not (Test-Path $uninst)) {
+                Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait | Out-Null
+            }
+        }
+
         # D-21 item 7
         It "7. silent uninstall exits 0 with /S" {
             $uninst = Join-Path $script:InstallDir 'uninstall.exe'
@@ -312,6 +396,13 @@ Describe "go-mapi installer round-trip" {
             Test-Path $script:MapiKey | Should -BeFalse
         }
 
+        # ARRICKS-09: mailto registration removed with the app
+        It "27. mailto ProgID and RegisteredApplications entry are gone" {
+            Test-Path 'HKLM:\SOFTWARE\Classes\go-mapi.mailto' | Should -BeFalse
+            (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -ErrorAction SilentlyContinue).'go-mapi' |
+                Should -BeNullOrEmpty
+        }
+
         # D-21 item 10
         It "10. firewall rule 'go-mapi OAuth loopback' is gone" {
             Get-NetFirewallRule -DisplayName $script:FirewallRule -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
@@ -329,7 +420,11 @@ Describe "go-mapi installer round-trip" {
             # cmdkey output contains 'Target:' lines when an entry matches, or a
             # "NONE" / locale-dependent "no credentials" message when nothing matches.
             # Safe assertion: no line containing the literal target string.
-            $out | Should -Not -Match ([regex]::Escape($script:CredTarget)) -Because "cmdkey should find no credentials under target '$($script:CredTarget)' after uninstall"
+            # ARRICKS fix: cmdkey /list:<target> echoes the target name in its
+            # header even when reporting "* NONE *", so matching the bare
+            # target string always false-positived. A real stored credential
+            # is listed as "Target: ...target=<name>"; match that instead.
+            $out | Should -Not -Match "target=$([regex]::Escape($script:CredTarget))" -Because "cmdkey should find no credentials under target '$($script:CredTarget)' after uninstall"
         }
 
         # D-21 item 13
@@ -365,9 +460,12 @@ Describe "go-mapi installer round-trip" {
             Test-Path (Join-Path $script:InstallDir32 'go-mapi.dll') | Should -BeFalse
         }
 
-        # QUICK-260423-ntu item 20 — WOW6432Node MAPI key removed
-        It "20. HKLM WOW6432Node MAPI handler key is gone after uninstall" {
-            Test-Path $script:MapiKey32 | Should -BeFalse
+        # QUICK-260423-ntu item 20, reworked by ARRICKS-10: Clients is a WOW64
+        # shared key, so assert the 32-bit VIEW no longer resolves the client
+        # key after uninstall (reg.exe /reg:32 = KEY_WOW64_32KEY).
+        It "20. 32-bit registry view MAPI handler key is gone after uninstall" {
+            & reg.exe query 'HKLM\SOFTWARE\Clients\Mail\go-mapi' /reg:32 2>$null | Out-Null
+            $LASTEXITCODE | Should -Not -Be 0
         }
     }
 }

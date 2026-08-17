@@ -17,11 +17,22 @@
 # a single assembly; if a previous definition was loaded into the session,
 # checking the symbol that is actually called catches stale-definition scenarios
 # that checking `Reader` would miss.
+
+# ARRICKS fix: this was Add-Type -MemberDefinition, which wraps its input
+# inside an auto-generated class body — but the input here is a complete
+# compilation unit (using directives + top-level interfaces/structs), so
+# compilation always failed with CS1513 at the first using directive, and
+# every Pester test died at the dot-source. The consuming code below even
+# references [GoMapi.AumidReader.PublicReader], a top-level type that only
+# -TypeDefinition with an explicit namespace can produce. The C# itself is
+# unchanged apart from the namespace wrapper.
 if (-not ('GoMapi.AumidReader.PublicReader' -as [type])) {
-    Add-Type -Namespace GoMapi.AumidReader -Name Reader -MemberDefinition @'
-        using System;
-        using System.Runtime.InteropServices;
-        using System.Text;
+    Add-Type -TypeDefinition @'
+    using System;
+    using System.Runtime.InteropServices;
+    using System.Text;
+
+    namespace GoMapi.AumidReader {
 
         [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         internal interface IPropertyStore {
@@ -101,6 +112,7 @@ if (-not ('GoMapi.AumidReader.PublicReader' -as [type])) {
                 }
             }
         }
+    }
 '@
 }
 
@@ -115,4 +127,9 @@ function Get-ShortcutAumid {
     return [GoMapi.AumidReader.PublicReader]::GetAumid($absPath)
 }
 
-Export-ModuleMember -Function Get-ShortcutAumid -ErrorAction SilentlyContinue
+# ARRICKS fix 2: no Export-ModuleMember here. This file is dot-sourced by
+# installer.Tests.ps1, and Export-ModuleMember throws a terminating
+# InvalidOperationException outside a module context (-ErrorAction cannot
+# suppress it). It was unreachable dead code while the Add-Type above
+# failed; fixing the Add-Type exposed it. Dot-sourcing already puts
+# Get-ShortcutAumid in the caller's scope.
