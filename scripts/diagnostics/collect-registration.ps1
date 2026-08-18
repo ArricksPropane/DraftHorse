@@ -32,7 +32,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 
-$scriptVersion = '1.0'
+$scriptVersion = '1.1'   # ARRICKS-19: + HKCU self-heal layer, mailto UserChoice, autostart, process state
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 if (-not (Test-Path -LiteralPath $OutputDir)) {
@@ -201,6 +201,75 @@ foreach ($root in @('HKLM:\SOFTWARE\Clients\Mail\go-mapi',
         } else {
             Append-Line '(key not present)'
         }
+    }
+}
+
+# -----------------------------------------------------------------------------
+# Section 4b (v1.1 / ARRICKS-19): HKCU self-heal layer + mailto UserChoice +
+# autostart + running-process state — the surfaces the ARRICKS-13 guard and
+# the ARRICKS-19 autostart operate on.
+# -----------------------------------------------------------------------------
+Append-Banner 'HKCU mail-client layer (ARRICKS-13 self-heal)'
+Safe-Invoke 'HKCU Clients\Mail' {
+    if (Test-Path -LiteralPath 'HKCU:\Software\Clients\Mail') {
+        $props = Get-ItemProperty -LiteralPath 'HKCU:\Software\Clients\Mail' -ErrorAction SilentlyContinue
+        if ($props -and ($props.PSObject.Properties.Name -contains '(default)')) {
+            Append-Line "  HKCU (default) = $($props.'(default)')"
+        } else {
+            Append-Line '  HKCU (default) = <not set>'
+        }
+        if (Test-Path -LiteralPath 'HKCU:\Software\Clients\Mail\go-mapi') {
+            $sub = Get-ItemProperty -LiteralPath 'HKCU:\Software\Clients\Mail\go-mapi' -ErrorAction SilentlyContinue
+            if ($sub) {
+                foreach ($p in $sub.PSObject.Properties) {
+                    if ($p.Name -like 'PS*') { continue }
+                    Append-Line "  go-mapi mirror: $($p.Name) = $($p.Value)"
+                }
+            }
+        } else {
+            Append-Line '  (no HKCU go-mapi mirror — guard has not needed to self-heal)'
+        }
+    } else {
+        Append-Line '(no HKCU:\Software\Clients\Mail key)'
+    }
+}
+
+Append-Banner 'mailto UserChoice (Settings > Default apps > Email link handler)'
+Safe-Invoke 'mailto UserChoice' {
+    $uc = 'HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\mailto\UserChoice'
+    if (Test-Path -LiteralPath $uc) {
+        $p = Get-ItemProperty -LiteralPath $uc -ErrorAction SilentlyContinue
+        if ($p -and ($p.PSObject.Properties.Name -contains 'ProgId')) {
+            Append-Line "  ProgId = $($p.ProgId)   (go-mapi.mailto = DraftHorse)"
+        } else {
+            Append-Line '  ProgId = <not set>'
+        }
+    } else {
+        Append-Line '(no mailto UserChoice key — no explicit choice made yet)'
+    }
+}
+
+Append-Banner 'Autostart + running processes (ARRICKS-19)'
+Safe-Invoke 'Run key' {
+    $run = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue
+    if ($run -and ($run.PSObject.Properties.Name -contains 'go-mapi')) {
+        Append-Line "  HKLM Run\go-mapi = $($run.'go-mapi')"
+    } else {
+        Append-Line '  HKLM Run\go-mapi = <not registered> (pre-ARRICKS-19 install?)'
+    }
+}
+Safe-Invoke 'Processes' {
+    $procs = Get-Process -Name 'go-mapi' -ErrorAction SilentlyContinue
+    if ($procs) {
+        foreach ($p in $procs) {
+            Append-Line "  go-mapi.exe running: PID $($p.Id), started $($p.StartTime)"
+        }
+    } else {
+        Append-Line '  go-mapi.exe NOT RUNNING — queue watcher and default-mail guard are inactive'
+    }
+    foreach ($name in @('OUTLOOK', 'olk')) {
+        $o = Get-Process -Name $name -ErrorAction SilentlyContinue
+        if ($o) { Append-Line "  $name.exe running: $((@($o)).Count) instance(s)" }
     }
 }
 

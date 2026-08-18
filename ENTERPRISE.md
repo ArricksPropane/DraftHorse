@@ -81,6 +81,11 @@ Registry footprint (machine):
   apps)
 - `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi` —
   Add/Remove Programs (DisplayName: DraftHorse)
+- `HKLM\Software\Microsoft\Windows\CurrentVersion\Run` value `go-mapi` —
+  logon autostart (all users). The queue watcher and the default-mail
+  guard only work while the tray app runs; the installer also relaunches
+  the app immediately after interactive installs (SYSTEM-context pushes
+  rely on the next logon).
 
 Registry footprint (per user, written by the app at runtime):
 

@@ -277,6 +277,14 @@ Describe "go-mapi installer round-trip" {
             $out | Should -Match 'MAPIRC=0\s'
         }
 
+        # ARRICKS-19 item 32 — logon autostart. Without it, reboots leave the
+        # queue watcher and the ARRICKS-13 guard dead (validation finding).
+        It "32. logon autostart Run entry is registered (native view)" {
+            $run = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'go-mapi' -ErrorAction SilentlyContinue).'go-mapi'
+            $run | Should -Not -BeNullOrEmpty
+            $run | Should -Match 'go-mapi\.exe'
+        }
+
         # ARRICKS-13 item 30 — empirical proof of the self-heal mechanism.
         # The app's default-mail guard (src/app/defaultmail.go) repairs a
         # stolen MAPI default by writing an HKCU mirror + pointer, on the
@@ -447,6 +455,12 @@ Describe "go-mapi installer round-trip" {
         }
 
         # ARRICKS-09: mailto registration removed with the app
+        # ARRICKS-19 item 33 — autostart entry removed by uninstall.
+        It "33. logon autostart Run entry is gone after uninstall" {
+            $run = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'go-mapi' -ErrorAction SilentlyContinue).'go-mapi'
+            $run | Should -BeNullOrEmpty
+        }
+
         # ARRICKS-13 item 31 — the HKCU self-heal mirror seeded in BeforeAll
         # must be removed by uninstall: the subkey deleted, and the (Default)
         # pointer cleared (it named us, so it was ours to clear).
