@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -16,10 +17,13 @@ func TestDraftComposeURL(t *testing.T) {
 		want    string
 	}{
 		{
+			// ARRICKS-18: known account routes through AccountChooser so a
+			// browser without the session gets a prefilled sign-in instead
+			// of Gmail's dead /u/<email> 404 page.
 			name:  "email and message id",
 			email: "dave@arrickspropane.com",
 			msgID: "18f0abc123def456",
-			want:  "https://mail.google.com/mail/u/dave@arrickspropane.com/#drafts?compose=18f0abc123def456",
+			want:  "https://accounts.google.com/AccountChooser?Email=dave%40arrickspropane.com&continue=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2Fdave%40arrickspropane.com%2F%23drafts%3Fcompose%3D18f0abc123def456",
 		},
 		{
 			name:  "no email falls back to u/0",
@@ -46,14 +50,27 @@ func TestDraftComposeURL(t *testing.T) {
 
 // A path-hostile account string must not survive into the URL path unescaped.
 // Emails can't contain '/', but the input is whatever userinfo returned, and
-// the escaping is the invariant worth locking in.
+// the escaping is the invariant worth locking in. ARRICKS-18: the inner
+// mail.google.com link now rides encoded inside AccountChooser's `continue`
+// param — decode it back out before asserting on its shape.
 func TestDraftComposeURLEscapesAccount(t *testing.T) {
 	got := draftComposeURL("a/b@example.com", "msg123")
 	if strings.Contains(got, "u/a/b@") {
 		t.Errorf("account not path-escaped: %q", got)
 	}
-	if !strings.Contains(got, "compose=msg123") {
-		t.Errorf("message id missing from url: %q", got)
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("url.Parse(%q): %v", got, err)
+	}
+	inner := u.Query().Get("continue")
+	if inner == "" {
+		t.Fatalf("continue param missing from url: %q", got)
+	}
+	if strings.Contains(inner, "u/a/b@") {
+		t.Errorf("account not path-escaped in continue target: %q", inner)
+	}
+	if !strings.Contains(inner, "compose=msg123") {
+		t.Errorf("message id missing from continue target: %q", inner)
 	}
 }
 
