@@ -266,6 +266,27 @@ MapiDllPinned:
   Call CreateShortcutAndAUMID    ; plan 10-03 (D-03)
   Call AddFirewallRule           ; plan 10-03
 
+  ; ARRICKS-19 — autostart at logon (all users). The queue watcher and the
+  ; ARRICKS-13 default-mail guard only work while go-mapi.exe runs, and
+  ; upstream's planned Phase-10 autostart was never implemented — a reboot
+  ; left scans queueing with no drafts created, and let a competing client
+  ; (Outlook, on the validation PC) keep a stolen MAPI default with nothing
+  ; alive to heal it. The app starts hidden to the tray (StartHidden) and
+  ; is single-instance, so logon start is silent. Native view: HKLM Run is
+  ; WOW64-redirected and admins expect the entry in the 64-bit key.
+  SetRegView 64
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "go-mapi" '"$INSTDIR\go-mapi.exe"'
+  SetRegView default
+
+  ; ARRICKS-19 — relaunch after install. EnsureAppNotRunning closed any
+  ; running instance at install start; without this, every silent upgrade
+  ; left the watcher down until the next logon. explorer.exe indirection
+  ; de-elevates the child so the tray app runs as the logged-on user, not
+  ; the elevated installer token. Best-effort: under a SYSTEM-context
+  ; Intune push there is no interactive session and this is a no-op — the
+  ; Run key covers the next logon.
+  Exec 'explorer.exe "$INSTDIR\go-mapi.exe"'
+
   ; ARRICKS-17 — flush the shell icon cache after upgrades. Explorer and the
   ; Start Menu cache icons keyed on the exe PATH, which is identical across
   ; in-place upgrades — so a changed embedded icon (ARRICKS-16) keeps
@@ -821,6 +842,11 @@ Section "Uninstall"
   ; key — one physical key serves both views, so a single delete suffices
   ; (the old follow-up SetRegView 32 delete hit the same key twice).
   DeleteRegKey HKLM "SOFTWARE\Clients\Mail\go-mapi"
+
+  ; 3y. ARRICKS-19 — logon autostart entry (native view, matching the write).
+  SetRegView 64
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "go-mapi"
+  SetRegView default
 
   ; 3z. ARRICKS-13 — per-user self-heal mirror written by the app's
   ; default-mail guard (defaultmail.go). HKCU\Software is not
