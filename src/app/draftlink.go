@@ -30,21 +30,35 @@ import (
 // which resolves the OS default browser.
 var openDraftURL = browser.OpenURL
 
-// draftComposeURL builds the mail.google.com deep link for a just-created
-// draft. messageID is DraftResponse.Message.ID (NOT the draft id).
-// accountEmail selects the Google account; empty falls back to /u/0/ (the
-// browser's first signed-in session). Returns "" when messageID is empty —
-// without it there is nothing to deep-link to.
+// draftComposeURL builds the deep link for a just-created draft.
+// messageID is DraftResponse.Message.ID (NOT the draft id). Returns "" when
+// messageID is empty — without it there is nothing to deep-link to.
+//
+// ARRICKS-18: when the account email is known, the mail.google.com link is
+// wrapped in accounts.google.com/AccountChooser. Gmail's bare /u/<email>
+// slot only resolves against sessions ALREADY signed in to that browser —
+// when the scanner PC's Chrome has no session for the Workspace account,
+// it serves a dead "Temporary Error (404) / Numeric Code: 6446" page
+// (observed in validation). AccountChooser degrades properly instead: an
+// existing session passes straight through to the draft; a missing one
+// gets Google's sign-in prefilled with the right address, and `continue`
+// then lands on the draft. Empty email keeps the plain /u/0 link, which
+// already falls back to a normal sign-in redirect on its own.
 func draftComposeURL(accountEmail, messageID string) string {
 	if messageID == "" {
 		return ""
 	}
-	account := "0"
-	if accountEmail != "" {
-		account = url.PathEscape(accountEmail)
+	if accountEmail == "" {
+		return fmt.Sprintf("https://mail.google.com/mail/u/0/#drafts?compose=%s",
+			url.QueryEscape(messageID))
 	}
-	return fmt.Sprintf("https://mail.google.com/mail/u/%s/#drafts?compose=%s",
-		account, url.QueryEscape(messageID))
+	target := fmt.Sprintf("https://mail.google.com/mail/u/%s/#drafts?compose=%s",
+		url.PathEscape(accountEmail), url.QueryEscape(messageID))
+	v := url.Values{
+		"Email":    {accountEmail},
+		"continue": {target},
+	}
+	return "https://accounts.google.com/AccountChooser?" + v.Encode()
 }
 
 // isOpenDraftInBrowserEnabled reads the ARRICKS-08 toggle under the
