@@ -195,10 +195,17 @@ func (a *App) startDefaultMailGuard() {
 		repaired, err := ensureDefaultMailClient()
 		if err != nil {
 			logError("defaultmail: self-heal failed: %v", err)
-			return
-		}
-		if repaired {
+		} else if repaired {
 			logInfo("defaultmail: MAPI client default was not %q — repaired via HKCU mirror", mapiClientName)
+		}
+		// ARRICKS-20: same cadence heals the SendTo menu plumbing (file +
+		// extension association + stale UserChoice) — see sendto.go.
+		sendToRepairs, stErr := ensureSendToMailRecipient()
+		if stErr != nil {
+			logError("sendto: self-heal failed: %v", stErr)
+		}
+		if len(sendToRepairs) > 0 {
+			logInfo("sendto: repaired %v", sendToRepairs)
 		}
 	}
 	check()
