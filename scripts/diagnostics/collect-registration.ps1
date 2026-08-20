@@ -32,7 +32,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 
-$scriptVersion = '1.1'   # ARRICKS-19: + HKCU self-heal layer, mailto UserChoice, autostart, process state
+$scriptVersion = '1.2'   # ARRICKS-19: + HKCU/UserChoice/autostart/process; ARRICKS-20: + SendTo plumbing
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 if (-not (Test-Path -LiteralPath $OutputDir)) {
@@ -270,6 +270,43 @@ Safe-Invoke 'Processes' {
     foreach ($name in @('OUTLOOK', 'olk')) {
         $o = Get-Process -Name $name -ErrorAction SilentlyContinue
         if ($o) { Append-Line "  $name.exe running: $((@($o)).Count) instance(s)" }
+    }
+}
+
+# -----------------------------------------------------------------------------
+# Section 4c (v1.2 / ARRICKS-20): "Send to -> Mail recipient" plumbing.
+# -----------------------------------------------------------------------------
+Append-Banner 'SendTo plumbing (Mail Recipient entry)'
+Safe-Invoke 'SendTo file' {
+    $sendTo = Join-Path $env:APPDATA 'Microsoft\Windows\SendTo'
+    $entry = Join-Path $sendTo 'Mail Recipient.MAPIMail'
+    Append-Line "  SendTo dir            : $sendTo"
+    Append-Line "  Mail Recipient.MAPIMail present: $(Test-Path -LiteralPath $entry)"
+    if (Test-Path -LiteralPath $sendTo) {
+        Append-Line '  SendTo dir contents:'
+        Get-ChildItem -LiteralPath $sendTo -ErrorAction SilentlyContinue |
+            ForEach-Object { Append-Line "    $($_.Name)" }
+    }
+}
+Safe-Invoke '.MAPIMail association' {
+    $hkcr = 'Registry::HKEY_CLASSES_ROOT\.MAPIMail'
+    if (Test-Path -LiteralPath $hkcr) {
+        $p = Get-ItemProperty -LiteralPath $hkcr -ErrorAction SilentlyContinue
+        if ($p -and ($p.PSObject.Properties.Name -contains '(default)')) {
+            Append-Line "  HKCR\.MAPIMail (default) = $($p.'(default)')"
+        } else {
+            Append-Line '  HKCR\.MAPIMail (default) = <not set>'
+        }
+    } else {
+        Append-Line '  HKCR\.MAPIMail = <KEY MISSING> (extension association stripped)'
+    }
+    $uc = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.MAPIMail\UserChoice'
+    if (Test-Path -LiteralPath $uc) {
+        $p = Get-ItemProperty -LiteralPath $uc -ErrorAction SilentlyContinue
+        $progId = if ($p -and ($p.PSObject.Properties.Name -contains 'ProgId')) { $p.ProgId } else { '<none>' }
+        Append-Line "  FileExts\.MAPIMail\UserChoice ProgId = $progId  (stale entries here break the menu)"
+    } else {
+        Append-Line '  FileExts\.MAPIMail\UserChoice = <not present> (good)'
     }
 }
 
