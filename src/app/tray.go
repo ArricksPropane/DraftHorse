@@ -130,6 +130,12 @@ func (a *App) onTrayReady() {
 		"After a draft is created, open it in your browser",
 		a.isOpenDraftInBrowserEnabled(),
 	)
+	// ARRICKS-21: dedicated isolated browser profile vs the default browser.
+	mDedicatedBrowser := systray.AddMenuItemCheckbox(
+		"Use DraftHorse's own browser window",
+		"Open drafts in an isolated Edge/Chrome profile signed into the location account (not your personal browser session)",
+		a.isDraftBrowserDedicated(),
+	)
 
 	// Phase 11 — update status rows + actions (D-05, D-06, D-07).
 	// Placement: between Pause and Quit, with a separator above and below to
@@ -191,6 +197,18 @@ func (a *App) onTrayReady() {
 					mOpenDraft.Check()
 				} else {
 					mOpenDraft.Uncheck()
+				}
+			case <-mDedicatedBrowser.ClickedCh:
+				// ARRICKS-21 toggle — same persistence + HWND-affinity shape.
+				next := !mDedicatedBrowser.Checked()
+				if err := a.setDraftBrowserDedicated(next); err != nil {
+					logError("tray: setDraftBrowserDedicated(%v): %v", next, err)
+					break
+				}
+				if next {
+					mDedicatedBrowser.Check()
+				} else {
+					mDedicatedBrowser.Uncheck()
 				}
 			case <-mToggleUpdates.ClickedCh:
 				// Flip the opt-out flag. setUpdateChecksEnabled writes through the

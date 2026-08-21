@@ -133,6 +133,29 @@ A mailto click runs `go-mapi.exe --mailto "%1"`, which opens Gmail web
 compose prefilled from the link and exits. No draft API call, no stored
 credentials involved.
 
+## Opening drafts: the dedicated browser profile
+
+After a draft is created, DraftHorse opens it in **its own isolated browser
+window** — Edge (or Chrome) launched with a private profile directory at
+`%LOCALAPPDATA%\go-mapi\browser-profile` — rather than the user's default
+browser. This is deliberate for the delegated-mailbox fleet model: the app
+is signed into the *location* account, while staff browsers are signed in
+as the staff member (the location mailbox is only reachable there through
+Gmail's delegation hop, which has no URL). A dedicated profile makes the
+draft open in the right account every time, independent of the user's
+daily browser.
+
+**Setup (once per user per machine):** the first draft opened in the
+dedicated window shows Google's sign-in prefilled with the location
+account; IT completes it once. The session persists in the profile.
+Nothing is bundled — Edge ships with Windows 11 and Microsoft patches it.
+
+The tray checkbox **"Use DraftHorse's own browser window"** (default on)
+falls back to the system default browser when unticked, or automatically
+if no Edge/Chrome is found. The profile directory is removed by the
+uninstaller for the uninstalling user (it holds the location account's
+session cookies — see *Multi-user / RDS hosts* for other users).
+
 ## Silent install
 
 Silent install with all defaults:
@@ -261,6 +284,9 @@ machine-wide locations. It does **not** enumerate other user profiles.
 Per-user residue after uninstall (harmless — see below):
 
 - `%APPDATA%\go-mapi\` (settings, log)
+- `%LOCALAPPDATA%\go-mapi\browser-profile\` (dedicated browser profile —
+  holds the location account's Google session; clear it for non-uninstalling
+  users if policy requires)
 - Credential Manager target `go-mapi:oauth-tokens` (DPAPI-scoped)
 - `HKCU\Software\Clients\Mail\go-mapi` for users other than the
   uninstalling one, if the default-mail guard ever self-healed in their
@@ -273,6 +299,7 @@ per user at logon:
 
 ```powershell
 Remove-Item -Recurse -Force "$env:APPDATA\go-mapi" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\go-mapi\browser-profile" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "HKCU:\Software\Clients\Mail\go-mapi" -ErrorAction SilentlyContinue
 cmdkey /list:go-mapi:oauth-tokens 2>$null | Out-Null
 if ($LASTEXITCODE -eq 0) { cmdkey /delete:go-mapi:oauth-tokens | Out-Null }

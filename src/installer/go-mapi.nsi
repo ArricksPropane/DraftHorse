@@ -906,6 +906,12 @@ Section "Uninstall"
   ; other users on the machine retain their own copies; documented in README)
   RMDir /r "$APPDATA\go-mapi"
 
+  ; 7b. ARRICKS-21 — the dedicated browser profile holds the location
+  ; account's Google session cookies; it must not outlive the app. Same
+  ; uninstalling-user-only caveat as step 7. Best-effort: a running Edge
+  ; window on this profile may pin some files until it closes.
+  RMDir /r "$LOCALAPPDATA\go-mapi\browser-profile"
+
   ; 8. Windows Credential Manager — target is "<service>:<username>" per
   ; zalando/go-keyring Windows backend (PATTERNS.md §Shared Pattern 3).
   ; CONTEXT specifics line 199 wrote the slash-separated form — WRONG.

@@ -34,6 +34,12 @@ type AppSettings struct {
 	UpdateChecksEnabled bool   `json:"update_checks_enabled"`        // ARRICKS-06 default off
 	LastUpdateCheck     string `json:"last_update_check,omitempty"`  // RFC3339, "" = never checked
 	OpenDraftInBrowser  bool   `json:"open_draft_in_browser"`        // ARRICKS-08 default on
+	// ARRICKS-21: open drafts in DraftHorse's own isolated Edge/Chrome
+	// profile (signed into the location account once by IT) instead of the
+	// user's default browser. Default on — the fleet model is delegated
+	// per-location mailboxes, where the user's own browser session is the
+	// wrong account by design.
+	DraftBrowserDedicated bool `json:"draft_browser_dedicated"`
 }
 
 const defaultMode = "manual"
@@ -54,6 +60,9 @@ func defaultAppSettings() AppSettings {
 		// finishing the draft in Gmail, so surfacing it immediately saves
 		// the hunt through mail.google.com. Toggleable from the tray menu.
 		OpenDraftInBrowser: true,
+		// ARRICKS-21: see the field comment. Falls back to the default
+		// browser automatically when no Edge/Chrome is found.
+		DraftBrowserDedicated: true,
 	}
 }
 
@@ -84,6 +93,7 @@ func loadSettings() AppSettings {
 		UpdateChecksEnabled *bool  `json:"update_checks_enabled"`
 		LastUpdateCheck     string `json:"last_update_check"`
 		OpenDraftInBrowser  *bool  `json:"open_draft_in_browser"`
+		DraftBrowserDedicated *bool `json:"draft_browser_dedicated"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		logError("settings: parse error, using defaults: %v", err)
@@ -101,6 +111,10 @@ func loadSettings() AppSettings {
 	// false = user opted out via the tray toggle.
 	if raw.OpenDraftInBrowser != nil {
 		out.OpenDraftInBrowser = *raw.OpenDraftInBrowser
+	}
+	// ARRICKS-21: absent (pre-3.7 settings files) → default true.
+	if raw.DraftBrowserDedicated != nil {
+		out.DraftBrowserDedicated = *raw.DraftBrowserDedicated
 	}
 	out.LastUpdateCheck = raw.LastUpdateCheck
 	return out
