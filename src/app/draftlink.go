@@ -88,11 +88,48 @@ func (a *App) openDraftInBrowser(messageID string) {
 	if a.auth != nil {
 		email = a.auth.Status().Email
 	}
-	if err := openDraftURL(draftComposeURL(email, messageID)); err != nil {
+	target := draftComposeURL(email, messageID)
+	// ARRICKS-21: prefer the dedicated isolated profile (see draftbrowser.go);
+	// fall through to the default browser if no Edge/Chrome is installed or
+	// the launch fails, so the draft is never left unreachable.
+	if a.isDraftBrowserDedicated() {
+		err := launchDraftInDedicatedBrowser(target)
+		if err == nil {
+			return
+		}
+		logError("draftlink: dedicated browser launch failed (%v); falling back to default browser", err)
+	}
+	if err := openDraftURL(target); err != nil {
 		// D-04: log + swallow. The draft exists; the user can still reach
 		// it via mail.google.com.
 		logError("draftlink: browser open failed: %v", err)
 	}
+}
+
+// isDraftBrowserDedicated reads the ARRICKS-21 toggle under the settings RLock.
+func (a *App) isDraftBrowserDedicated() bool {
+	a.settingsMu.RLock()
+	defer a.settingsMu.RUnlock()
+	return a.settings.DraftBrowserDedicated
+}
+
+// setDraftBrowserDedicated flips the ARRICKS-21 toggle and persists through
+// the single-writer settings path (mirrors setOpenDraftInBrowser).
+func (a *App) setDraftBrowserDedicated(enabled bool) error {
+	a.settingsMu.Lock()
+	a.settings.DraftBrowserDedicated = enabled
+	s := a.settings
+	a.settingsMu.Unlock()
+	if err := saveSettings(s); err != nil {
+		return fmt.Errorf("settings: persist draft-browser-dedicated: %w", err)
+	}
+	a.signalTrayRefresh()
+	return nil
+}
+
+// SetDraftBrowserDedicated is the Wails binding form of setDraftBrowserDedicated.
+func (a *App) SetDraftBrowserDedicated(enabled bool) error {
+	return a.setDraftBrowserDedicated(enabled)
 }
 
 // setOpenDraftInBrowser flips the toggle and persists through the

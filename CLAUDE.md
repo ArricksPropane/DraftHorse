@@ -21,6 +21,14 @@ Gmail web compose prefilled from the URL and exits — no draft API call, no
 auth, still nothing ever sent. Fleet-wide default via Intune:
 `docs/mailto-default-associations.xml`.
 
+Drafts open in a dedicated isolated Edge/Chrome profile (ARRICKS-21,
+`src/app/draftbrowser.go`, `%LOCALAPPDATA%\go-mapi\browser-profile`, tray
+toggle, default on) — the fleet uses delegated per-location mailboxes, so the
+user's own browser session is the wrong account by design; IT signs the
+dedicated profile into the location account once. Falls back to the default
+browser when no Edge/Chrome exists. Do NOT bundle a browser (size, patching,
+Google blocks sign-in in embedded WebViews).
+
 A default-mail guard (ARRICKS-13, `src/app/defaultmail.go`) checks at startup
 and hourly that the Simple MAPI default still resolves to this app, and
 self-heals a stolen default through an unelevated HKCU mirror (the stub reads
