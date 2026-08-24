@@ -33,6 +33,12 @@ type GmailClient struct {
 	httpClient *http.Client
 	token      string
 	baseURL    string // injection point for tests and CLI flag; defaults to GmailAPIBase
+	// uploadBaseURL is baseURL's /upload sibling (ARRICKS-26): media
+	// uploads live under /upload/gmail/v1/... on the real API. For test
+	// bases without the /gmail/v1/ segment it equals baseURL, so stubs see
+	// the same /drafts path and distinguish uploads by the uploadType=media
+	// query and message/rfc822 content type.
+	uploadBaseURL string
 }
 
 // NewGmailClient creates a new Gmail API client with the given OAuth token
@@ -51,9 +57,10 @@ func NewGmailClientWithBase(token, baseURL string) *GmailClient {
 		baseURL = GmailAPIBase
 	}
 	return &GmailClient{
-		httpClient: &http.Client{},
-		token:      token,
-		baseURL:    baseURL,
+		httpClient:    &http.Client{},
+		token:         token,
+		baseURL:       baseURL,
+		uploadBaseURL: strings.Replace(baseURL, "/gmail/v1/", "/upload/gmail/v1/", 1),
 	}
 }
 
@@ -88,25 +95,20 @@ func (gc *GmailClient) CreateDraftFull(msg *MailMessage) (*DraftResponse, error)
 		return nil, fmt.Errorf("failed to build MIME message: %w", err)
 	}
 
-	encodedMsg := Base64URLEncode(mimeMsg)
-
-	body := map[string]interface{}{
-		"message": map[string]interface{}{
-			"raw": encodedMsg,
-		},
-	}
-	bodyJSON, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	url := fmt.Sprintf("%s/drafts", gc.baseURL)
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyJSON))
+	// ARRICKS-26: create via the media-upload endpoint with the raw RFC822
+	// bytes instead of base64url inlined in a JSON envelope. This is
+	// Google's recommended path for attachment-bearing messages: no 4/3
+	// base64 inflation on the wire, no inline-JSON request ceiling for
+	// large multi-page scans, and the upload pipeline materializes
+	// attachment parts the way the web compose expects (the chip-missing
+	// escalation path from ARRICKS-25).
+	url := fmt.Sprintf("%s/drafts?uploadType=media", gc.uploadBaseURL)
+	req, err := http.NewRequest("POST", url, bytes.NewReader(mimeMsg))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+gc.token)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "message/rfc822")
 
 	resp, err := gc.httpClient.Do(req)
 	if err != nil {

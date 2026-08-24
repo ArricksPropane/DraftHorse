@@ -1,7 +1,6 @@
 package mapi
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -150,27 +149,30 @@ func TestGmailClient_CreateDraft(t *testing.T) {
 }
 
 func TestGmailClient_CreateDraft_RequestBodyShape(t *testing.T) {
-	// Cross-check that the JSON body wraps the base64url-encoded MIME under
-	// message.raw per the Gmail drafts API shape. Keeps us honest against
-	// accidental refactors of the request envelope.
-	var gotRaw string
+	// ARRICKS-26: creation goes through the media-upload endpoint — the
+	// request body IS the raw RFC822 message (no JSON envelope, no base64
+	// inflation), marked by uploadType=media and message/rfc822. Keeps us
+	// honest against accidental refactors of the wire format.
+	var (
+		gotBody        string
+		gotContentType string
+		gotUploadType  string
+	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// ARRICKS-25: the create is followed by a warm GET — only the POST
-		// carries the JSON envelope under test here.
+		// carries the body under test here.
 		if r.Method != http.MethodPost {
 			w.WriteHeader(200)
 			_, _ = io.WriteString(w, `{}`)
 			return
 		}
-		var body struct {
-			Message struct {
-				Raw string `json:"raw"`
-			} `json:"message"`
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Errorf("failed to decode request body: %v", err)
-		}
-		gotRaw = body.Message.Raw
+		gotBody = string(raw)
+		gotContentType = r.Header.Get("Content-Type")
+		gotUploadType = r.URL.Query().Get("uploadType")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
 		_, _ = io.WriteString(w, `{"id":"abc"}`)
@@ -181,12 +183,17 @@ func TestGmailClient_CreateDraft_RequestBodyShape(t *testing.T) {
 	if _, err := client.CreateDraft(newTestMail()); err != nil {
 		t.Fatalf("CreateDraft error: %v", err)
 	}
-	if gotRaw == "" {
-		t.Fatal("expected non-empty message.raw in request body")
+	if gotUploadType != "media" {
+		t.Errorf("uploadType = %q, want media", gotUploadType)
 	}
-	// base64url should not contain padding, plus or slash characters.
-	if strings.ContainsAny(gotRaw, "+/=") {
-		t.Errorf("message.raw contains non-base64url characters: %q", gotRaw)
+	if gotContentType != "message/rfc822" {
+		t.Errorf("Content-Type = %q, want message/rfc822", gotContentType)
+	}
+	if !strings.Contains(gotBody, "Subject: ") {
+		t.Errorf("body is not raw RFC822 (no Subject header):\n%s", gotBody)
+	}
+	if strings.Contains(gotBody, `"raw"`) {
+		t.Errorf("body still carries the old JSON envelope:\n%s", gotBody)
 	}
 }
 
