@@ -150,6 +150,13 @@ func TestGmailClient_CreateDraft_RequestBodyShape(t *testing.T) {
 	// accidental refactors of the request envelope.
 	var gotRaw string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ARRICKS-25: the create is followed by a warm GET — only the POST
+		// carries the JSON envelope under test here.
+		if r.Method != http.MethodPost {
+			w.WriteHeader(200)
+			_, _ = io.WriteString(w, `{}`)
+			return
+		}
 		var body struct {
 			Message struct {
 				Raw string `json:"raw"`

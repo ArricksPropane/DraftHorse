@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -161,4 +163,60 @@ func TestBuildFullMIME_SignatureRendering(t *testing.T) {
 			t.Errorf("unsigned body changed: %q, want %q", got, base.Body)
 		}
 	})
+}
+
+// ARRICKS-25: draft creation is followed by exactly one warm full-read of
+// the new draft, and a failing warm never fails creation.
+func TestCreateDraftFull_WarmsDraft(t *testing.T) {
+	type hit struct{ method, path, query string }
+	var mu sync.Mutex
+	var hits []hit
+	var warmStatus atomic.Int32
+	warmStatus.Store(200)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits = append(hits, hit{r.Method, r.URL.Path, r.URL.RawQuery})
+		mu.Unlock()
+		if r.Method == http.MethodGet {
+			w.WriteHeader(int(warmStatus.Load()))
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"id":"draft-1","message":{"id":"msg-1"}}`))
+	}))
+	defer srv.Close()
+
+	msg := &MailMessage{
+		BodyFormat: "plain",
+		Body:       "b",
+		Subject:    "s",
+		Recipients: Recipients{To: []Recipient{{Address: "ok@example.com"}}},
+	}
+
+	gc := NewGmailClientWithBase("tok", srv.URL)
+	draft, err := gc.CreateDraftFull(msg)
+	if err != nil {
+		t.Fatalf("CreateDraftFull: %v", err)
+	}
+	if draft.ID != "draft-1" {
+		t.Errorf("draft id = %q", draft.ID)
+	}
+	mu.Lock()
+	if len(hits) != 2 {
+		mu.Unlock()
+		t.Fatalf("expected POST + warm GET")
+	}
+	warm := hits[1]
+	mu.Unlock()
+	if warm.method != http.MethodGet || warm.path != "/drafts/draft-1" || !strings.Contains(warm.query, "format=full") {
+		t.Errorf("warm read = %+v, want GET /drafts/draft-1?format=full", warm)
+	}
+
+	// A failing warm must not surface: the draft already exists.
+	warmStatus.Store(500)
+	if _, err := gc.CreateDraftFull(msg); err != nil {
+		t.Fatalf("CreateDraftFull with failing warm: %v", err)
+	}
 }
