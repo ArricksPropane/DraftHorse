@@ -11,22 +11,33 @@ import (
 
 func TestDraftComposeURL(t *testing.T) {
 	cases := []struct {
-		name    string
-		email   string
-		msgID   string
-		want    string
+		name      string
+		email     string
+		msgID     string
+		dedicated bool
+		want      string
 	}{
 		{
-			// ARRICKS-18: known account routes through AccountChooser so a
-			// browser without the session gets a prefilled sign-in instead
-			// of Gmail's dead /u/<email> 404 page.
-			name:  "email and message id",
+			// ARRICKS-18/22: known account routes through AccountChooser;
+			// the continue target uses the authuser HINT, never the
+			// /u/<email> path form (hard-404s on this tenant even with a
+			// live session — proven in validation via the dedicated profile).
+			name:  "default browser: authuser hint inside AccountChooser",
 			email: "dave@arrickspropane.com",
 			msgID: "18f0abc123def456",
-			want:  "https://accounts.google.com/AccountChooser?Email=dave%40arrickspropane.com&continue=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2Fdave%40arrickspropane.com%2F%23drafts%3Fcompose%3D18f0abc123def456",
+			want:  "https://accounts.google.com/AccountChooser?Email=dave%40arrickspropane.com&continue=https%3A%2F%2Fmail.google.com%2Fmail%2F%3Fauthuser%3Ddave%2540arrickspropane.com%23drafts%3Fcompose%3D18f0abc123def456",
 		},
 		{
-			name:  "no email falls back to u/0",
+			// ARRICKS-22: the dedicated profile holds exactly one session,
+			// so /u/0 is the location account by construction.
+			name:      "dedicated profile: u/0 inside AccountChooser",
+			email:     "dave@arrickspropane.com",
+			msgID:     "18f0abc123def456",
+			dedicated: true,
+			want:      "https://accounts.google.com/AccountChooser?Email=dave%40arrickspropane.com&continue=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2F0%2F%23drafts%3Fcompose%3D18f0abc123def456",
+		},
+		{
+			name:  "no email falls back to plain u/0",
 			email: "",
 			msgID: "18f0abc123def456",
 			want:  "https://mail.google.com/mail/u/0/#drafts?compose=18f0abc123def456",
@@ -41,8 +52,8 @@ func TestDraftComposeURL(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			if got := draftComposeURL(tc.email, tc.msgID); got != tc.want {
-				t.Errorf("draftComposeURL(%q, %q) = %q, want %q", tc.email, tc.msgID, got, tc.want)
+			if got := draftComposeURL(tc.email, tc.msgID, tc.dedicated); got != tc.want {
+				t.Errorf("draftComposeURL(%q, %q, %v) = %q, want %q", tc.email, tc.msgID, tc.dedicated, got, tc.want)
 			}
 		})
 	}
@@ -54,7 +65,7 @@ func TestDraftComposeURL(t *testing.T) {
 // mail.google.com link now rides encoded inside AccountChooser's `continue`
 // param — decode it back out before asserting on its shape.
 func TestDraftComposeURLEscapesAccount(t *testing.T) {
-	got := draftComposeURL("a/b@example.com", "msg123")
+	got := draftComposeURL("a/b@example.com", "msg123", false)
 	if strings.Contains(got, "u/a/b@") {
 		t.Errorf("account not path-escaped: %q", got)
 	}
