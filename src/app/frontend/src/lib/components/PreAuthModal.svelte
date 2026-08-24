@@ -19,8 +19,10 @@
       <li><strong>Go to DraftHorse (unsafe)</strong></li>
     </ol>
     <p class="note">
-      DraftHorse only requests permission to create Gmail drafts on your behalf.
-      You can revoke this access at any time from your Google account settings.
+      DraftHorse requests permission to create Gmail drafts on your behalf and
+      to manage basic Gmail settings — used only to read your signature so
+      drafts include it. It cannot send, delete, or read your mail. You can
+      revoke this access at any time from your Google account settings.
     </p>
     <div class="actions">
       <button type="button" class="secondary" onclick={onCancel}>Cancel</button>

@@ -17,6 +17,12 @@ type MailMessage struct {
 	Recipients         Recipients   `json:"recipients"`
 	Attachments        []Attachment `json:"attachments"`
 	OriginApp          string       `json:"originApp"`
+
+	// Signature is the account's Gmail signature HTML, stamped by the app
+	// layer just before draft creation (ARRICKS-24). Runtime-only: excluded
+	// from the queue JSON protocol on purpose — the DLL never writes it and
+	// it must never round-trip through the queue files.
+	Signature string `json:"-"`
 }
 
 // Recipients contains email recipients by type

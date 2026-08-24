@@ -61,8 +61,18 @@ const (
 	// mail — the only Gmail endpoint called is POST /users/me/drafts — so the
 	// scope bought nothing while telling every user at the consent screen
 	// that the app could send mail as them.
-	scopeUserinfoEmail   = "https://www.googleapis.com/auth/userinfo.email"
-	scopeUserinfoProfile = "https://www.googleapis.com/auth/userinfo.profile"
+	//
+	// ARRICKS-24 (deliberate house-rule-6 amendment, Dave's call): Gmail
+	// never inserts the account signature into API-created drafts, so scan
+	// drafts shipped unsigned. gmail.settings.basic is the NARROWEST scope
+	// that can read users.settings.sendAs (there is no readonly variant);
+	// it can manage Gmail settings but cannot read mail content. Used for
+	// exactly one call: reading the default sendAs signature. Existing
+	// installs must sign out/in once to grant it; until then the fetch
+	// fails gracefully and drafts stay unsigned.
+	scopeGmailSettingsBasic = "https://www.googleapis.com/auth/gmail.settings.basic"
+	scopeUserinfoEmail      = "https://www.googleapis.com/auth/userinfo.email"
+	scopeUserinfoProfile    = "https://www.googleapis.com/auth/userinfo.profile"
 	loopbackFlowTimeout  = 5 * time.Minute // Claude discretion per CONTEXT
 )
 
@@ -246,6 +256,7 @@ func newOAuthConfig(redirectURL string) *oauth2.Config {
 		RedirectURL:  redirectURL,
 		Scopes: []string{
 			scopeGmailCompose,
+			scopeGmailSettingsBasic, // ARRICKS-24: signature read only
 			scopeUserinfoEmail,
 			scopeUserinfoProfile,
 		},
@@ -742,6 +753,8 @@ func (a *App) SignOut() error {
 	a.auth.tokens = nil
 	a.auth.email = ""
 	a.auth.name = ""
+	// ARRICKS-24: the next sign-in may be a different account.
+	a.resetSignatureCache()
 	_ = a.auth.keyring.Delete(keyringService, keyringUser) // ignore ErrNotFound
 	a.auth.refresh.Unlock()
 

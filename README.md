@@ -41,8 +41,9 @@ instead of Outlook, as a draft you review before sending.
 
 You'll need a Gmail or Google Workspace account. The first time you launch
 DraftHorse it opens a Google sign-in page in your browser so it can create
-drafts on your behalf — with the narrowest scope Google offers for that
-(`gmail.compose`; the app cannot send, delete, or read your mail).
+drafts on your behalf (`gmail.compose`) and read your Gmail signature so
+drafts carry it (`gmail.settings.basic`). The app cannot send, delete, or
+read your mail.
 
 ## Install
 
