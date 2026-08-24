@@ -47,6 +47,9 @@ type App struct {
 	// Automode goroutine handle. Started in startup; stopped in shutdown.
 	automode *automode
 
+	// ARRICKS-24: session-scoped Gmail signature cache (signature.go).
+	sigCache signatureCache
+
 	// Backlog skip-set (D-10): emails that failed automode with errorCategory
 	// "signed-out" during a signed-out window stay manual after re-auth.
 	// In-memory only — NEVER persisted. Pruned on every queue-update to
@@ -546,7 +549,11 @@ func (a *App) CreateDraftForID(id string) error {
 	var draftMessageID string
 	callErr := a.MakeAuthenticatedGmailCall(ctx, func(token string) (int, error) {
 		gc := mapi.NewGmailClientWithBase(token, gmailBaseURLOverride)
-		draft, err := gc.CreateDraftFull(target.Message)
+		// ARRICKS-24: stamp the signature on a copy — the queue-held
+		// message stays exactly what the DLL wrote.
+		msgCopy := *target.Message
+		msgCopy.Signature = a.draftSignature(gc.GetPrimarySignature)
+		draft, err := gc.CreateDraftFull(&msgCopy)
 		if err != nil {
 			if err.Error() == "token expired" {
 				return 401, err

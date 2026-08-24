@@ -247,9 +247,15 @@ on the local machine only, and attachments are constrained to that
 directory by validation.
 
 Credential storage: per-user OAuth tokens in Windows Credential Manager
-(target `go-mapi:oauth-tokens`, DPAPI-scoped). OAuth scope is
-`gmail.compose` + basic profile only — the app cannot send, delete, or
-read mail.
+(target `go-mapi:oauth-tokens`, DPAPI-scoped). OAuth scopes:
+`gmail.compose` (create drafts), `gmail.settings.basic` (reads the
+account's signature so drafts carry it — the only settings call made),
+and basic profile. The app cannot send, delete, or read mail.
+
+> Upgrading from 3.7.x or earlier: tokens granted before the signature
+> scope produce a one-time "signature fetch forbidden" log line and
+> unsigned drafts until the user signs out and back in once (Sign out in
+> the app window, then sign in). Draft creation itself is unaffected.
 
 ## OAuth loopback firewall rule
 

@@ -104,10 +104,17 @@ These encode decisions that cost real analysis. Do not undo them casually.
    `message_converter::SanitizeFilename` before hitting the filesystem. Not
    theoretical: a colon in a scanner filename previously failed `CopyFileW` and
    discarded the *entire email*.
-6. **Least privilege on OAuth scopes.** `gmail.compose` + userinfo only. We
-   dropped `gmail.send` because nothing sends. Keep the GCP consent screen set
+6. **Least privilege on OAuth scopes.** `gmail.compose` + userinfo, plus —
+   amended by ARRICKS-24 (Dave's explicit call) — `gmail.settings.basic`,
+   used for exactly one API call: reading the default sendAs signature so
+   scan drafts carry it (Gmail never inserts signatures into API-created
+   drafts). It is the narrowest scope that can read sendAs (no readonly
+   variant exists); it can manage Gmail settings but cannot read mail. We
+   dropped `gmail.send` because nothing sends. Do not add further scopes
+   without the same explicit sign-off, and keep the GCP consent screen set
    to **Internal** user type — that is what bounds exposure of the client
-   secret baked into the binary.
+   secret baked into the binary. The GCP OAuth client's scope list must
+   include settings.basic or consent fails.
 7. **Never log email bodies, subjects, or recipient addresses.** `logging.go`
    states this contract; upstream honors it and so do we.
 

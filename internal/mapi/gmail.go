@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"mime"
 	"net/http"
@@ -162,20 +163,20 @@ func BuildFullMIME(msg *MailMessage) ([]byte, error) {
 	}
 	buf.WriteString(fmt.Sprintf("Subject: %s\r\n", mimeEncodeHeader(msg.Subject)))
 
+	// ARRICKS-24: one body rendering for both branches; applies the
+	// signature (and the plain→HTML promotion it requires) when present.
+	bodyType, bodyContent := renderBody(msg)
+
 	if hasAttachments {
 		buf.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary))
 		buf.WriteString("\r\n")
 
 		// Body part
 		buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
-		contentType := "text/plain"
-		if msg.BodyFormat == "html" {
-			contentType = "text/html"
-		}
-		buf.WriteString(fmt.Sprintf("Content-Type: %s; charset=UTF-8\r\n", contentType))
+		buf.WriteString(fmt.Sprintf("Content-Type: %s; charset=UTF-8\r\n", bodyType))
 		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
 		buf.WriteString("\r\n")
-		buf.WriteString(base64Wrap([]byte(msg.Body)))
+		buf.WriteString(base64Wrap([]byte(bodyContent)))
 		buf.WriteString("\r\n")
 
 		// Attachment parts
@@ -217,17 +218,89 @@ func BuildFullMIME(msg *MailMessage) ([]byte, error) {
 		buf.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
 	} else {
 		// Simple message, no attachments
-		contentType := "text/plain"
-		if msg.BodyFormat == "html" {
-			contentType = "text/html"
-		}
-		buf.WriteString(fmt.Sprintf("Content-Type: %s; charset=UTF-8\r\n", contentType))
+		buf.WriteString(fmt.Sprintf("Content-Type: %s; charset=UTF-8\r\n", bodyType))
 		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
 		buf.WriteString("\r\n")
-		buf.WriteString(base64Wrap([]byte(msg.Body)))
+		buf.WriteString(base64Wrap([]byte(bodyContent)))
 	}
 
 	return buf.Bytes(), nil
+}
+
+// renderBody returns the body part's content type and content, applying the
+// ARRICKS-24 signature when present. Gmail stores signatures as HTML
+// fragments and NEVER inserts them into API-created drafts (only into
+// messages composed in its own UI — why Affixa grew its own signature
+// feature), so a signed plain-text body is promoted to HTML: escaped,
+// newlines to <br>, signature appended in Gmail's own gmail_signature div.
+// Without a signature, behavior is byte-identical to the pre-ARRICKS-24
+// output.
+func renderBody(msg *MailMessage) (contentType, content string) {
+	contentType = "text/plain"
+	if msg.BodyFormat == "html" {
+		contentType = "text/html"
+	}
+	if msg.Signature == "" {
+		return contentType, msg.Body
+	}
+	body := msg.Body
+	if msg.BodyFormat != "html" {
+		body = strings.ReplaceAll(html.EscapeString(body), "\n", "<br>\r\n")
+	}
+	return "text/html", body + "<br><br><div class=\"gmail_signature\">" + msg.Signature + "</div>"
+}
+
+// SendAsEntry is the subset of the Gmail sendAs settings resource the app
+// reads (ARRICKS-24). Signature is an HTML fragment; may be empty.
+type SendAsEntry struct {
+	SendAsEmail string `json:"sendAsEmail"`
+	IsDefault   bool   `json:"isDefault"`
+	Signature   string `json:"signature"`
+}
+
+// GetPrimarySignature fetches the account's default sendAs signature.
+// Requires the gmail.settings.basic scope (ARRICKS-24); a token from a
+// pre-3.8 sign-in returns 403 until the user re-consents — callers treat
+// that as "no signature", never as a draft-blocking error.
+func (gc *GmailClient) GetPrimarySignature() (string, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/settings/sendAs", gc.baseURL), nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+gc.token)
+
+	resp, err := gc.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch sendAs settings: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		return "", fmt.Errorf("token expired")
+	}
+	if resp.StatusCode == 403 {
+		return "", fmt.Errorf("signature fetch forbidden — sign out and back in once to grant the settings-read permission added in 3.8")
+	}
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("Gmail API error (%d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var out struct {
+		SendAs []SendAsEntry `json:"sendAs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", fmt.Errorf("failed to parse sendAs response: %w", err)
+	}
+	for _, e := range out.SendAs {
+		if e.IsDefault {
+			return e.Signature, nil
+		}
+	}
+	if len(out.SendAs) > 0 {
+		return out.SendAs[0].Signature, nil
+	}
+	return "", nil
 }
 
 // validateHeaderAddress rejects addresses that cannot be written into a
