@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,6 +126,10 @@ func (gc *GmailClient) CreateDraftFull(msg *MailMessage) (*DraftResponse, error)
 	if err := json.NewDecoder(resp.Body).Decode(&draft); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
+
+	// ARRICKS-25: materialize the draft's attachment parts before any
+	// caller opens the compose view — see warmDraft.
+	gc.warmDraft(draft.ID)
 
 	return &draft, nil
 }
@@ -301,6 +306,34 @@ func (gc *GmailClient) GetPrimarySignature() (string, error) {
 		return out.SendAs[0].Signature, nil
 	}
 	return "", nil
+}
+
+// warmDraft performs one full read of a just-created draft (ARRICKS-25).
+// Gmail's web compose hydrates a draft's attachments only after the draft's
+// parts have been materialized server-side, which a FULL READ triggers —
+// without one, the compose deep link renders the draft without its
+// attachment chip until the user manually reopens it (validation: an 8s
+// pre-open delay did not help; reopening always did — the trigger is
+// read-based, not time-based; Gmail community reports the same for
+// API-created drafts). drafts.get is covered by the existing gmail.compose
+// scope. Best-effort by design: the draft exists either way, so nothing
+// here may fail creation.
+func (gc *GmailClient) warmDraft(draftID string) {
+	if draftID == "" {
+		return
+	}
+	req, err := http.NewRequest("GET",
+		fmt.Sprintf("%s/drafts/%s?format=full", gc.baseURL, neturl.PathEscape(draftID)), nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+gc.token)
+	resp, err := gc.httpClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
 }
 
 // validateHeaderAddress rejects addresses that cannot be written into a

@@ -88,10 +88,15 @@ func TestGmailClient_CreateDraft(t *testing.T) {
 			)
 
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				called = true
-				gotMethod = r.Method
-				gotPath = r.URL.Path
-				gotAuth = r.Header.Get("Authorization")
+				// ARRICKS-25: a successful create is followed by a warm GET;
+				// record only the FIRST request (the create under test) so
+				// the warm read doesn't overwrite the captured method/path.
+				if !called {
+					called = true
+					gotMethod = r.Method
+					gotPath = r.URL.Path
+					gotAuth = r.Header.Get("Authorization")
+				}
 				// Drain the request body so the client sees a clean response cycle.
 				_, _ = io.Copy(io.Discard, r.Body)
 				w.Header().Set("Content-Type", "application/json")
@@ -150,6 +155,13 @@ func TestGmailClient_CreateDraft_RequestBodyShape(t *testing.T) {
 	// accidental refactors of the request envelope.
 	var gotRaw string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ARRICKS-25: the create is followed by a warm GET — only the POST
+		// carries the JSON envelope under test here.
+		if r.Method != http.MethodPost {
+			w.WriteHeader(200)
+			_, _ = io.WriteString(w, `{}`)
+			return
+		}
 		var body struct {
 			Message struct {
 				Raw string `json:"raw"`
