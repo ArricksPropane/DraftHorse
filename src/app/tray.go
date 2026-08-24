@@ -127,7 +127,7 @@ func (a *App) onTrayReady() {
 	// (single persistence path, same as the update toggle below).
 	mOpenDraft := systray.AddMenuItemCheckbox(
 		"Open drafts in Gmail",
-		"After a draft is created, open it in your browser",
+		"After a draft is created, open your Gmail drafts in the browser",
 		a.isOpenDraftInBrowserEnabled(),
 	)
 	// ARRICKS-21: dedicated isolated browser profile vs the default browser.
