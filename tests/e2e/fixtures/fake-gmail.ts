@@ -46,8 +46,11 @@ export async function startFakeGmail(): Promise<FakeGmailControl> {
 
     // Drafts endpoint. The Go GmailClient uses a baseURL that already
     // includes /gmail/v1/users/me, so on our side we just see /drafts.
-    // Match on path suffix so the harness is robust to base-URL form.
-    if (method === 'POST' && (url.endsWith('/drafts') || url.includes('/gmail/v1/users/me/drafts'))) {
+    // ARRICKS-26: creation now arrives as a media upload with a
+    // ?uploadType=media query and a raw message/rfc822 body, so the match
+    // strips the query before suffix-testing and must not assume JSON.
+    const path = url.split('?')[0];
+    if (method === 'POST' && (path.endsWith('/drafts') || path.includes('/gmail/v1/users/me/drafts'))) {
       drafts.push({ body, headers: req.headers });
       const override = overrides.shift();
       if (override !== undefined) {
