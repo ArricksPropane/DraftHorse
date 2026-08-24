@@ -35,25 +35,35 @@ var openDraftURL = browser.OpenURL
 // messageID is empty — without it there is nothing to deep-link to.
 //
 // ARRICKS-18: when the account email is known, the mail.google.com link is
-// wrapped in accounts.google.com/AccountChooser. Gmail's bare /u/<email>
-// slot only resolves against sessions ALREADY signed in to that browser —
-// when the scanner PC's Chrome has no session for the Workspace account,
-// it serves a dead "Temporary Error (404) / Numeric Code: 6446" page
-// (observed in validation). AccountChooser degrades properly instead: an
-// existing session passes straight through to the draft; a missing one
-// gets Google's sign-in prefilled with the right address, and `continue`
-// then lands on the draft. Empty email keeps the plain /u/0 link, which
-// already falls back to a normal sign-in redirect on its own.
-func draftComposeURL(accountEmail, messageID string) string {
+// wrapped in accounts.google.com/AccountChooser — an existing session
+// passes straight through; a missing one gets Google's sign-in prefilled
+// with the right address, and `continue` then lands on the draft.
+//
+// ARRICKS-22: the continue target NEVER uses Gmail's /mail/u/<email>/
+// email-in-path form. Validation proved it serves the dead "Temporary
+// Error (404) / 6446" page on this tenant even WITH a live session for
+// that exact account (the dedicated ARRICKS-21 profile, signed in by IT).
+// Instead:
+//   - dedicated profile: /mail/u/0/ — the profile holds exactly one
+//     session, so index 0 is the location account by construction.
+//   - default browser: ?authuser=<email> — Google's account-selection
+//     hint; on a mismatch it falls back to the default session instead of
+//     hard-404ing, and the AccountChooser hop upstream has already steered
+//     the right account where possible.
+func draftComposeURL(accountEmail, messageID string, dedicated bool) string {
 	if messageID == "" {
 		return ""
 	}
-	if accountEmail == "" {
-		return fmt.Sprintf("https://mail.google.com/mail/u/0/#drafts?compose=%s",
-			url.QueryEscape(messageID))
+	frag := "#drafts?compose=" + url.QueryEscape(messageID)
+	var target string
+	if dedicated || accountEmail == "" {
+		target = "https://mail.google.com/mail/u/0/" + frag
+	} else {
+		target = "https://mail.google.com/mail/?authuser=" + url.QueryEscape(accountEmail) + frag
 	}
-	target := fmt.Sprintf("https://mail.google.com/mail/u/%s/#drafts?compose=%s",
-		url.PathEscape(accountEmail), url.QueryEscape(messageID))
+	if accountEmail == "" {
+		return target
+	}
 	v := url.Values{
 		"Email":    {accountEmail},
 		"continue": {target},
@@ -88,18 +98,19 @@ func (a *App) openDraftInBrowser(messageID string) {
 	if a.auth != nil {
 		email = a.auth.Status().Email
 	}
-	target := draftComposeURL(email, messageID)
 	// ARRICKS-21: prefer the dedicated isolated profile (see draftbrowser.go);
 	// fall through to the default browser if no Edge/Chrome is installed or
-	// the launch fails, so the draft is never left unreachable.
+	// the launch fails, so the draft is never left unreachable. The URL is
+	// rebuilt per mode (ARRICKS-22): /u/0 inside the single-account
+	// dedicated profile, authuser hint for the default browser.
 	if a.isDraftBrowserDedicated() {
-		err := launchDraftInDedicatedBrowser(target)
+		err := launchDraftInDedicatedBrowser(draftComposeURL(email, messageID, true))
 		if err == nil {
 			return
 		}
 		logError("draftlink: dedicated browser launch failed (%v); falling back to default browser", err)
 	}
-	if err := openDraftURL(target); err != nil {
+	if err := openDraftURL(draftComposeURL(email, messageID, false)); err != nil {
 		// D-04: log + swallow. The draft exists; the user can still reach
 		// it via mail.google.com.
 		logError("draftlink: browser open failed: %v", err)
