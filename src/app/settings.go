@@ -40,6 +40,12 @@ type AppSettings struct {
 	// per-location mailboxes, where the user's own browser session is the
 	// wrong account by design.
 	DraftBrowserDedicated bool `json:"draft_browser_dedicated"`
+	// ARRICKS-23: milliseconds to wait between draft creation and the
+	// browser open. Gmail's web client syncs API-created drafts on its own
+	// schedule — open the compose view too fast and it renders without the
+	// attachment chip until reopened (same behavior Affixa had). Default
+	// 4000; field-tunable via settings.json without a rebuild; 0 disables.
+	DraftOpenDelayMs int `json:"draft_open_delay_ms"`
 }
 
 const defaultMode = "manual"
@@ -63,6 +69,8 @@ func defaultAppSettings() AppSettings {
 		// ARRICKS-21: see the field comment. Falls back to the default
 		// browser automatically when no Edge/Chrome is found.
 		DraftBrowserDedicated: true,
+		// ARRICKS-23: see the field comment.
+		DraftOpenDelayMs: 4000,
 	}
 }
 
@@ -94,6 +102,7 @@ func loadSettings() AppSettings {
 		LastUpdateCheck     string `json:"last_update_check"`
 		OpenDraftInBrowser  *bool  `json:"open_draft_in_browser"`
 		DraftBrowserDedicated *bool `json:"draft_browser_dedicated"`
+		DraftOpenDelayMs      *int  `json:"draft_open_delay_ms"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		logError("settings: parse error, using defaults: %v", err)
@@ -115,6 +124,17 @@ func loadSettings() AppSettings {
 	// ARRICKS-21: absent (pre-3.7 settings files) → default true.
 	if raw.DraftBrowserDedicated != nil {
 		out.DraftBrowserDedicated = *raw.DraftBrowserDedicated
+	}
+	// ARRICKS-23: absent → default 4000ms; clamp field-typos to [0, 60s].
+	if raw.DraftOpenDelayMs != nil {
+		d := *raw.DraftOpenDelayMs
+		if d < 0 {
+			d = 0
+		}
+		if d > 60000 {
+			d = 60000
+		}
+		out.DraftOpenDelayMs = d
 	}
 	out.LastUpdateCheck = raw.LastUpdateCheck
 	return out

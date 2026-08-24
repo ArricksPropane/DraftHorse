@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ARRICKS-21 tests: argument shape, routing between the dedicated profile
@@ -53,19 +54,28 @@ func TestOpenDraftInBrowserPrefersDedicatedProfile(t *testing.T) {
 	restoreOpen, restoreLaunch := openDraftURL, launchDraftInDedicatedBrowser
 	defer func() { openDraftURL, launchDraftInDedicatedBrowser = restoreOpen, restoreLaunch }()
 
-	var defaultOpens, dedicatedOpens []string
-	openDraftURL = func(u string) error { defaultOpens = append(defaultOpens, u); return nil }
-	launchDraftInDedicatedBrowser = func(u string) error { dedicatedOpens = append(dedicatedOpens, u); return nil }
+	// ARRICKS-23: async open — channel capture, App{} zero delay.
+	defaultOpens := make(chan string, 2)
+	dedicatedOpens := make(chan string, 2)
+	openDraftURL = func(u string) error { defaultOpens <- u; return nil }
+	launchDraftInDedicatedBrowser = func(u string) error { dedicatedOpens <- u; return nil }
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
 	app.settings.DraftBrowserDedicated = true
 	app.openDraftInBrowser("msg123")
-	if len(dedicatedOpens) != 1 || len(defaultOpens) != 0 {
-		t.Fatalf("dedicated on: dedicated=%v default=%v, want exactly one dedicated open", dedicatedOpens, defaultOpens)
+	select {
+	case u := <-dedicatedOpens:
+		if !strings.Contains(u, "compose=msg123") {
+			t.Errorf("dedicated launch got %q, want the draft link", u)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("dedicated launch never happened")
 	}
-	if !strings.Contains(dedicatedOpens[0], "compose=msg123") {
-		t.Errorf("dedicated launch got %q, want the draft link", dedicatedOpens[0])
+	select {
+	case u := <-defaultOpens:
+		t.Fatalf("default browser must not open when dedicated succeeds, got %q", u)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
@@ -73,16 +83,18 @@ func TestOpenDraftInBrowserFallsBackWhenNoChromium(t *testing.T) {
 	restoreOpen, restoreLaunch := openDraftURL, launchDraftInDedicatedBrowser
 	defer func() { openDraftURL, launchDraftInDedicatedBrowser = restoreOpen, restoreLaunch }()
 
-	var defaultOpens []string
-	openDraftURL = func(u string) error { defaultOpens = append(defaultOpens, u); return nil }
+	defaultOpens := make(chan string, 2)
+	openDraftURL = func(u string) error { defaultOpens <- u; return nil }
 	launchDraftInDedicatedBrowser = func(string) error { return errNoChromiumBrowser }
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
 	app.settings.DraftBrowserDedicated = true
 	app.openDraftInBrowser("msg123")
-	if len(defaultOpens) != 1 {
-		t.Fatalf("expected default-browser fallback exactly once, got %v", defaultOpens)
+	select {
+	case <-defaultOpens:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected default-browser fallback, got none")
 	}
 }
 
@@ -90,16 +102,56 @@ func TestOpenDraftInBrowserDedicatedOffUsesDefault(t *testing.T) {
 	restoreOpen, restoreLaunch := openDraftURL, launchDraftInDedicatedBrowser
 	defer func() { openDraftURL, launchDraftInDedicatedBrowser = restoreOpen, restoreLaunch }()
 
-	var defaultOpens int
-	openDraftURL = func(string) error { defaultOpens++; return nil }
+	defaultOpens := make(chan string, 2)
+	openDraftURL = func(u string) error { defaultOpens <- u; return nil }
 	launchDraftInDedicatedBrowser = func(string) error { return errors.New("must not be called") }
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
 	app.settings.DraftBrowserDedicated = false
 	app.openDraftInBrowser("msg123")
-	if defaultOpens != 1 {
-		t.Fatalf("dedicated off: default opens = %d, want 1", defaultOpens)
+	select {
+	case <-defaultOpens:
+	case <-time.After(2 * time.Second):
+		t.Fatal("dedicated off: default browser never opened")
+	}
+}
+
+func TestDraftOpenDelaySettingDefaults(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APPDATA", dir)
+
+	// First run → 4000ms.
+	if got := loadSettings(); got.DraftOpenDelayMs != 4000 {
+		t.Errorf("DraftOpenDelayMs first-run default = %d, want 4000", got.DraftOpenDelayMs)
+	}
+	write := func(body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, "go-mapi"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "go-mapi", "settings.json"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Absent field (pre-3.8 file) → 4000.
+	write(`{"mode":"manual"}`)
+	if got := loadSettings(); got.DraftOpenDelayMs != 4000 {
+		t.Errorf("absent field = %d, want 4000", got.DraftOpenDelayMs)
+	}
+	// Explicit 0 disables the delay.
+	write(`{"mode":"manual","draft_open_delay_ms":0}`)
+	if got := loadSettings(); got.DraftOpenDelayMs != 0 {
+		t.Errorf("explicit 0 = %d, want 0", got.DraftOpenDelayMs)
+	}
+	// Field-typo clamps.
+	write(`{"mode":"manual","draft_open_delay_ms":-5}`)
+	if got := loadSettings(); got.DraftOpenDelayMs != 0 {
+		t.Errorf("negative clamp = %d, want 0", got.DraftOpenDelayMs)
+	}
+	write(`{"mode":"manual","draft_open_delay_ms":999999}`)
+	if got := loadSettings(); got.DraftOpenDelayMs != 60000 {
+		t.Errorf("upper clamp = %d, want 60000", got.DraftOpenDelayMs)
 	}
 }
 

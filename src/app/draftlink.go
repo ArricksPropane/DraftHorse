@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/pkg/browser"
 )
@@ -98,23 +100,56 @@ func (a *App) openDraftInBrowser(messageID string) {
 	if a.auth != nil {
 		email = a.auth.Status().Email
 	}
-	// ARRICKS-21: prefer the dedicated isolated profile (see draftbrowser.go);
-	// fall through to the default browser if no Edge/Chrome is installed or
-	// the launch fails, so the draft is never left unreachable. The URL is
-	// rebuilt per mode (ARRICKS-22): /u/0 inside the single-account
-	// dedicated profile, authuser hint for the default browser.
-	if a.isDraftBrowserDedicated() {
-		err := launchDraftInDedicatedBrowser(draftComposeURL(email, messageID, true))
-		if err == nil {
-			return
+	// Everything the launch needs is captured HERE, before the goroutine —
+	// the async hop must not read App state later (races with settings
+	// writes and shutdown).
+	dedicated := a.isDraftBrowserDedicated()
+	delay := a.draftOpenDelay()
+	ctx := a.shutdownCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// ARRICKS-23: wait before opening. Gmail's web client syncs API-created
+	// drafts on its own schedule; opening the compose view immediately
+	// renders it without the attachment chip until reopened (validation
+	// finding — Affixa exhibited the same). The delay runs async so a
+	// backlog drain is never slowed by it.
+	//
+	// ARRICKS-21/22 inside the goroutine: prefer the dedicated isolated
+	// profile; fall through to the default browser if no Edge/Chrome is
+	// installed or the launch fails, so the draft is never left
+	// unreachable. The URL is rebuilt per mode: /u/0 inside the
+	// single-account dedicated profile, authuser hint for the default
+	// browser.
+	go func() {
+		if delay > 0 {
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return
+			}
 		}
-		logError("draftlink: dedicated browser launch failed (%v); falling back to default browser", err)
-	}
-	if err := openDraftURL(draftComposeURL(email, messageID, false)); err != nil {
-		// D-04: log + swallow. The draft exists; the user can still reach
-		// it via mail.google.com.
-		logError("draftlink: browser open failed: %v", err)
-	}
+		if dedicated {
+			err := launchDraftInDedicatedBrowser(draftComposeURL(email, messageID, true))
+			if err == nil {
+				return
+			}
+			logError("draftlink: dedicated browser launch failed (%v); falling back to default browser", err)
+		}
+		if err := openDraftURL(draftComposeURL(email, messageID, false)); err != nil {
+			// D-04: log + swallow. The draft exists; the user can still
+			// reach it via mail.google.com.
+			logError("draftlink: browser open failed: %v", err)
+		}
+	}()
+}
+
+// draftOpenDelay reads the ARRICKS-23 delay under the settings RLock.
+func (a *App) draftOpenDelay() time.Duration {
+	a.settingsMu.RLock()
+	defer a.settingsMu.RUnlock()
+	return time.Duration(a.settings.DraftOpenDelayMs) * time.Millisecond
 }
 
 // isDraftBrowserDedicated reads the ARRICKS-21 toggle under the settings RLock.
