@@ -88,10 +88,15 @@ func TestGmailClient_CreateDraft(t *testing.T) {
 			)
 
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				called = true
-				gotMethod = r.Method
-				gotPath = r.URL.Path
-				gotAuth = r.Header.Get("Authorization")
+				// ARRICKS-25: a successful create is followed by a warm GET;
+				// record only the FIRST request (the create under test) so
+				// the warm read doesn't overwrite the captured method/path.
+				if !called {
+					called = true
+					gotMethod = r.Method
+					gotPath = r.URL.Path
+					gotAuth = r.Header.Get("Authorization")
+				}
 				// Drain the request body so the client sees a clean response cycle.
 				_, _ = io.Copy(io.Discard, r.Body)
 				w.Header().Set("Content-Type", "application/json")
