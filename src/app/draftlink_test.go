@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ARRICKS-08 tests: draft deep-link construction, the open-in-browser gate,
@@ -89,28 +90,34 @@ func TestOpenDraftInBrowserRespectsToggle(t *testing.T) {
 	restore := openDraftURL
 	defer func() { openDraftURL = restore }()
 
-	var opened []string
+	// ARRICKS-23 made the open async; capture through a channel and assert
+	// with timeouts. App{} zero value keeps DraftOpenDelayMs at 0.
+	opened := make(chan string, 4)
 	openDraftURL = func(u string) error {
-		opened = append(opened, u)
+		opened <- u
 		return nil
 	}
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = false
 	app.openDraftInBrowser("msg123")
-	if len(opened) != 0 {
-		t.Fatalf("toggle off: browser opened %v, want no opens", opened)
+	select {
+	case u := <-opened:
+		t.Fatalf("toggle off: browser opened %q, want no opens", u)
+	case <-time.After(200 * time.Millisecond):
 	}
 
 	app.settings.OpenDraftInBrowser = true
 	app.openDraftInBrowser("msg123")
-	if len(opened) != 1 {
-		t.Fatalf("toggle on: got %d opens, want 1", len(opened))
-	}
-	// No auth manager on this App → /u/0 fallback.
-	want := "https://mail.google.com/mail/u/0/#drafts?compose=msg123"
-	if opened[0] != want {
-		t.Errorf("opened %q, want %q", opened[0], want)
+	select {
+	case u := <-opened:
+		// No auth manager on this App → /u/0 fallback.
+		want := "https://mail.google.com/mail/u/0/#drafts?compose=msg123"
+		if u != want {
+			t.Errorf("opened %q, want %q", u, want)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("toggle on: browser never opened")
 	}
 }
 
@@ -118,17 +125,19 @@ func TestOpenDraftInBrowserSkipsEmptyMessageID(t *testing.T) {
 	restore := openDraftURL
 	defer func() { openDraftURL = restore }()
 
-	var opens int
-	openDraftURL = func(string) error {
-		opens++
+	opened := make(chan string, 1)
+	openDraftURL = func(u string) error {
+		opened <- u
 		return nil
 	}
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
 	app.openDraftInBrowser("")
-	if opens != 0 {
-		t.Fatalf("empty message id: got %d opens, want 0", opens)
+	select {
+	case u := <-opened:
+		t.Fatalf("empty message id: browser opened %q, want no opens", u)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
