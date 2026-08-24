@@ -10,66 +10,52 @@ import (
 // ARRICKS-08 tests: draft deep-link construction, the open-in-browser gate,
 // and settings persistence/hydration for the toggle.
 
-func TestDraftComposeURL(t *testing.T) {
+func TestDraftsListURL(t *testing.T) {
 	cases := []struct {
 		name      string
 		email     string
-		msgID     string
 		dedicated bool
 		want      string
 	}{
 		{
-			// ARRICKS-18/22: known account routes through AccountChooser;
-			// the continue target uses the authuser HINT, never the
-			// /u/<email> path form (hard-404s on this tenant even with a
-			// live session — proven in validation via the dedicated profile).
+			// ARRICKS-27: the target is the Drafts LIST (fresh server
+			// fetch, always accurate), never the ?compose= overlay that
+			// hydrated API-created drafts without their attachment chip.
+			// ARRICKS-18/22: AccountChooser wrapper + authuser hint, never
+			// the /u/<email> path form (hard-404s on this tenant).
 			name:  "default browser: authuser hint inside AccountChooser",
 			email: "dave@arrickspropane.com",
-			msgID: "18f0abc123def456",
-			want:  "https://accounts.google.com/AccountChooser?Email=dave%40arrickspropane.com&continue=https%3A%2F%2Fmail.google.com%2Fmail%2F%3Fauthuser%3Ddave%2540arrickspropane.com%23drafts%3Fcompose%3D18f0abc123def456",
+			want:  "https://accounts.google.com/AccountChooser?Email=dave%40arrickspropane.com&continue=https%3A%2F%2Fmail.google.com%2Fmail%2F%3Fauthuser%3Ddave%2540arrickspropane.com%23drafts",
 		},
 		{
 			// ARRICKS-22: the dedicated profile holds exactly one session,
 			// so /u/0 is the location account by construction.
 			name:      "dedicated profile: u/0 inside AccountChooser",
 			email:     "dave@arrickspropane.com",
-			msgID:     "18f0abc123def456",
 			dedicated: true,
-			want:      "https://accounts.google.com/AccountChooser?Email=dave%40arrickspropane.com&continue=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2F0%2F%23drafts%3Fcompose%3D18f0abc123def456",
+			want:      "https://accounts.google.com/AccountChooser?Email=dave%40arrickspropane.com&continue=https%3A%2F%2Fmail.google.com%2Fmail%2Fu%2F0%2F%23drafts",
 		},
 		{
 			name:  "no email falls back to plain u/0",
 			email: "",
-			msgID: "18f0abc123def456",
-			want:  "https://mail.google.com/mail/u/0/#drafts?compose=18f0abc123def456",
-		},
-		{
-			name:  "empty message id yields empty url",
-			email: "dave@arrickspropane.com",
-			msgID: "",
-			want:  "",
+			want:  "https://mail.google.com/mail/u/0/#drafts",
 		},
 	}
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			if got := draftComposeURL(tc.email, tc.msgID, tc.dedicated); got != tc.want {
-				t.Errorf("draftComposeURL(%q, %q, %v) = %q, want %q", tc.email, tc.msgID, tc.dedicated, got, tc.want)
+			if got := draftsListURL(tc.email, tc.dedicated); got != tc.want {
+				t.Errorf("draftsListURL(%q, %v) = %q, want %q", tc.email, tc.dedicated, got, tc.want)
 			}
 		})
 	}
 }
 
-// A path-hostile account string must not survive into the URL path unescaped.
-// Emails can't contain '/', but the input is whatever userinfo returned, and
-// the escaping is the invariant worth locking in. ARRICKS-18: the inner
-// mail.google.com link now rides encoded inside AccountChooser's `continue`
-// param — decode it back out before asserting on its shape.
-func TestDraftComposeURLEscapesAccount(t *testing.T) {
-	got := draftComposeURL("a/b@example.com", "msg123", false)
-	if strings.Contains(got, "u/a/b@") {
-		t.Errorf("account not path-escaped: %q", got)
-	}
+// A query-hostile account string must be escaped into the authuser param.
+// Emails can't contain '&', but the input is whatever userinfo returned,
+// and the escaping is the invariant worth locking in.
+func TestDraftsListURLEscapesAccount(t *testing.T) {
+	got := draftsListURL("a&b@example.com", false)
 	u, err := url.Parse(got)
 	if err != nil {
 		t.Fatalf("url.Parse(%q): %v", got, err)
@@ -78,11 +64,15 @@ func TestDraftComposeURLEscapesAccount(t *testing.T) {
 	if inner == "" {
 		t.Fatalf("continue param missing from url: %q", got)
 	}
-	if strings.Contains(inner, "u/a/b@") {
-		t.Errorf("account not path-escaped in continue target: %q", inner)
+	iu, err := url.Parse(inner)
+	if err != nil {
+		t.Fatalf("url.Parse(inner %q): %v", inner, err)
 	}
-	if !strings.Contains(inner, "compose=msg123") {
-		t.Errorf("message id missing from continue target: %q", inner)
+	if iu.Query().Get("authuser") != "a&b@example.com" {
+		t.Errorf("authuser did not round-trip the hostile account: %q", inner)
+	}
+	if !strings.HasSuffix(inner, "#drafts") {
+		t.Errorf("continue target must land on the drafts list: %q", inner)
 	}
 }
 
@@ -111,8 +101,8 @@ func TestOpenDraftInBrowserRespectsToggle(t *testing.T) {
 	app.openDraftInBrowser("msg123")
 	select {
 	case u := <-opened:
-		// No auth manager on this App → /u/0 fallback.
-		want := "https://mail.google.com/mail/u/0/#drafts?compose=msg123"
+		// No auth manager on this App → /u/0 fallback (ARRICKS-27: list view).
+		want := "https://mail.google.com/mail/u/0/#drafts"
 		if u != want {
 			t.Errorf("opened %q, want %q", u, want)
 		}

@@ -9,19 +9,15 @@ import (
 	"github.com/pkg/browser"
 )
 
-// ARRICKS-08: open a just-created draft in the user's default browser.
+// ARRICKS-08 (reworked by ARRICKS-27): surface a just-created draft in the
+// browser.
 //
 // The scan-to-email flow ends with the user finishing the draft in Gmail —
 // adding the recipient, checking the scan, pressing Send. Without this, the
 // draft lands silently in mail.google.com's Drafts folder and the user has
-// to go find it. With it, the compose window is on screen the moment the
-// draft exists.
-//
-// Gmail's web UI accepts a message id in the `compose` fragment parameter;
-// the account is selected by putting the signed-in address in the /u/ slot
-// (mail.google.com redirects it to the right authuser index), so a machine
-// with several Google sessions in the browser still lands on the account
-// the app created the draft under.
+// to go find it. With it, Gmail's Drafts list is on screen moments after
+// the draft exists, new draft on top (see draftsListURL for why the list
+// view rather than the ?compose= overlay).
 //
 // D-04 invariant (same as the update-download path): a failed browser open
 // is logged and swallowed — the draft already exists, so failing to surface
@@ -32,14 +28,22 @@ import (
 // which resolves the OS default browser.
 var openDraftURL = browser.OpenURL
 
-// draftComposeURL builds the deep link for a just-created draft.
-// messageID is DraftResponse.Message.ID (NOT the draft id). Returns "" when
-// messageID is empty — without it there is nothing to deep-link to.
+// draftsListURL builds the link opened after a draft is created: Gmail's
+// DRAFTS LIST view, not the compose overlay.
 //
-// ARRICKS-18: when the account email is known, the mail.google.com link is
-// wrapped in accounts.google.com/AccountChooser — an existing session
-// passes straight through; a missing one gets Google's sign-in prefilled
-// with the right address, and `continue` then lands on the draft.
+// ARRICKS-27: the ?compose=<id> overlay hydrates API-created drafts
+// without their attachment chip until manually reopened, and neither an
+// 8s pre-open delay (ARRICKS-23), a post-create full read (ARRICKS-25),
+// nor media-upload creation (ARRICKS-26) made the overlay render it —
+// it is pure web-client behavior we cannot reach. The Drafts list is a
+// fresh server fetch and always accurate: the new draft sits at the top,
+// one click opens it complete (chip, signature, everything). One extra
+// click beats a draft that looks broken.
+//
+// ARRICKS-18: when the account email is known, the link is wrapped in
+// accounts.google.com/AccountChooser — an existing session passes straight
+// through; a missing one gets Google's sign-in prefilled with the right
+// address, and `continue` then lands on the Drafts list.
 //
 // ARRICKS-22: the continue target NEVER uses Gmail's /mail/u/<email>/
 // email-in-path form. Validation proved it serves the dead "Temporary
@@ -52,16 +56,12 @@ var openDraftURL = browser.OpenURL
 //     hint; on a mismatch it falls back to the default session instead of
 //     hard-404ing, and the AccountChooser hop upstream has already steered
 //     the right account where possible.
-func draftComposeURL(accountEmail, messageID string, dedicated bool) string {
-	if messageID == "" {
-		return ""
-	}
-	frag := "#drafts?compose=" + url.QueryEscape(messageID)
+func draftsListURL(accountEmail string, dedicated bool) string {
 	var target string
 	if dedicated || accountEmail == "" {
-		target = "https://mail.google.com/mail/u/0/" + frag
+		target = "https://mail.google.com/mail/u/0/#drafts"
 	} else {
-		target = "https://mail.google.com/mail/?authuser=" + url.QueryEscape(accountEmail) + frag
+		target = "https://mail.google.com/mail/?authuser=" + url.QueryEscape(accountEmail) + "#drafts"
 	}
 	if accountEmail == "" {
 		return target
@@ -81,18 +81,21 @@ func (a *App) isOpenDraftInBrowserEnabled() bool {
 	return a.settings.OpenDraftInBrowser
 }
 
-// openDraftInBrowser opens the compose deep link for messageID if the
-// toggle is on. Safe from any goroutine: settings are read under RLock,
-// AuthManager.Status locks internally, and the browser launch is a
-// fire-and-forget exec. Called from automode.draftOne and CreateDraftForID
-// after MarkProcessed succeeds.
+// openDraftInBrowser opens Gmail's Drafts list after a draft is created
+// (ARRICKS-27 — see draftsListURL for why the list, not the compose
+// overlay), if the toggle is on. Safe from any goroutine: settings are
+// read under RLock, AuthManager.Status locks internally, and the browser
+// launch is a fire-and-forget exec. Called from automode.draftOne and
+// CreateDraftForID after MarkProcessed succeeds. messageID gates the open
+// (no confirmed draft, no browser) but no longer appears in the URL.
 func (a *App) openDraftInBrowser(messageID string) {
 	if !a.isOpenDraftInBrowserEnabled() {
 		return
 	}
 	if messageID == "" {
 		// Draft was created but the response carried no message id —
-		// nothing to link to. Log id-free per the privacy contract.
+		// creation is unconfirmed; don't open. Log id-free per the
+		// privacy contract.
 		logError("draftlink: draft response missing message id; skipping browser open")
 		return
 	}
@@ -110,10 +113,8 @@ func (a *App) openDraftInBrowser(messageID string) {
 		ctx = context.Background()
 	}
 
-	// ARRICKS-23: wait before opening. Gmail's web client syncs API-created
-	// drafts on its own schedule; opening the compose view immediately
-	// renders it without the attachment chip until reopened (validation
-	// finding — Affixa exhibited the same). The delay runs async so a
+	// ARRICKS-23: wait before opening so the Drafts list is guaranteed to
+	// include the new draft when the page loads. The delay runs async so a
 	// backlog drain is never slowed by it.
 	//
 	// ARRICKS-21/22 inside the goroutine: prefer the dedicated isolated
@@ -131,13 +132,13 @@ func (a *App) openDraftInBrowser(messageID string) {
 			}
 		}
 		if dedicated {
-			err := launchDraftInDedicatedBrowser(draftComposeURL(email, messageID, true))
+			err := launchDraftInDedicatedBrowser(draftsListURL(email, true))
 			if err == nil {
 				return
 			}
 			logError("draftlink: dedicated browser launch failed (%v); falling back to default browser", err)
 		}
-		if err := openDraftURL(draftComposeURL(email, messageID, false)); err != nil {
+		if err := openDraftURL(draftsListURL(email, false)); err != nil {
 			// D-04: log + swallow. The draft exists; the user can still
 			// reach it via mail.google.com.
 			logError("draftlink: browser open failed: %v", err)

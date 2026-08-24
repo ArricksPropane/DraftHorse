@@ -27,8 +27,7 @@ instead of Outlook, as a draft you review before sending.
 - Drafts land in Gmail — review and send normally; **nothing is ever sent
   automatically**. The only Gmail API call the app makes is
   "create draft".
-- Manual or automatic draft creation (your choice); created drafts can
-  open directly in Gmail's compose window in your browser
+- Manual or automatic draft creation (your choice);   open directly in Gmail's compose window in your browser
 - Handles `mailto:` links too — selectable in Windows Settings > Default
   apps, a click opens Gmail web compose prefilled from the link
 - Keeps itself the default mail handler: if another install (say, Outlook)

@@ -66,8 +66,8 @@ func TestOpenDraftInBrowserPrefersDedicatedProfile(t *testing.T) {
 	app.openDraftInBrowser("msg123")
 	select {
 	case u := <-dedicatedOpens:
-		if !strings.Contains(u, "compose=msg123") {
-			t.Errorf("dedicated launch got %q, want the draft link", u)
+		if !strings.Contains(u, "#drafts") {
+			t.Errorf("dedicated launch got %q, want the drafts-list link", u)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("dedicated launch never happened")
