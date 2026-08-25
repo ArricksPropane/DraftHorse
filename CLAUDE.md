@@ -44,10 +44,11 @@ a bare `action=open` and get all the way to `put_Tag`. Apparent intermittency
 in the logs is `emitArrivalToast`'s early return when the window is visible or
 the app is paused — those toasts were never attempted. The builder now renders,
 checks the result parses, and re-renders with escaped fields only if it does
-not. Written as validate-then-escape rather than always-escape because the
-upstream template could not be inspected from the dev machine: if it does
-escape after all, unconditional escaping would put a literal `&amp;` in every
-subject.
+not. CI's first run of the new tests pinned down the template's behavior
+empirically: it escapes TEXT NODES (Title, Body) itself but leaves ATTRIBUTE
+values raw — so the escape pass touches only the attribute-bound fields
+(launch/arguments/icon); escaping Title or Body double-escapes into a literal
+`&amp;` on screen.
 
 A default-mail guard (ARRICKS-13, `src/app/defaultmail.go`) checks at startup
 and hourly that the Simple MAPI default still resolves to this app, and

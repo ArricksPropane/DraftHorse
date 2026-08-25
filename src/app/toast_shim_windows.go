@@ -251,12 +251,14 @@ func shimClearToast(aumid, tag, group string) error {
 // ampersand — ActivationArguments and both action Arguments are built as
 // "action=open&emailId=..." (toast_windows.go). The success, error and summary
 // toasts use bare "action=open", and those get all the way to put_Tag. A bare
-// & inside an XML attribute is a syntax error, which means the upstream
-// template is not escaping it — inferred from that correlation, since the
-// template source was not available on the machine this was written on.
-// Intermittency in the log is a red herring: emitArrivalToast returns early
-// when the window is visible or the app is paused, so the quiet stretches are
-// toasts never attempted at all.
+// & inside an XML attribute is a syntax error. CI proved the exact template
+// behavior (first run of toast_xml_windows_test.go): TEXT NODES (Title, Body)
+// come back escaped by the template itself, ATTRIBUTE VALUES (launch,
+// arguments) come back raw — which is exactly why only the arrival toast,
+// the sole toast with an & in an attribute, ever failed. Intermittency in
+// the log is a red herring: emitArrivalToast returns early when the window
+// is visible or the app is paused, so the quiet stretches are toasts never
+// attempted at all.
 //
 // Rather than blind-escape (which would double-escape if the upstream
 // template ever starts escaping, turning every "&" in a subject into
@@ -326,17 +328,19 @@ func wellFormedXML(s string) bool {
 	}
 }
 
-// escapeToastFields returns a copy of n with every field we populate from
-// app data XML-escaped. Escaping is value-preserving: the XML parser decodes
-// "&amp;" back to "&" before the activation callback ever sees the arguments,
-// so action routing is unaffected.
+// escapeToastFields returns a copy of n with the ATTRIBUTE-bound fields
+// XML-escaped — and only those. The upstream template escapes text nodes
+// (Title, Body) on its own but leaves attribute values raw, so escaping
+// Title/Body here double-escapes them into literal "&amp;" on screen (CI
+// caught exactly that on this file's first run). Escaping is
+// value-preserving for the fields we do touch: the XML parser decodes
+// "&amp;" back to "&" before the activation callback ever sees the
+// arguments, so action routing is unaffected.
 //
 // n arrives by value, but its Actions slice still shares a backing array with
 // the caller's — hence the explicit copy. Mutating it in place would corrupt
 // the caller's notification on the retry path.
 func escapeToastFields(n toast.Notification) toast.Notification {
-	n.Title = escapeXMLValue(n.Title)
-	n.Body = escapeXMLValue(n.Body)
 	n.Icon = escapeXMLValue(n.Icon)
 	n.ActivationArguments = escapeXMLValue(n.ActivationArguments)
 	if len(n.Actions) > 0 {
