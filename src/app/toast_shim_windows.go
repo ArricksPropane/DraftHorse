@@ -20,7 +20,10 @@ package main
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
+	"io"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -104,7 +107,9 @@ func (v *iToastNotificationHistory) VTable() *iToastNotificationHistoryVtbl {
 // here so we can intercept the IToastNotification before it is shown and inject
 // put_Tag / put_Group.
 func shimPushWithTagGroup(aumid string, n toast.Notification, tag, group string) error {
-	xml, err := buildToastXML(n)
+	// Named payload, not "xml": ARRICKS-30 imports encoding/xml into this
+	// file, and a local named xml would shadow the package.
+	payload, err := buildToastXML(n)
 	if err != nil {
 		return fmt.Errorf("toast shim: build xml: %w", err)
 	}
@@ -117,7 +122,7 @@ func shimPushWithTagGroup(aumid string, n toast.Notification, tag, group string)
 	}
 
 	// Load the XML document.
-	doc, err := newXmlDocument(xml)
+	doc, err := newXmlDocument(payload)
 	if err != nil {
 		return fmt.Errorf("toast shim: load xml: %w", err)
 	}
@@ -233,6 +238,31 @@ func shimClearToast(aumid, tag, group string) error {
 // buildToastXML generates the WinRT toast XML from a toast.Notification using
 // the library's exported toasttmpl.XMLTemplate. Applies the same defaults as
 // the library's internal applyDefaults() method.
+//
+// ARRICKS-30 — validate, then escape only if needed.
+//
+// Arrival toasts had NEVER worked. Every "toast: arrival push failed ...
+// LoadXml HRESULT 0xc00ce50d" in app.log, going back to the earliest logs we
+// have, is a push that died before it ever reached Action Center — meaning
+// the queue's primary manual-mode surface, including its "Create draft"
+// button, was silently dead on every machine.
+//
+// What isolates it: the arrival toast is the only one whose XML carries a raw
+// ampersand — ActivationArguments and both action Arguments are built as
+// "action=open&emailId=..." (toast_windows.go). The success, error and summary
+// toasts use bare "action=open", and those get all the way to put_Tag. A bare
+// & inside an XML attribute is a syntax error, which means the upstream
+// template is not escaping it — inferred from that correlation, since the
+// template source was not available on the machine this was written on.
+// Intermittency in the log is a red herring: emitArrivalToast returns early
+// when the window is visible or the app is paused, so the quiet stretches are
+// toasts never attempted at all.
+//
+// Rather than blind-escape (which would double-escape if the upstream
+// template ever starts escaping, turning every "&" in a subject into
+// "&amp;" on screen), render first and escape only when the result does not
+// parse. Correct under both behaviors, and a no-op for the toasts that
+// already work.
 func buildToastXML(n toast.Notification) (string, error) {
 	if n.ActivationType == "" {
 		n.ActivationType = toast.Foreground
@@ -243,11 +273,95 @@ func buildToastXML(n toast.Notification) (string, error) {
 	if n.Audio == "" {
 		n.Audio = toast.Default
 	}
+	raw, err := renderToastXML(n)
+	if err != nil {
+		return "", err
+	}
+	if wellFormedXML(raw) {
+		return raw, nil
+	}
+	escaped, err := renderToastXML(escapeToastFields(n))
+	if err != nil {
+		return "", err
+	}
+	if !wellFormedXML(escaped) {
+		// Something other than our text fields is malformed — the template
+		// itself, or a field we do not populate. Fail loudly rather than
+		// handing XmlLite a payload we know it will reject.
+		return "", fmt.Errorf("toast xml: still malformed after escaping")
+	}
+	return escaped, nil
+}
+
+// renderToastXML executes the upstream template. Split out so buildToastXML
+// can run it twice (raw, then escaped) without duplicating the error wrap.
+func renderToastXML(n toast.Notification) (string, error) {
 	var buf bytes.Buffer
 	if err := toasttmpl.XMLTemplate.Execute(&buf, n); err != nil {
 		return "", fmt.Errorf("toast xml template: %w", err)
 	}
 	return buf.String(), nil
+}
+
+// wellFormedXML reports whether s parses as XML end to end.
+//
+// Go's parser is not XmlLite, so this is a gate rather than an oracle, and
+// both ways it can be wrong are safe: a false "well-formed" leaves today's
+// behavior exactly as it is, and a false "malformed" only escapes text that
+// decodes back to the identical string. Deliberately returns a bool and not
+// the error — the parse error can quote the offending run of the document,
+// which for a toast means the email subject, and house rule 7 says subjects
+// never reach a log.
+func wellFormedXML(s string) bool {
+	dec := xml.NewDecoder(strings.NewReader(s))
+	dec.Strict = true
+	for {
+		_, err := dec.Token()
+		if err == io.EOF {
+			return true
+		}
+		if err != nil {
+			return false
+		}
+	}
+}
+
+// escapeToastFields returns a copy of n with every field we populate from
+// app data XML-escaped. Escaping is value-preserving: the XML parser decodes
+// "&amp;" back to "&" before the activation callback ever sees the arguments,
+// so action routing is unaffected.
+//
+// n arrives by value, but its Actions slice still shares a backing array with
+// the caller's — hence the explicit copy. Mutating it in place would corrupt
+// the caller's notification on the retry path.
+func escapeToastFields(n toast.Notification) toast.Notification {
+	n.Title = escapeXMLValue(n.Title)
+	n.Body = escapeXMLValue(n.Body)
+	n.Icon = escapeXMLValue(n.Icon)
+	n.ActivationArguments = escapeXMLValue(n.ActivationArguments)
+	if len(n.Actions) > 0 {
+		actions := make([]toast.Action, len(n.Actions))
+		copy(actions, n.Actions)
+		for i := range actions {
+			actions[i].Content = escapeXMLValue(actions[i].Content)
+			actions[i].Arguments = escapeXMLValue(actions[i].Arguments)
+		}
+		n.Actions = actions
+	}
+	return n
+}
+
+// escapeXMLValue escapes one string for use as XML text or an attribute
+// value. xml.EscapeText also folds control characters and invalid code
+// points, which matters because subjects arrive from scanner firmware.
+func escapeXMLValue(s string) string {
+	if s == "" {
+		return ""
+	}
+	var buf bytes.Buffer
+	// Only error path is the writer's; bytes.Buffer never fails.
+	_ = xml.EscapeText(&buf, []byte(s))
+	return buf.String()
 }
 
 // IXmlDocumentIO is the Windows.Data.Xml.Dom.IXmlDocumentIO interface.
