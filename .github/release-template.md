@@ -14,7 +14,7 @@ both bitnesses.
 3. First launch: sign in with your Google account — the app opens your
    default browser for OAuth consent (scope: create drafts only).
 
-Upgrading from any go-mapi/DraftHorse 3.x install: just run the new
+Upgrading from any DraftHorse/DraftHorse 3.x install: just run the new
 installer — it upgrades in place.
 
 ### Updates are manual
@@ -33,7 +33,7 @@ silent auto-updater was removed in this fork.
 ### Release artifacts
 
 - `DraftHorse-setup.exe` — single-file installer (bundles WebView2 bootstrapper, both MAPI DLLs, and the app)
-- `go-mapi.exe`, `go-mapi-x64.dll`, `go-mapi-x86.dll` — individual binaries (for verification; the installer is the supported install path)
+- `DraftHorse.exe`, `DraftHorse-x64.dll`, `DraftHorse-x86.dll` — individual binaries (for verification; the installer is the supported install path)
 - `SHA256SUMS.txt` — checksum manifest for everything above
 
 ### License

@@ -39,15 +39,17 @@ import (
 var mapiClientsMailPath = `Software\Clients\Mail`
 
 const (
-	// Identifier names — deliberately go-mapi, never the display name
-	// (see CLAUDE.md Branding). The display name appears only in the
-	// mirror subkey's (Default) display value.
-	mapiClientName = "go-mapi"
+	// V4: identifier and display are both DraftHorse (the ARRICKS-11
+	// go-mapi identifier split ended at 4.0 — see CLAUDE.md Branding and
+	// docs/V4-PLAN.md). These MUST stay in lockstep with the installer's
+	// PRODUCT_NAME writes; the mapi32 stub resolves the subkey named by
+	// the Clients\Mail (Default) value.
+	mapiClientName = "DraftHorse"
 	mapiClientDisplay   = "DraftHorse"
-	mapiDLLPathExpand   = `%ProgramFiles%\go-mapi\go-mapi.dll`
+	mapiDLLPathExpand   = `%ProgramFiles%\DraftHorse\DraftHorse.dll`
 
 	mailtoUserChoicePath = `Software\Microsoft\Windows\Shell\Associations\UrlAssociations\mailto\UserChoice`
-	mailtoProgID         = "go-mapi.mailto"
+	mailtoProgID         = "DraftHorse.mailto"
 
 	// Win11 deep link straight to this app's Default Apps page (machine
 	// registration → display name). Unknown parameters degrade gracefully

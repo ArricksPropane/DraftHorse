@@ -121,6 +121,11 @@ func NewApp() *App {
 }
 
 func (a *App) startup(ctx context.Context) {
+	// V4 migration MUST run before anything touches the per-user state it
+	// moves: the log file (APPDATA), the queue watcher (LOCALAPPDATA), the
+	// keyring (bootstrapAuth), and the HKCU heal mirror (defaultmail guard).
+	migrateLegacyState()
+
 	a.ctx = ctx
 	a.shutdownCtx, a.shutdownCancel = context.WithCancel(context.Background())
 	// StartHidden: true → visible starts false. Mirror that here so toggleWindow
@@ -643,7 +648,7 @@ func (a *App) GetSettings() AppSettings {
 	return s
 }
 
-// SaveSettings persists AppSettings to %APPDATA%\go-mapi\settings.json.
+// SaveSettings persists AppSettings to %APPDATA%\DraftHorse\settings.json.
 // Delegates to setMode for validation + wake-automode-if-mode-flipped. In
 // Phase 9 Mode is the only field; future phases may surface more here.
 func (a *App) SaveSettings(s AppSettings) error {

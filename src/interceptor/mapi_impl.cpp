@@ -212,7 +212,7 @@ static ULONG SendMailWBody(const MapiMessageW& message, const std::string& origi
         msg.originApp = originApp;
 
         // QUICK-260423-tk6: same lifetime fix as the ANSI path — copy
-        // attachments into %LOCALAPPDATA%\go-mapi\queue\<stem>\ before the
+        // attachments into %LOCALAPPDATA%\DraftHorse\queue\<stem>\ before the
         // caller's TEMP dir disappears on return.
         return QueueMessage(msg);
     } catch (...) {

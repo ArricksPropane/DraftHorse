@@ -1,4 +1,4 @@
-LIBRARY go-mapi.dll
+LIBRARY DraftHorse.dll
 
 EXPORTS
     MAPISendMail

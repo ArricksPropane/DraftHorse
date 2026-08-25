@@ -6,10 +6,10 @@ rounded plate, transparent corners). Outputs:
 
   src/app/build/windows/icon.ico   multi-res app icon (16..256) — Wails embeds
                                    it as the exe resource, which Explorer, the
-                                   Start Menu shortcut, the go-mapi.mailto
+                                   Start Menu shortcut, the DraftHorse.mailto
                                    DefaultIcon, and ARP all render. The
                                    installer also ships a copy as
-                                   $INSTDIR\go-mapi.ico for toast visuals
+                                   $INSTDIR\DraftHorse.ico for toast visuals
                                    (toast_windows.go toastIconPath).
   src/app/build/appicon.png        512px PNG (wails' generic app icon input)
   src/app/assets/tray/*.ico        the four D-16 tray states, drawn from the

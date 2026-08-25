@@ -4,7 +4,7 @@ import type { main } from '../../wailsjs/go/models';
 
 export type AuthStatus = main.AuthStatus;
 
-const PREAUTH_SEEN_KEY = 'go-mapi.preauth-seen';
+const PREAUTH_SEEN_KEY = 'DraftHorse.preauth-seen';
 
 export function hasSeenPreAuthExplainer(): boolean {
   try {

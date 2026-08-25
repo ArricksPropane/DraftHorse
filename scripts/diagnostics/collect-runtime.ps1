@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-  Collect go-mapi runtime diagnostics (queue tree, log tails, loaded DLLs) into
+  Collect DraftHorse runtime diagnostics (queue tree, log tails, loaded DLLs) into
   a timestamped text file.
 
 .DESCRIPTION
-  Produces a single text report at $OutputDir\go-mapi-runtime-<yyyyMMdd-HHmmss>.txt
+  Produces a single text report at $OutputDir\DraftHorse-runtime-<yyyyMMdd-HHmmss>.txt
   covering:
     1. Header (host, user, OS bitness, process bitness)
-    2. Queue directory tree under %LOCALAPPDATA%\go-mapi\queue\
+    2. Queue directory tree under %LOCALAPPDATA%\DraftHorse\queue\
     3. errors/ subdir with full contents of each .error file
     4. Interceptor log tail (last 200 lines)
     5. App log tail (last 200 lines)
-    6. Processes currently holding go-mapi.dll
+    6. Processes currently holding DraftHorse.dll
     7. Env var snapshot (LOCALAPPDATA, APPDATA, USERPROFILE, TEMP, TMP)
     8. Footer
 
@@ -44,7 +44,7 @@ if (-not (Test-Path -LiteralPath $OutputDir)) {
     }
 }
 
-$out = Join-Path $OutputDir "go-mapi-runtime-$timestamp.txt"
+$out = Join-Path $OutputDir "DraftHorse-runtime-$timestamp.txt"
 
 function Append-Banner {
     param([string]$Title)
@@ -87,7 +87,7 @@ function Safe-Invoke {
 # Section 1: Header
 # -----------------------------------------------------------------------------
 Append-Banner 'Header'
-Append-Line "go-mapi runtime report (script v$scriptVersion)"
+Append-Line "DraftHorse runtime report (script v$scriptVersion)"
 Append-Line "Timestamp     : $(Get-Date -Format 'yyyy-MM-ddTHH:mm:sszzz')"
 Append-Line "Computer      : $env:COMPUTERNAME"
 Append-Line "User          : $env:USERNAME"
@@ -101,7 +101,7 @@ Append-Line "PSVersion     : $($PSVersionTable.PSVersion)"
 # -----------------------------------------------------------------------------
 Append-Banner 'Queue directory tree'
 
-$queueRoot = Join-Path $env:LOCALAPPDATA 'go-mapi\queue'
+$queueRoot = Join-Path $env:LOCALAPPDATA 'DraftHorse\queue'
 Append-Line "Queue root: $queueRoot"
 
 if (Test-Path -LiteralPath $queueRoot) {
@@ -155,8 +155,8 @@ if (Test-Path -LiteralPath $errorsDir) {
 # -----------------------------------------------------------------------------
 Append-Banner 'Interceptor log tail'
 
-$interceptorLogNew = Join-Path $env:LOCALAPPDATA 'go-mapi\queue\interceptor.log'
-$interceptorLogOld = Join-Path $env:TEMP 'go-mapi\interceptor.log'
+$interceptorLogNew = Join-Path $env:LOCALAPPDATA 'DraftHorse\queue\interceptor.log'
+$interceptorLogOld = Join-Path $env:TEMP 'DraftHorse\interceptor.log'
 
 if (Test-Path -LiteralPath $interceptorLogNew) {
     Append-Line "Log path (new layout): $interceptorLogNew"
@@ -165,7 +165,7 @@ if (Test-Path -LiteralPath $interceptorLogNew) {
     }
 } elseif (Test-Path -LiteralPath $interceptorLogOld) {
     Append-Line "Log path (pre-quick/260423-msq fallback): $interceptorLogOld"
-    Append-Line '(This location is from before the %LOCALAPPDATA%\go-mapi\queue relocation.'
+    Append-Line '(This location is from before the %LOCALAPPDATA%\DraftHorse\queue relocation.'
     Append-Line ' Finding log files here suggests an older DLL is still loaded or installed.)'
     Safe-Invoke 'interceptor.log tail (old)' {
         Get-Content -LiteralPath $interceptorLogOld -Tail 200 -ErrorAction Stop | Append-Block
@@ -179,7 +179,7 @@ if (Test-Path -LiteralPath $interceptorLogNew) {
 # -----------------------------------------------------------------------------
 Append-Banner 'App log tail'
 
-$appLog = Join-Path $env:APPDATA 'go-mapi\app.log'
+$appLog = Join-Path $env:APPDATA 'DraftHorse\app.log'
 Append-Line "App log: $appLog"
 
 if (Test-Path -LiteralPath $appLog) {
@@ -191,14 +191,14 @@ if (Test-Path -LiteralPath $appLog) {
 }
 
 # -----------------------------------------------------------------------------
-# Section 6: Processes currently holding go-mapi.dll
+# Section 6: Processes currently holding DraftHorse.dll
 # -----------------------------------------------------------------------------
-Append-Banner 'Processes holding go-mapi.dll'
+Append-Banner 'Processes holding DraftHorse.dll'
 
 Safe-Invoke 'loaded-DLL scan' {
     $holders = Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
         try {
-            $match = $_.Modules | Where-Object { $_.ModuleName -ieq 'go-mapi.dll' }
+            $match = $_.Modules | Where-Object { $_.ModuleName -ieq 'DraftHorse.dll' }
             if ($match) {
                 [PSCustomObject]@{
                     Id          = $_.Id
@@ -213,7 +213,7 @@ Safe-Invoke 'loaded-DLL scan' {
     if ($holders) {
         $holders | Format-Table -AutoSize | Append-Block
     } else {
-        Append-Line '(no accessible processes currently hold go-mapi.dll)'
+        Append-Line '(no accessible processes currently hold DraftHorse.dll)'
     }
 }
 

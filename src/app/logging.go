@@ -14,7 +14,7 @@ var (
 	logInitMu sync.Once
 )
 
-// initLog opens (or creates) the app log file at %APPDATA%\go-mapi\app.log.
+// initLog opens (or creates) the app log file at %APPDATA%\DraftHorse\app.log.
 // Per-user path (not %TEMP%) provides per-session isolation under RDS.
 // T-07-23: uses APPDATA (per-user ACL), NOT PROGRAMDATA.
 func initLog() {
@@ -23,7 +23,7 @@ func initLog() {
 		// Fallback: write to stderr if APPDATA not set.
 		return
 	}
-	dir := filepath.Join(appData, "go-mapi")
+	dir := filepath.Join(appData, "DraftHorse")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return
 	}

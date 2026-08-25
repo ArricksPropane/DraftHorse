@@ -12,9 +12,9 @@ using namespace mapi_test;
 int test_ansi_encoding() {
     std::cout << "\nTest: ANSI Codepage Encoding" << std::endl;
 
-    HMODULE hDll = LoadLibraryA("go-mapi.dll");
+    HMODULE hDll = LoadLibraryA("DraftHorse.dll");
     if (!hDll) {
-        std::cerr << "Failed to load go-mapi.dll" << std::endl;
+        std::cerr << "Failed to load DraftHorse.dll" << std::endl;
         return 1;
     }
 

@@ -12,9 +12,9 @@ int test_with_attachments() {
     std::cout << "\nTest: With Attachments" << std::endl;
 
     // Load the DLL
-    HMODULE hDll = LoadLibraryA("go-mapi.dll");
+    HMODULE hDll = LoadLibraryA("DraftHorse.dll");
     if (!hDll) {
-        std::cerr << "Failed to load go-mapi.dll" << std::endl;
+        std::cerr << "Failed to load DraftHorse.dll" << std::endl;
         return 1;
     }
 
@@ -43,7 +43,7 @@ int test_with_attachments() {
         wchar_t tempPathW[MAX_PATH];
         GetTempPathW(MAX_PATH, tempPathW);
         std::filesystem::path p =
-            std::filesystem::path(tempPathW) / "go-mapi-harness-attachment.txt";
+            std::filesystem::path(tempPathW) / "DraftHorse-harness-attachment.txt";
         std::string narrow = p.string();
         strncpy(filePath, narrow.c_str(), MAX_PATH - 1);
 
@@ -53,7 +53,7 @@ int test_with_attachments() {
             FreeLibrary(hDll);
             return 1;
         }
-        f << "go-mapi test harness attachment payload\n";
+        f << "DraftHorse test harness attachment payload\n";
     }
     char fileName[] = "test.txt";
 

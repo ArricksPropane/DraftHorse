@@ -1,4 +1,4 @@
-; go-mapi.nsi — NSIS installer for go-mapi (v3.0)
+; go-mapi.nsi — NSIS installer for DraftHorse (v3.0)
 ;
 ; Plan 10-01 scaffold: ModernUI2 layout, admin-elevation, machine-wide install,
 ; MAPI handler registration, previous-mail-client backup, Add/Remove Programs
@@ -7,19 +7,19 @@
 ; Compile with:
 ;     makensis /DGOMAPI_VERSION=0.0.0-dev src\installer\go-mapi.nsi
 ;
-; Requires: pre-built src\app\build\bin\go-mapi.exe and
-;           src\interceptor\build\bin\go-mapi.dll (staged by CI in plan 10-05 /
+; Requires: pre-built src\app\build\bin\DraftHorse.exe and
+;           src\interceptor\build\bin\DraftHorse.dll (staged by CI in plan 10-05 /
 ;           release pipeline in plan 10-06).
 ;
 ; References:
 ;   D-01, D-02, D-03, D-04 — NSIS + admin + machine-wide + output filename
-;   D-09 — HKLM\SOFTWARE\Clients\Mail\go-mapi registration layout
+;   D-09 — HKLM\SOFTWARE\Clients\Mail\DraftHorse registration layout
 ;   D-10 — BackupPreviousMailClient BEFORE overwriting HKLM Mail (Default)
-;   D-12 — %ProgramData%\go-mapi\uninst\ directory for backup JSON
+;   D-12 — %ProgramData%\DraftHorse\uninst\ directory for backup JSON
 ;   T-10-01-01 — ordering invariant enforced below (Call BackupPreviousMailClient
-;                precedes WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "go-mapi")
-;   QUICK-260423-msq — DLL queue relocated from %TEMP%\go-mapi\ to
-;                %LOCALAPPDATA%\go-mapi\queue\ (DLL creates it at DllMain; installer does not
+;                precedes WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "DraftHorse")
+;   QUICK-260423-msq — DLL queue relocated from %TEMP%\DraftHorse\ to
+;                %LOCALAPPDATA%\DraftHorse\queue\ (DLL creates it at DllMain; installer does not
 ;                pre-create it — no install-time action required for the path itself).
 
 Unicode True
@@ -32,18 +32,20 @@ Unicode True
   !define GOMAPI_VERSION "0.0.0-dev"
 !endif
 
-!define PRODUCT_NAME      "go-mapi"
-; ARRICKS-11 — display-name rebrand. PRODUCT_DISPLAY is what humans see
-; (installer UI, ARP, Default Apps, shortcut, client display value).
-; PRODUCT_NAME remains the IDENTIFIER everywhere machines look: the
-; Clients\Mail subkey + resolver (Default), ProgID key, AUMID, binary and
-; artifact names, uninstall key path, firewall rule, credential target,
-; queue paths, Intune detection. Do not fold the two together.
+!define PRODUCT_NAME      "DraftHorse"
+; V4 (2026-08): identifier and display are now BOTH DraftHorse. The
+; ARRICKS-11 split (display DraftHorse, identifiers go-mapi) ended with 4.0,
+; while the installed base was 4 test machines — see docs/V4-PLAN.md Phase 1
+; and the V4 MIGRATION block in the Install section, which scrubs the
+; old-name artifacts a 3.x install left behind. PRODUCT_NAME still feeds the
+; Clients\Mail subkey + resolver, ProgID, uninstall key, firewall rule and
+; Intune detection — keep it in lockstep with the Go-side constants
+; (defaultmail.go, auth.go, paths.go).
 !define PRODUCT_DISPLAY   "DraftHorse"
 !define PRODUCT_VERSION   "${GOMAPI_VERSION}"
 !define PRODUCT_PUBLISHER "Arrick's Propane"
 !define PRODUCT_WEB_SITE  "https://github.com/egkrateia247/DraftHorse"
-!define AUMID             "com.marcfargas.gomapi"
+!define AUMID             "com.arrickspropane.drafthorse"
 
 ;------------------------------------------------------------------------------
 ; Compiler / installer-wide settings
@@ -51,7 +53,7 @@ Unicode True
 
 SetCompressor /SOLID lzma
 RequestExecutionLevel admin
-InstallDir   "$PROGRAMFILES64\go-mapi"
+InstallDir   "$PROGRAMFILES64\DraftHorse"
 OutFile      "DraftHorse-setup.exe"
 Name         "${PRODUCT_DISPLAY} ${PRODUCT_VERSION}"
 BrandingText "${PRODUCT_DISPLAY} ${PRODUCT_VERSION} — LGPL-3.0"
@@ -79,7 +81,7 @@ BrandingText "${PRODUCT_DISPLAY} ${PRODUCT_VERSION} — LGPL-3.0"
 
 ; ARRICKS-06: $AutoUpdateFlag / $AutoUpdateCheckboxState removed along with the
 ; auto-update opt-in page and RegisterScheduledTask. This installer never
-; creates the "go-mapi Auto Update" Scheduled Task. See main.go for why.
+; creates the "DraftHorse Auto Update" Scheduled Task. See main.go for why.
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${__FILEDIR__}\..\..\LICENSE"
@@ -103,22 +105,72 @@ BrandingText "${PRODUCT_DISPLAY} ${PRODUCT_VERSION} — LGPL-3.0"
 ;------------------------------------------------------------------------------
 
 Section "Install" SecInstall
-  ; QUICK-260423-ntu T2 — if a previous install's go-mapi.exe is running in
+  ; QUICK-260423-ntu T2 — if a previous install's DraftHorse.exe is running in
   ; $INSTDIR, give it a chance to close cleanly (WM_CLOSE via taskkill
   ; without /F triggers the intentionalQuit path in src/app/main.go) before
   ; we overwrite the binary. Silent mode auto-retries; interactive mode
   ; prompts the user. MUST be the first statement in the section.
   Call EnsureAppNotRunning
 
+  ;----------------------------------------------------------------------------
+  ; V4 MIGRATION — scrub the machine-scope artifacts of a pre-4.0 install.
+  ;
+  ; 4.0 renamed every installed identifier from go-mapi to DraftHorse (see
+  ; docs/V4-PLAN.md Phase 1). This block removes what a 3.x install left
+  ; under the old names; the app migrates PER-USER state (data dirs,
+  ; credential target, HKCU heal mirror) at first run, because this
+  ; installer runs elevated and cannot see each user's profile.
+  ;
+  ; Every step is idempotent and tolerant of "not found" — a fresh machine
+  ; runs straight through. DELETE THIS BLOCK only when no 3.x install can
+  ; exist anywhere (post-rollout fleet reimage, realistically never).
+
+  ; Old app may be autostarted and running under the old name — close it the
+  ; same way EnsureAppNotRunning closes the new one (WM_CLOSE, no /F).
+  ExecWait 'taskkill /im "go-mapi.exe"' $0
+  Sleep 2000
+  ExecWait 'taskkill /f /im "go-mapi.exe"' $0
+
+  ; Old MAPI client key (WOW64-shared — one delete covers both views).
+  DeleteRegKey HKLM "SOFTWARE\Clients\Mail\go-mapi"
+
+  ; Old autostart (written under SetRegView 64, matching ARRICKS-19).
+  SetRegView 64
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "go-mapi"
+  SetRegView default
+
+  ; Old mailto ProgID + Default Apps listing.
+  DeleteRegKey HKLM "SOFTWARE\Classes\go-mapi.mailto"
+  DeleteRegValue HKLM "SOFTWARE\RegisteredApplications" "go-mapi"
+
+  ; Old ARP entry (the new write below uses Uninstall\DraftHorse — without
+  ; this, Add/Remove Programs shows two rows and the old uninstaller would
+  ; scrub the NEW Clients\Mail resolver if ever run).
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi"
+
+  ; Old firewall rule (new rule name is added later this section).
+  ExecWait 'netsh advfirewall firewall delete rule name="go-mapi OAuth loopback"' $0
+
+  ; Old install trees, both bitnesses. Safe after the taskkill above; queue
+  ; and settings never lived here (they are per-user under %LOCALAPPDATA%).
+  RMDir /r "$PROGRAMFILES64\go-mapi"
+  RMDir /r "$PROGRAMFILES32\go-mapi"
+
+  ; Old Start Menu shortcut.
+  SetShellVarContext all
+  Delete "$SMPROGRAMS\go-mapi.lnk"
+  SetShellVarContext current
+  ;---------------------------------------------------------------- end V4 ----
+
   SetOutPath "$INSTDIR"
 
   ; Staged binary paths — produced by:
   ;   npm run build:interceptor         (clang + CMake → build-x64/ + build-x86/)
-  ;   wails build -platform windows/amd64 (→ go-mapi.exe with go:embed frontend)
+  ;   wails build -platform windows/amd64 (→ DraftHorse.exe with go:embed frontend)
   ;
   ; QUICK-260423-ntu T3c — dual-bitness layout: x64 DLL lands in $INSTDIR
-  ; (= $PROGRAMFILES64\go-mapi) for native MAPI callers; x86 DLL lands in
-  ; $PROGRAMFILES32\go-mapi for legacy 32-bit MAPI callers. The single
+  ; (= $PROGRAMFILES64\DraftHorse) for native MAPI callers; x86 DLL lands in
+  ; $PROGRAMFILES32\DraftHorse for legacy 32-bit MAPI callers. The single
   ; REG_EXPAND_SZ DLLPath write below (ARRICKS-10) routes each caller to the
   ; matching-bitness DLL via its own %ProgramFiles% expansion.
   ; PHASE 11.1 T4 (D-04): explicit Delete + SetOverwrite try collapses transient
@@ -127,44 +179,44 @@ Section "Install" SecInstall
   ; reinstall fail hard on any transient lock; `try` skips silently if write
   ; fails (the explicit Delete clears the prior version first so it does not).
   ClearErrors
-  Delete "$INSTDIR\go-mapi.exe"
-  Delete "$INSTDIR\go-mapi.dll"
-  Delete "$INSTDIR\go-mapi.ico"
+  Delete "$INSTDIR\DraftHorse.exe"
+  Delete "$INSTDIR\DraftHorse.dll"
+  Delete "$INSTDIR\DraftHorse.ico"
   SetOverwrite try
-  File "${__FILEDIR__}\..\app\build\bin\go-mapi.exe"
-  File "${__FILEDIR__}\..\interceptor\build-x64\bin\go-mapi.dll"
+  File "${__FILEDIR__}\..\app\build\bin\DraftHorse.exe"
+  File "${__FILEDIR__}\..\interceptor\build-x64\bin\DraftHorse.dll"
   ; ARRICKS-16 — toast icon. toast_windows.go (toastIconPath) has always
-  ; looked for $INSTDIR\go-mapi.ico next to the exe, but nothing ever
+  ; looked for $INSTDIR\DraftHorse.ico next to the exe, but nothing ever
   ; shipped it — toasts rendered without an app image. Same multi-res icon
   ; Wails embeds into the exe (src/app/build/windows/icon.ico), deposited
-  ; under the name the Go code expects (identifier: stays go-mapi.ico).
-  File "/oname=go-mapi.ico" "${__FILEDIR__}\..\app\build\windows\icon.ico"
+  ; under the name the Go code expects (toastIconPath: DraftHorse.ico).
+  File "/oname=DraftHorse.ico" "${__FILEDIR__}\..\app\build\windows\icon.ico"
   SetOverwrite on
 
   ; x86 DLL — same T4 treatment in $PROGRAMFILES32 view.
-  CreateDirectory "$PROGRAMFILES32\go-mapi"
-  SetOutPath "$PROGRAMFILES32\go-mapi"
+  CreateDirectory "$PROGRAMFILES32\DraftHorse"
+  SetOutPath "$PROGRAMFILES32\DraftHorse"
   ClearErrors
-  Delete "$PROGRAMFILES32\go-mapi\go-mapi.dll"
+  Delete "$PROGRAMFILES32\DraftHorse\DraftHorse.dll"
   SetOverwrite try
-  File "${__FILEDIR__}\..\interceptor\build-x86\bin\go-mapi.dll"
+  File "${__FILEDIR__}\..\interceptor\build-x86\bin\DraftHorse.dll"
   SetOverwrite on
 
   ; ARRICKS-10 — the REG_EXPAND_SZ DLLPath (see D-09 below) resolves 64-bit
-  ; callers to %ProgramFiles%\go-mapi\go-mapi.dll unconditionally, so a
+  ; callers to %ProgramFiles%\DraftHorse\DraftHorse.dll unconditionally, so a
   ; custom /D= install dir must still deposit the x64 DLL at that fixed
-  ; path (mirroring how the x86 DLL is always at $PROGRAMFILES32\go-mapi).
+  ; path (mirroring how the x86 DLL is always at $PROGRAMFILES32\DraftHorse).
   ; NSIS StrCmp is case-insensitive, matching NTFS path semantics. Skipped
   ; entirely for the default dir, where $INSTDIR already IS that path.
-  StrCmp "$INSTDIR" "$PROGRAMFILES64\go-mapi" MapiDllPinned
-  CreateDirectory "$PROGRAMFILES64\go-mapi"
-  SetOutPath "$PROGRAMFILES64\go-mapi"
+  StrCmp "$INSTDIR" "$PROGRAMFILES64\DraftHorse" MapiDllPinned
+  CreateDirectory "$PROGRAMFILES64\DraftHorse"
+  SetOutPath "$PROGRAMFILES64\DraftHorse"
   ClearErrors
-  Delete "$PROGRAMFILES64\go-mapi\go-mapi.dll"
+  Delete "$PROGRAMFILES64\DraftHorse\DraftHorse.dll"
   SetOverwrite try
-  File "${__FILEDIR__}\..\interceptor\build-x64\bin\go-mapi.dll"
+  File "${__FILEDIR__}\..\interceptor\build-x64\bin\DraftHorse.dll"
   SetOverwrite on
-  DetailPrint "Non-default InstallDir: x64 MAPI DLL also pinned to $PROGRAMFILES64\go-mapi"
+  DetailPrint "Non-default InstallDir: x64 MAPI DLL also pinned to $PROGRAMFILES64\DraftHorse"
 MapiDllPinned:
 
   ; Reset $OUTDIR for the rest of the install section
@@ -211,42 +263,43 @@ MapiDllPinned:
   ; ARRICKS-11: the client SUBKEY's (Default) is its human-facing display
   ; name — rebranded. The Clients\Mail (Default) below is the RESOLVER: the
   ; mapi32 stub opens the subkey named by that exact string, so it MUST stay
-  ; "go-mapi" (the subkey name), never the display name.
+  ; "DraftHorse" (the subkey name), never the display name.
   SetRegView 64
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "" "${PRODUCT_DISPLAY}"
-  WriteRegExpandStr HKLM "SOFTWARE\Clients\Mail\go-mapi" "DLLPath" "%ProgramFiles%\go-mapi\go-mapi.dll"
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "go-mapi"
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\DraftHorse" "" "${PRODUCT_DISPLAY}"
+  WriteRegExpandStr HKLM "SOFTWARE\Clients\Mail\DraftHorse" "DLLPath" "%ProgramFiles%\DraftHorse\DraftHorse.dll"
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "DraftHorse"
   SetRegView default
 
   ; ARRICKS-09 — mailto: protocol handler + Default Apps registration.
   ; Three pieces, all machine-wide, native (64-bit) view only — Default Apps
   ; and UserChoice resolve ProgIDs from the native Classes view:
   ;
-  ;  1. The go-mapi.mailto ProgID: shell open command Windows invokes when
-  ;     go-mapi is the chosen mailto handler. --mailto opens Gmail web
+  ;  1. The DraftHorse.mailto ProgID: shell open command Windows invokes when
+  ;     DraftHorse is the chosen mailto handler. --mailto opens Gmail web
   ;     compose prefilled from the URL (see src/app/mailto.go) and exits.
-  ;  2. Capabilities under the existing Clients\Mail\go-mapi key (canonical
+  ;  2. Capabilities under the existing Clients\Mail\DraftHorse key (canonical
   ;     location for mail clients), advertising the mailto association.
-  ;  3. The RegisteredApplications pointer that makes go-mapi appear in
+  ;  3. The RegisteredApplications pointer that makes DraftHorse appear in
   ;     Settings > Default apps.
   ;
   ; Deliberately NOT written: HKCU\...\UserChoice. Windows 11 hash-protects
-  ; it; the user picks go-mapi once in Settings > Default apps, or Intune
+  ; it; the user picks DraftHorse once in Settings > Default apps, or Intune
   ; sets it fleet-wide (docs\mailto-default-associations.xml).
-  WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto" "" "${PRODUCT_DISPLAY} mailto handler"
-  WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto\DefaultIcon" "" "$INSTDIR\go-mapi.exe,0"
-  WriteRegStr HKLM "SOFTWARE\Classes\go-mapi.mailto\shell\open\command" "" '"$INSTDIR\go-mapi.exe" --mailto "%1"'
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities" "ApplicationName" "${PRODUCT_DISPLAY}"
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities" "ApplicationDescription" "Creates Gmail drafts from Simple MAPI calls and opens Gmail compose for mailto: links"
-  WriteRegStr HKLM "SOFTWARE\Clients\Mail\go-mapi\Capabilities\URLAssociations" "mailto" "go-mapi.mailto"
-  WriteRegStr HKLM "SOFTWARE\RegisteredApplications" "go-mapi" "SOFTWARE\Clients\Mail\go-mapi\Capabilities"
+  WriteRegStr HKLM "SOFTWARE\Classes\DraftHorse.mailto" "" "${PRODUCT_DISPLAY} mailto handler"
+  WriteRegStr HKLM "SOFTWARE\Classes\DraftHorse.mailto\DefaultIcon" "" "$INSTDIR\DraftHorse.exe,0"
+  WriteRegStr HKLM "SOFTWARE\Classes\DraftHorse.mailto\shell\open\command" "" '"$INSTDIR\DraftHorse.exe" --mailto "%1"'
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\DraftHorse\Capabilities" "ApplicationName" "${PRODUCT_DISPLAY}"
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\DraftHorse\Capabilities" "ApplicationDescription" "Creates Gmail drafts from Simple MAPI calls and opens Gmail compose for mailto: links"
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\DraftHorse\Capabilities\URLAssociations" "mailto" "DraftHorse.mailto"
+  WriteRegStr HKLM "SOFTWARE\RegisteredApplications" "DraftHorse" "SOFTWARE\Clients\Mail\DraftHorse\Capabilities"
 
   ; Uninstaller binary
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   ; Add/Remove Programs metadata
-  ; ARRICKS-11: key path stays ${PRODUCT_NAME} (identifier — existing installs
-  ; upgrade onto the same ARP entry); DisplayName is the rebranded surface.
+  ; V4: the key path follows PRODUCT_NAME (now DraftHorse). Pre-4.0 installs
+  ; used Uninstall\go-mapi — deleted by the V4 MIGRATION block above, so ARP
+  ; shows exactly one row across the upgrade.
   WriteRegStr   HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName"     "${PRODUCT_DISPLAY}"
   WriteRegStr   HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion"  "${PRODUCT_VERSION}"
   WriteRegStr   HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "Publisher"       "${PRODUCT_PUBLISHER}"
@@ -257,7 +310,7 @@ MapiDllPinned:
 
   ; D-03: best-effort cleanup of stale per-user shortcut from pre-11.1 builds.
   SetShellVarContext current
-  Delete "$SMPROGRAMS\go-mapi.lnk"
+  Delete "$SMPROGRAMS\DraftHorse.lnk"
   ; (next call to CreateShortcutAndAUMID below already wrapped to all-users)
 
   ; Stub calls — bodies are filled in by later plans. Each stub emits a
@@ -267,7 +320,7 @@ MapiDllPinned:
   Call AddFirewallRule           ; plan 10-03
 
   ; ARRICKS-19 — autostart at logon (all users). The queue watcher and the
-  ; ARRICKS-13 default-mail guard only work while go-mapi.exe runs, and
+  ; ARRICKS-13 default-mail guard only work while DraftHorse.exe runs, and
   ; upstream's planned Phase-10 autostart was never implemented — a reboot
   ; left scans queueing with no drafts created, and let a competing client
   ; (Outlook, on the validation PC) keep a stolen MAPI default with nothing
@@ -275,7 +328,7 @@ MapiDllPinned:
   ; is single-instance, so logon start is silent. Native view: HKLM Run is
   ; WOW64-redirected and admins expect the entry in the 64-bit key.
   SetRegView 64
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "go-mapi" '"$INSTDIR\go-mapi.exe"'
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DraftHorse" '"$INSTDIR\DraftHorse.exe"'
   SetRegView default
 
   ; ARRICKS-19 — relaunch after install. EnsureAppNotRunning closed any
@@ -285,7 +338,7 @@ MapiDllPinned:
   ; the elevated installer token. Best-effort: under a SYSTEM-context
   ; Intune push there is no interactive session and this is a no-op — the
   ; Run key covers the next logon.
-  Exec 'explorer.exe "$INSTDIR\go-mapi.exe"'
+  Exec 'explorer.exe "$INSTDIR\DraftHorse.exe"'
 
   ; ARRICKS-17 — flush the shell icon cache after upgrades. Explorer and the
   ; Start Menu cache icons keyed on the exe PATH, which is identical across
@@ -305,11 +358,11 @@ SectionEnd
 ;------------------------------------------------------------------------------
 ; BackupPreviousMailClient — D-10 / T-10-01-01
 ;
-; Writes %ProgramData%\go-mapi\uninst\previous-mail-client.json with the shape
+; Writes %ProgramData%\DraftHorse\uninst\previous-mail-client.json with the shape
 ;     {"previousClient": "<name>"|null, "backedUpAt": "<ISO-8601>"}
 ; so the uninstaller (plan 10-04) can restore the pre-install Mail client.
 ;
-; Upgrade case (current (Default) is already "go-mapi") intentionally preserves
+; Upgrade case (current (Default) is already "DraftHorse") intentionally preserves
 ; the existing backup — overwriting would lose the original previous-client
 ; name across reinstalls.
 ;
@@ -327,7 +380,7 @@ Function BackupPreviousMailClient
   ; the documented %ProgramData% location (D-12) never saw it. $9 carries
   ; the resolved path for the rest of this function.
   ReadEnvStr $9 PROGRAMDATA
-  CreateDirectory "$9\go-mapi\uninst"
+  CreateDirectory "$9\DraftHorse\uninst"
 
   ReadRegStr $0 HKLM "SOFTWARE\Clients\Mail" ""
 
@@ -338,7 +391,7 @@ Function BackupPreviousMailClient
   SetRegView default
 
   ; Upgrade case: existing install. Preserve original backup, skip write.
-  StrCmp $0 "go-mapi" AlreadyUs
+  StrCmp $0 "DraftHorse" AlreadyUs
   ; Clean install with no prior default Mail client.
   StrCmp $0 "" BackupNull
 
@@ -361,7 +414,7 @@ Function BackupPreviousMailClient
   Pop $3   ; stdout (timestamp + trailing CRLF)
   StrCpy $3 $3 -2   ; strip trailing \r\n
 
-  FileOpen  $1 "$9\go-mapi\uninst\previous-mail-client.json" w
+  FileOpen  $1 "$9\DraftHorse\uninst\previous-mail-client.json" w
   StrCmp $4 "" BackupWriteNative32
   FileWrite $1 '{"previousClient":"$0","previousClient32":"$4","backedUpAt":"$3"}'
   Goto BackupWriteDone
@@ -384,7 +437,7 @@ BackupNull:
   Call EscapeJsonString
   Pop $4
 
-  FileOpen  $1 "$9\go-mapi\uninst\previous-mail-client.json" w
+  FileOpen  $1 "$9\DraftHorse\uninst\previous-mail-client.json" w
   StrCmp $4 "" BackupNullNoWow
   FileWrite $1 '{"previousClient":null,"previousClient32":"$4","backedUpAt":"$3"}'
   Goto BackupNullDone
@@ -403,14 +456,14 @@ FunctionEnd
 ;------------------------------------------------------------------------------
 ; EnsureAppNotRunning — QUICK-260423-ntu T2 (installer scope)
 ;
-; If a go-mapi.exe process is running, offer clean-close-and-retry. Uses
+; If a DraftHorse.exe process is running, offer clean-close-and-retry. Uses
 ; `tasklist` (core Windows tool, no plugin) for detection and `taskkill`
 ; WITHOUT /F for graceful shutdown — WM_CLOSE maps to the same
 ; intentionalQuit path in src/app/main.go that the tray "Quit" menu item
 ; triggers. Polls every 500ms up to 20 iterations (10s budget) for the
 ; process to exit; aborts on timeout.
 ;
-; Image-name match only (no WMIC path-narrowing) — go-mapi.exe is unique
+; Image-name match only (no WMIC path-narrowing) — DraftHorse.exe is unique
 ; enough in practice that a duplicate unrelated process is an acceptable
 ; v3.0 risk, and WMIC has been removed on recent Windows 11 builds.
 ;
@@ -425,47 +478,47 @@ Function EnsureAppNotRunning
   Push $0
   Push $1
 
-  ; Quick probe — is any go-mapi.exe running at all?
-  nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq go-mapi.exe" /NH /FO CSV'
+  ; Quick probe — is any DraftHorse.exe running at all?
+  nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq DraftHorse.exe" /NH /FO CSV'
   Pop $0   ; exit code
   Pop $1   ; stdout
 
   Push $1
-  Push "go-mapi.exe"
+  Push "DraftHorse.exe"
   Call StrContains
   Pop $0   ; "1" = found, "0" = not found
   StrCmp $0 "1" EANR_Found EANR_NotFound
 
 EANR_Found:
-  DetailPrint "go-mapi.exe is running — attempting graceful close"
+  DetailPrint "DraftHorse.exe is running — attempting graceful close"
   IfSilent EANR_SilentRetry EANR_AskUser
 
 EANR_AskUser:
-  MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "go-mapi is currently running. Click OK to close it and continue, or Cancel to abort the installer." IDOK EANR_SilentRetry IDCANCEL EANR_Cancel
+  MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "DraftHorse is currently running. Click OK to close it and continue, or Cancel to abort the installer." IDOK EANR_SilentRetry IDCANCEL EANR_Cancel
 
 EANR_Cancel:
   DetailPrint "User cancelled — aborting installer"
   Pop $1
   Pop $0
-  Abort "Installer aborted by user (go-mapi was running)."
+  Abort "Installer aborted by user (DraftHorse was running)."
 
 EANR_SilentRetry:
-  ; Send WM_CLOSE to every go-mapi.exe instance (no /F — honours
+  ; Send WM_CLOSE to every DraftHorse.exe instance (no /F — honours
   ; intentionalQuit path). /IM matches by image name; /T includes children.
-  nsExec::ExecToStack 'taskkill /IM go-mapi.exe'
+  nsExec::ExecToStack 'taskkill /IM DraftHorse.exe'
   Pop $0
   Pop $1
-  DetailPrint "taskkill /IM go-mapi.exe rc=$0"
+  DetailPrint "taskkill /IM DraftHorse.exe rc=$0"
 
   ; Poll loop — 20 iterations * 500ms = 10s budget
   StrCpy $0 0
 EANR_PollLoop:
   Sleep 500
-  nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq go-mapi.exe" /NH /FO CSV'
+  nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq DraftHorse.exe" /NH /FO CSV'
   Pop $1   ; exit code (discard)
   Pop $1   ; stdout
   Push $1
-  Push "go-mapi.exe"
+  Push "DraftHorse.exe"
   Call StrContains
   Pop $1
   StrCmp $1 "0" EANR_Exited
@@ -474,16 +527,16 @@ EANR_PollLoop:
   Goto EANR_PollLoop
 
 EANR_Timeout:
-  DetailPrint "ERROR: go-mapi.exe did not exit within 10s"
+  DetailPrint "ERROR: DraftHorse.exe did not exit within 10s"
   Pop $1
   Pop $0
   IfSilent EANR_SilentAbort
-  MessageBox MB_OK|MB_ICONSTOP "go-mapi did not close within 10 seconds. Please close it manually and re-run the installer."
+  MessageBox MB_OK|MB_ICONSTOP "DraftHorse did not close within 10 seconds. Please close it manually and re-run the installer."
 EANR_SilentAbort:
-  Abort "go-mapi.exe still running after 10s close poll."
+  Abort "DraftHorse.exe still running after 10s close poll."
 
 EANR_Exited:
-  DetailPrint "go-mapi.exe exited after $0 poll iterations"
+  DetailPrint "DraftHorse.exe exited after $0 poll iterations"
   Pop $1
   Pop $0
   Return
@@ -715,7 +768,7 @@ FunctionEnd
 ; stamps PKEY_AppUserModel_ID on it via the ApplicationID NSIS plugin. The
 ; stamped AUMID is what makes Phase 9's toast notifications persist in Action
 ; Center — the shortcut AUMID MUST match the Wails app's runtime AUMID
-; (com.marcfargas.gomapi per D-15), which the plan 10-06 release pipeline
+; (com.arrickspropane.drafthorse per D-15), which the plan 10-06 release pipeline
 ; injects into the .exe via ldflags.
 ;
 ; Plugin ABI (from NSIS ApplicationID v1.1):
@@ -734,18 +787,18 @@ Function CreateShortcutAndAUMID
   ; ALSO the app name Windows shows on toast notifications (the AUMID is
   ; resolved to the stamped shortcut's display name). Clean up the old-name
   ; shortcut first so upgrades don't leave both in the Start Menu.
-  Delete "$SMPROGRAMS\go-mapi.lnk"
+  Delete "$SMPROGRAMS\DraftHorse.lnk"
   CreateShortcut "$SMPROGRAMS\DraftHorse.lnk" \
-      "$INSTDIR\go-mapi.exe" \
+      "$INSTDIR\DraftHorse.exe" \
       "" \
-      "$INSTDIR\go-mapi.exe" 0 \
+      "$INSTDIR\DraftHorse.exe" 0 \
       SW_SHOWNORMAL "" \
       "DraftHorse — creates Gmail drafts from Simple MAPI (never sends)"
 
   ; D-14: stamp PKEY_AppUserModel_ID via ApplicationID plugin. Plugin loaded
   ; from src/installer/plugins/x86-unicode/ApplicationID.dll (vendored in plan 10-01).
   ; ApplicationID::Set pushes "0" on success, "-1" on error.
-  ; D-15: production AUMID is com.marcfargas.gomapi (matches the ${AUMID} define).
+  ; D-15: production AUMID is com.arrickspropane.drafthorse (matches the ${AUMID} define).
   ApplicationID::Set "$SMPROGRAMS\DraftHorse.lnk" "${AUMID}"
   Pop $0
   SetShellVarContext current
@@ -761,9 +814,9 @@ FunctionEnd
 ;------------------------------------------------------------------------------
 ; AddFirewallRule — D-16 / INST-06
 ;
-; Creates an inbound Windows Firewall rule named "go-mapi OAuth loopback" bound
-; to program=$INSTDIR\go-mapi.exe. Pre-creating the rule at install time avoids
-; the first-bind firewall prompt that Windows otherwise raises when go-mapi
+; Creates an inbound Windows Firewall rule named "DraftHorse OAuth loopback" bound
+; to program=$INSTDIR\DraftHorse.exe. Pre-creating the rule at install time avoids
+; the first-bind firewall prompt that Windows otherwise raises when DraftHorse
 ; binds its OAuth loopback listener — on RDS that prompt appears on the server
 ; console, invisible to the user in the RDP session (RESEARCH §Pitfall 4).
 ;
@@ -773,16 +826,16 @@ FunctionEnd
 ;   - shorter NSIS script (RESEARCH §Pitfall 4 recommendation)
 ;
 ; Why program= (not localport=):
-;   - go-mapi binds 127.0.0.1:0 (ephemeral port) for the OAuth loopback server
+;   - DraftHorse binds 127.0.0.1:0 (ephemeral port) for the OAuth loopback server
 ;   - a program-scoped rule is both narrower (only this .exe) and port-stable
 ;   - broad port exposure is avoided; tampering with $INSTDIR requires admin
 ;
-; Rule name "go-mapi OAuth loopback" MUST match byte-for-byte the uninstall
+; Rule name "DraftHorse OAuth loopback" MUST match byte-for-byte the uninstall
 ; counterpart in plan 10-04 — a typo here breaks uninstall.
 ;------------------------------------------------------------------------------
 
 Function AddFirewallRule
-  ExecWait 'netsh advfirewall firewall add rule name="go-mapi OAuth loopback" dir=in program="$INSTDIR\go-mapi.exe" action=allow profile=any' $0
+  ExecWait 'netsh advfirewall firewall add rule name="DraftHorse OAuth loopback" dir=in program="$INSTDIR\DraftHorse.exe" action=allow profile=any' $0
   DetailPrint "firewall add rule rc=$0"
   ; Do NOT halt on non-zero rc — group policy may block netsh writes, in which
   ; case OAuth on RDS will still hang but desktop Windows works (Windows
@@ -791,7 +844,7 @@ FunctionEnd
 
 ; ARRICKS-06: RegisterScheduledTask removed.
 ;
-; It generated a Task Scheduler XML running "$INSTDIR\go-mapi.exe
+; It generated a Task Scheduler XML running "$INSTDIR\DraftHorse.exe
 ; --update-check-silent" as S-1-5-18 (SYSTEM) with RunLevel HighestAvailable,
 ; daily at 03:00 plus five minutes after every boot, and registered it with
 ; schtasks /RU SYSTEM. That task downloaded binaries from GitHub and
@@ -810,13 +863,13 @@ FunctionEnd
 
 Section "Uninstall"
   ; Phase 11.1 D-16: remove the Scheduled Task FIRST so it cannot fire
-  ; mid-uninstall (the task launches go-mapi.exe --update-check-silent which
+  ; mid-uninstall (the task launches DraftHorse.exe --update-check-silent which
   ; would write to $INSTDIR while we are scrubbing it). schtasks /delete /f
   ; is idempotent — rc=0 (removed) and rc=1 (not found) are both swallowed
   ; by un.RemoveScheduledTask, so /AUTOUPDATE=0 installs uninstall cleanly too.
   Call un.RemoveScheduledTask
 
-  ; QUICK-260423-ntu T2 — runs SECOND now (was first): if go-mapi.exe is
+  ; QUICK-260423-ntu T2 — runs SECOND now (was first): if DraftHorse.exe is
   ; still running when the uninstaller starts, WM_CLOSE it and wait up to
   ; 10s for the intentionalQuit path to fire before any Delete runs.
   Call un.EnsureAppNotRunning
@@ -826,7 +879,7 @@ Section "Uninstall"
   ; when some steps fail (e.g. firewall rule GPO-locked, AV-locked file).
 
   ; 1. Firewall rule — name MUST match plan 10-03 AddFirewallRule byte-for-byte
-  ExecWait 'netsh advfirewall firewall delete rule name="go-mapi OAuth loopback"' $0
+  ExecWait 'netsh advfirewall firewall delete rule name="DraftHorse OAuth loopback"' $0
   DetailPrint "firewall delete rule rc=$0"
 
   ; 2. Start Menu shortcut (plan 10-03 stamped the AUMID on this .lnk).
@@ -841,11 +894,11 @@ Section "Uninstall"
   ; living under it. ARRICKS-10: HKLM\SOFTWARE\Clients is a WOW64 SHARED
   ; key — one physical key serves both views, so a single delete suffices
   ; (the old follow-up SetRegView 32 delete hit the same key twice).
-  DeleteRegKey HKLM "SOFTWARE\Clients\Mail\go-mapi"
+  DeleteRegKey HKLM "SOFTWARE\Clients\Mail\DraftHorse"
 
   ; 3y. ARRICKS-19 — logon autostart entry (native view, matching the write).
   SetRegView 64
-  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "go-mapi"
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DraftHorse"
   SetRegView default
 
   ; 3z. ARRICKS-13 — per-user self-heal mirror written by the app's
@@ -854,16 +907,16 @@ Section "Uninstall"
   ; cleared only if it still names us — another client's later claim is
   ; not ours to clobber. D-19 multi-user caveat applies as with %APPDATA%:
   ; only the uninstalling user's hive is cleaned.
-  DeleteRegKey HKCU "Software\Clients\Mail\go-mapi"
+  DeleteRegKey HKCU "Software\Clients\Mail\DraftHorse"
   ReadRegStr $0 HKCU "Software\Clients\Mail" ""
-  StrCmp $0 "go-mapi" 0 +2
+  StrCmp $0 "DraftHorse" 0 +2
   DeleteRegValue HKCU "Software\Clients\Mail" ""
 
   ; 3a. ARRICKS-09 — mailto ProgID + RegisteredApplications pointer.
   ; Windows tolerates a dangling UserChoice (it falls back to asking the
   ; user), but the ProgID and the Default Apps listing must go.
-  DeleteRegKey HKLM "SOFTWARE\Classes\go-mapi.mailto"
-  DeleteRegValue HKLM "SOFTWARE\RegisteredApplications" "go-mapi"
+  DeleteRegKey HKLM "SOFTWARE\Classes\DraftHorse.mailto"
+  DeleteRegValue HKLM "SOFTWARE\RegisteredApplications" "DraftHorse"
 
   ; 4. Restore (Default) Mail client from backup (D-11)
   Call un.RestorePreviousMailClient
@@ -874,10 +927,10 @@ Section "Uninstall"
   ; `$APPDATA\..\..\ProgramData` pattern this file previously used
   ; resolves to `<userprofile>\ProgramData` under default `current` context — a
   ; non-existent path. Verified by Plan 11.1-05 sandbox UAT (Test B updates_dir_after=true
-  ; while planted file remained at C:\ProgramData\go-mapi\updates). ReadEnvStr is
+  ; while planted file remained at C:\ProgramData\DraftHorse\updates). ReadEnvStr is
   ; reliable across user/SYSTEM contexts.
   ReadEnvStr $0 PROGRAMDATA
-  RMDir /r "$0\go-mapi\updates"
+  RMDir /r "$0\DraftHorse\updates"
 
   ; Phase 11.1 W7: belt-and-braces cleanup of *.old.<pid> orphans left by
   ; silent-updater swaps (Plan 11.1-04 swapInPlace renames the old binary
@@ -886,47 +939,47 @@ Section "Uninstall"
   ; that survive past the last cycle. Runs before the binary scrub at step 9.
   Push "$INSTDIR"
   Call un.ScrubOldOrphans
-  Push "$PROGRAMFILES32\go-mapi"
+  Push "$PROGRAMFILES32\DraftHorse"
   Call un.ScrubOldOrphans
 
-  ; 5. %ProgramData%\go-mapi\uninst\ — remove AFTER the restore (step 4) since
+  ; 5. %ProgramData%\DraftHorse\uninst\ — remove AFTER the restore (step 4) since
   ; the restore reads from this directory. ARRICKS fix: resolve %PROGRAMDATA%
   ; via ReadEnvStr (see the D-18 comment above); re-read here because the
   ; ScrubOldOrphans calls above may have clobbered registers.
   ReadEnvStr $9 PROGRAMDATA
-  RMDir /r "$9\go-mapi\uninst"
-  RMDir    "$9\go-mapi"   ; only if empty (non-recursive)
+  RMDir /r "$9\DraftHorse\uninst"
+  RMDir    "$9\DraftHorse"   ; only if empty (non-recursive)
 
-  ; 6. %TEMP%\go-mapi\ — best-effort. Under elevated uninstall this is the
+  ; 6. %TEMP%\DraftHorse\ — best-effort. Under elevated uninstall this is the
   ; SYSTEM user's TEMP, not the real user's. Real users' temp already
   ; auto-cleans via the delete-on-process privacy model in src/app/watcher_bridge.go.
-  RMDir /r "$TEMP\go-mapi"
+  RMDir /r "$TEMP\DraftHorse"
 
-  ; 7. %APPDATA%\go-mapi\ — uninstalling user only (D-19 multi-user caveat:
+  ; 7. %APPDATA%\DraftHorse\ — uninstalling user only (D-19 multi-user caveat:
   ; other users on the machine retain their own copies; documented in README)
-  RMDir /r "$APPDATA\go-mapi"
+  RMDir /r "$APPDATA\DraftHorse"
 
   ; 7b. ARRICKS-21 — the dedicated browser profile holds the location
   ; account's Google session cookies; it must not outlive the app. Same
   ; uninstalling-user-only caveat as step 7. Best-effort: a running Edge
   ; window on this profile may pin some files until it closes.
-  RMDir /r "$LOCALAPPDATA\go-mapi\browser-profile"
+  RMDir /r "$LOCALAPPDATA\DraftHorse\browser-profile"
 
   ; 8. Windows Credential Manager — target is "<service>:<username>" per
   ; zalando/go-keyring Windows backend (PATTERNS.md §Shared Pattern 3).
   ; CONTEXT specifics line 199 wrote the slash-separated form — WRONG.
-  ; Verified target: "go-mapi:oauth-tokens" (colon). This is the byte-for-byte
+  ; Verified target: "DraftHorse:oauth-tokens" (colon). This is the byte-for-byte
   ; value returned by zalando/go-keyring's credName() method for
-  ; service="go-mapi" + username="oauth-tokens" (see src/app/auth.go:27-28).
-  ExecWait 'cmdkey /delete:go-mapi:oauth-tokens' $0
-  DetailPrint "cmdkey /delete:go-mapi:oauth-tokens rc=$0"
+  ; service="DraftHorse" + username="oauth-tokens" (see src/app/auth.go:27-28).
+  ExecWait 'cmdkey /delete:DraftHorse:oauth-tokens' $0
+  DetailPrint "cmdkey /delete:DraftHorse:oauth-tokens rc=$0"
 
   ; 9. Binaries (x64 side) — the un.EnsureAppNotRunning call at the start
-  ; of this section has already closed any running go-mapi.exe so these
+  ; of this section has already closed any running DraftHorse.exe so these
   ; Deletes succeed.
-  Delete "$INSTDIR\go-mapi.exe"
-  Delete "$INSTDIR\go-mapi.dll"
-  Delete "$INSTDIR\go-mapi.ico"
+  Delete "$INSTDIR\DraftHorse.exe"
+  Delete "$INSTDIR\DraftHorse.dll"
+  Delete "$INSTDIR\DraftHorse.ico"
   Delete "$INSTDIR\uninstall.exe"
   Delete "$INSTDIR\install.log"
 
@@ -936,14 +989,14 @@ Section "Uninstall"
   RMDir  "$INSTDIR\diagnostics"
 
   ; 9c. QUICK-260423-ntu T3c — x86 DLL + its parallel install dir
-  Delete "$PROGRAMFILES32\go-mapi\go-mapi.dll"
-  RMDir  "$PROGRAMFILES32\go-mapi"
+  Delete "$PROGRAMFILES32\DraftHorse\DraftHorse.dll"
+  RMDir  "$PROGRAMFILES32\DraftHorse"
 
   ; 9d. ARRICKS-10 — x64 DLL pinned at the fixed %ProgramFiles% path for
   ; non-default /D= installs. No-ops for default installs (step 9 already
-  ; deleted it as $INSTDIR\go-mapi.dll; RMDir skips non-empty dirs).
-  Delete "$PROGRAMFILES64\go-mapi\go-mapi.dll"
-  RMDir  "$PROGRAMFILES64\go-mapi"
+  ; deleted it as $INSTDIR\DraftHorse.dll; RMDir skips non-empty dirs).
+  Delete "$PROGRAMFILES64\DraftHorse\DraftHorse.dll"
+  RMDir  "$PROGRAMFILES64\DraftHorse"
 
   ; 10. Install dir (RMDir non-recursive — only removes if empty)
   RMDir "$INSTDIR"
@@ -957,7 +1010,7 @@ SectionEnd
 ; D-11: on uninstall, restore HKLM\SOFTWARE\Clients\Mail\(Default) from the backup JSON.
 ; Only restores if:
 ;   1. backup JSON exists AND
-;   2. current (Default) still points at "go-mapi" (don't clobber another installer) AND
+;   2. current (Default) still points at "DraftHorse" (don't clobber another installer) AND
 ;   3. the restoration target's subkey still exists under HKLM\SOFTWARE\Clients\Mail\
 ; Otherwise: try fallbacks (Microsoft Outlook -> Outlook -> Windows Mail) or clear to "".
 Function un.RestorePreviousMailClient
@@ -968,8 +1021,8 @@ Function un.RestorePreviousMailClient
 
   ; Guard 1: only restore if current (Default) is still our claim
   ReadRegStr $0 HKLM "SOFTWARE\Clients\Mail" ""
-  StrCmp $0 "go-mapi" 0 DoneRestore
-  DetailPrint "Mail (Default) is still 'go-mapi' — proceeding with restore"
+  StrCmp $0 "DraftHorse" 0 DoneRestore
+  DetailPrint "Mail (Default) is still 'DraftHorse' — proceeding with restore"
 
   ; IN-05: parse the backup JSON via PowerShell's ConvertFrom-Json instead of a
   ; naive substring search. The previous substring-based detection of
@@ -987,8 +1040,8 @@ Function un.RestorePreviousMailClient
   ;   - previousClient=null:        exit 0, stdout = "" (just trailing CRLF)
   ;   - previousClient="<name>":    exit 0, stdout = "<name>" + trailing CRLF
   StrCpy $1 ""  ; candidate name
-  IfFileExists "$9\go-mapi\uninst\previous-mail-client.json" 0 NoBackup
-  nsExec::ExecToStack 'powershell.exe -NoProfile -Command "try { $$j = Get-Content -LiteralPath ''$9\go-mapi\uninst\previous-mail-client.json'' -Raw | ConvertFrom-Json; if ($$null -ne $$j.previousClient) { Write-Output $$j.previousClient } exit 0 } catch { exit 1 }"'
+  IfFileExists "$9\DraftHorse\uninst\previous-mail-client.json" 0 NoBackup
+  nsExec::ExecToStack 'powershell.exe -NoProfile -Command "try { $$j = Get-Content -LiteralPath ''$9\DraftHorse\uninst\previous-mail-client.json'' -Raw | ConvertFrom-Json; if ($$null -ne $$j.previousClient) { Write-Output $$j.previousClient } exit 0 } catch { exit 1 }"'
   Pop $4    ; exit code
   Pop $1    ; stdout (empty if null or parse error)
   StrCmp $4 "0" 0 TryFallbacks
@@ -1004,7 +1057,7 @@ SkipTrim:
   Goto VerifyAndRestore
 
 NoBackup:
-  DetailPrint "No backup JSON at %ProgramData%\go-mapi\uninst\previous-mail-client.json — trying fallbacks"
+  DetailPrint "No backup JSON at %ProgramData%\DraftHorse\uninst\previous-mail-client.json — trying fallbacks"
   Goto TryFallbacks
 
 VerifyAndRestore:
@@ -1043,8 +1096,8 @@ DoneRestore:
   ; is present and contains a non-null previousClient32 value, write it
   ; back to the 32-bit view's (Default). Parse via PowerShell's
   ; ConvertFrom-Json — same pattern as the native-view restore above.
-  IfFileExists "$9\go-mapi\uninst\previous-mail-client.json" 0 NoWow6432
-  nsExec::ExecToStack 'powershell.exe -NoProfile -Command "try { $$j = Get-Content -LiteralPath ''$9\go-mapi\uninst\previous-mail-client.json'' -Raw | ConvertFrom-Json; if ($$null -ne $$j.previousClient32) { Write-Output $$j.previousClient32 } exit 0 } catch { exit 1 }"'
+  IfFileExists "$9\DraftHorse\uninst\previous-mail-client.json" 0 NoWow6432
+  nsExec::ExecToStack 'powershell.exe -NoProfile -Command "try { $$j = Get-Content -LiteralPath ''$9\DraftHorse\uninst\previous-mail-client.json'' -Raw | ConvertFrom-Json; if ($$null -ne $$j.previousClient32) { Write-Output $$j.previousClient32 } exit 0 } catch { exit 1 }"'
   Pop $4    ; exit code
   Pop $1    ; stdout
   StrCmp $4 "0" 0 NoWow6432
@@ -1172,43 +1225,43 @@ Function un.EnsureAppNotRunning
   Push $0
   Push $1
 
-  nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq go-mapi.exe" /NH /FO CSV'
+  nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq DraftHorse.exe" /NH /FO CSV'
   Pop $0
   Pop $1
 
   Push $1
-  Push "go-mapi.exe"
+  Push "DraftHorse.exe"
   Call un.StrContains
   Pop $0
   StrCmp $0 "1" unEANR_Found unEANR_NotFound
 
 unEANR_Found:
-  DetailPrint "go-mapi.exe is running — attempting graceful close"
+  DetailPrint "DraftHorse.exe is running — attempting graceful close"
   IfSilent unEANR_SilentRetry unEANR_AskUser
 
 unEANR_AskUser:
-  MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "go-mapi is currently running. Click OK to close it and continue, or Cancel to abort the uninstaller." IDOK unEANR_SilentRetry IDCANCEL unEANR_Cancel
+  MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "DraftHorse is currently running. Click OK to close it and continue, or Cancel to abort the uninstaller." IDOK unEANR_SilentRetry IDCANCEL unEANR_Cancel
 
 unEANR_Cancel:
   DetailPrint "User cancelled — aborting uninstaller"
   Pop $1
   Pop $0
-  Abort "Uninstaller aborted by user (go-mapi was running)."
+  Abort "Uninstaller aborted by user (DraftHorse was running)."
 
 unEANR_SilentRetry:
-  nsExec::ExecToStack 'taskkill /IM go-mapi.exe'
+  nsExec::ExecToStack 'taskkill /IM DraftHorse.exe'
   Pop $0
   Pop $1
-  DetailPrint "taskkill /IM go-mapi.exe rc=$0"
+  DetailPrint "taskkill /IM DraftHorse.exe rc=$0"
 
   StrCpy $0 0
 unEANR_PollLoop:
   Sleep 500
-  nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq go-mapi.exe" /NH /FO CSV'
+  nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq DraftHorse.exe" /NH /FO CSV'
   Pop $1
   Pop $1
   Push $1
-  Push "go-mapi.exe"
+  Push "DraftHorse.exe"
   Call un.StrContains
   Pop $1
   StrCmp $1 "0" unEANR_Exited
@@ -1217,16 +1270,16 @@ unEANR_PollLoop:
   Goto unEANR_PollLoop
 
 unEANR_Timeout:
-  DetailPrint "ERROR: go-mapi.exe did not exit within 10s"
+  DetailPrint "ERROR: DraftHorse.exe did not exit within 10s"
   Pop $1
   Pop $0
   IfSilent unEANR_SilentAbort
-  MessageBox MB_OK|MB_ICONSTOP "go-mapi did not close within 10 seconds. Please close it manually and re-run the uninstaller."
+  MessageBox MB_OK|MB_ICONSTOP "DraftHorse did not close within 10 seconds. Please close it manually and re-run the uninstaller."
 unEANR_SilentAbort:
-  Abort "go-mapi.exe still running after 10s close poll."
+  Abort "DraftHorse.exe still running after 10s close poll."
 
 unEANR_Exited:
-  DetailPrint "go-mapi.exe exited after $0 poll iterations"
+  DetailPrint "DraftHorse.exe exited after $0 poll iterations"
   Pop $1
   Pop $0
   Return
@@ -1246,6 +1299,8 @@ FunctionEnd
 ;------------------------------------------------------------------------------
 
 Function un.RemoveScheduledTask
+  ; The task name is UPSTREAM's, from before the fork — never renamed, because
+  ; this function's whole job is scrubbing what an old install left behind.
   ExecWait 'schtasks /delete /tn "go-mapi Auto Update" /f' $0
   DetailPrint "schtasks /delete rc=$0 (0=removed, 1=not found — both ok)"
 FunctionEnd
@@ -1257,8 +1312,8 @@ FunctionEnd
 ; silent updater's MoveFileEx rename-while-running pattern (Plan 11.1-04
 ; swapInPlace). Plan 11.1-04 cleans these proactively at silent-update start;
 ; this uninstaller helper catches any orphans that survive past the last
-; update cycle. Pattern matches both go-mapi.exe.old.<pid> and
-; go-mapi.dll.old.<pid> via NSIS FindFirst/FindNext.
+; update cycle. Pattern matches both DraftHorse.exe.old.<pid> and
+; DraftHorse.dll.old.<pid> via NSIS FindFirst/FindNext.
 ;
 ; Stack contract: caller pushes the directory path (e.g. "$INSTDIR"), function
 ; pops it, scrubs all "*.old.*" matches in that directory, returns nothing.

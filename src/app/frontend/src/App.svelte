@@ -323,7 +323,7 @@
   {:else if errorMsg}
     <section class="state state--error">
       <h2>Watcher stopped</h2>
-      <p>DraftHorse can't watch %LOCALAPPDATA%\go-mapi\queue\. Restart the app, or check app.log for details.</p>
+      <p>DraftHorse can't watch %LOCALAPPDATA%\DraftHorse\queue\. Restart the app, or check app.log for details.</p>
     </section>
   {:else if queue.length === 0}
     <section class="state state--empty">

@@ -26,7 +26,7 @@ export function subscribeQueue(
         // Without this, a transient IPC/Wails error silently freezes the UI
         // at the last-known snapshot. Log at minimum so it shows up in devtools,
         // and surface to the caller if a handler was provided.
-        console.error('[go-mapi] queue fetch failed:', e);
+        console.error('[DraftHorse] queue fetch failed:', e);
         onError?.(e);
       });
   });

@@ -1,5 +1,5 @@
 # test-drop-email.ps1
-# Drop a test email JSON into %TEMP%\go-mapi\ to simulate a MAPI intercept.
+# Drop a test email JSON into %TEMP%\DraftHorse\ to simulate a MAPI intercept.
 # Usage:
 #   .\scripts\test-drop-email.ps1                                          # Simple email
 #   .\scripts\test-drop-email.ps1 -WithAttachment -AttachmentPath "C:\file.pdf"
@@ -7,7 +7,7 @@
 #   .\scripts\test-drop-email.ps1 -CC "cc@example.com" -BCC "bcc@example.com"
 
 param(
-    [string]$Subject = "go-mapi test email",
+    [string]$Subject = "DraftHorse test email",
     [string]$Body = "This is a test email dropped by test-drop-email.ps1.",
     [string]$To = "test@example.com",
     [string]$ToName = "Test User",
@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$goMapiDir = Join-Path $env:TEMP "go-mapi"
+$goMapiDir = Join-Path $env:TEMP "DraftHorse"
 if (-not (Test-Path $goMapiDir)) {
     New-Item -ItemType Directory -Path $goMapiDir -Force | Out-Null
 }
@@ -42,7 +42,7 @@ $attachments = @()
 if ($WithAttachment) {
     if (-not $AttachmentPath) {
         # Create a small test file
-        $testFile = Join-Path $env:TEMP "go-mapi-test-attachment.txt"
+        $testFile = Join-Path $env:TEMP "DraftHorse-test-attachment.txt"
         "This is a test attachment created by test-drop-email.ps1." | Out-File -FilePath $testFile -Encoding UTF8
         $AttachmentPath = $testFile
         Write-Host "Created test attachment: $testFile"

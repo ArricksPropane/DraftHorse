@@ -71,11 +71,11 @@ Write-Host "OK: Sandbox started with ID: $sandboxId" -ForegroundColor Green
 
 # Share project folder (read-only)
 Write-Host "`n[2/4] Sharing project folder..."
-wsb share --id $sandboxId --host-path $ProjectRoot --sandbox-path "C:\go-mapi" 2>&1 | Out-Null
-Write-Host "OK: Shared $ProjectRoot -> C:\go-mapi (read-only)" -ForegroundColor Green
+wsb share --id $sandboxId --host-path $ProjectRoot --sandbox-path "C:\DraftHorse" 2>&1 | Out-Null
+Write-Host "OK: Shared $ProjectRoot -> C:\DraftHorse (read-only)" -ForegroundColor Green
 
 # Create and share output folder (writable)
-$OutputFolder = Join-Path $env:TEMP "go-mapi-sandbox-output"
+$OutputFolder = Join-Path $env:TEMP "DraftHorse-sandbox-output"
 if (-not (Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFolder | Out-Null }
 wsb share --id $sandboxId --host-path $OutputFolder --sandbox-path "C:\output" --allow-write 2>&1 | Out-Null
 Write-Host "OK: Shared $OutputFolder -> C:\output (writable)" -ForegroundColor Green
@@ -104,7 +104,7 @@ function Invoke-SandboxCommand {
 # Test DLL registration
 Write-Host "`n[3/4] Testing DLL registration..."
 $regSuccess = Invoke-SandboxCommand `
-    -Command "powershell -ExecutionPolicy Bypass -File C:\go-mapi\tests\sandbox\test-dll-registration.ps1" `
+    -Command "powershell -ExecutionPolicy Bypass -File C:\DraftHorse\tests\sandbox\test-dll-registration.ps1" `
     -Description "DLL registration test"
 
 # Retrieve and display the test output from writable share
@@ -144,7 +144,7 @@ if ($RegistrationOnly) {
 if ($SetupOnly) {
     Write-Host "`n[4/4] Running setup (WinAppDriver)..."
     $setupSuccess = Invoke-SandboxCommand `
-        -Command "powershell -ExecutionPolicy Bypass -File C:\go-mapi\tests\sandbox\setup.ps1" `
+        -Command "powershell -ExecutionPolicy Bypass -File C:\DraftHorse\tests\sandbox\setup.ps1" `
         -Description "WinAppDriver setup"
 
     # Display setup output
@@ -184,14 +184,14 @@ if ($FullTest) {
     if (-not (Test-Path $hostInstaller)) {
         Write-Host "ERROR: $hostInstaller not found." -ForegroundColor Red
         Write-Host "Compile it on the host first:" -ForegroundColor Yellow
-        Write-Host '  & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" /DGOMAPIVersion=2.0.0-local src\installer\go-mapi.iss' -ForegroundColor Yellow
+        Write-Host '  & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" /DGOMAPIVersion=2.0.0-local src\installer\DraftHorse.iss' -ForegroundColor Yellow
         if (-not $KeepRunning) { wsb stop --id $sandboxId 2>&1 | Out-Null }
         exit 1
     }
     Write-Host "OK: Found $hostInstaller ($((Get-Item $hostInstaller).Length) bytes)" -ForegroundColor Green
 
     $fullSuccess = Invoke-SandboxCommand `
-        -Command "powershell -ExecutionPolicy Bypass -File C:\go-mapi\tests\sandbox\install-and-verify.ps1" `
+        -Command "powershell -ExecutionPolicy Bypass -File C:\DraftHorse\tests\sandbox\install-and-verify.ps1" `
         -Description "Install-and-verify round-trip"
 
     # Retrieve the script log

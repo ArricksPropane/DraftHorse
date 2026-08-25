@@ -59,7 +59,7 @@ func contains(values []string, want string) bool {
 // arrivalShaped mirrors emitArrivalToast — the toast that never worked.
 func arrivalShaped() toast.Notification {
 	return toast.Notification{
-		AppID:               "com.marcfargas.gomapi.test",
+		AppID:               "com.arrickspropane.drafthorse.test",
 		Title:               "To: Accounts & Billing",
 		Body:                "Scan 2026-08-25\n📎 1 attachment(s)",
 		ActivationType:      toast.Foreground,
@@ -122,7 +122,7 @@ func TestBuildToastXMLPreservesSubjectText(t *testing.T) {
 // template rendered it — the escape pass is a fallback, not a filter.
 func TestBuildToastXMLLeavesCleanPayloadUntouched(t *testing.T) {
 	n := toast.Notification{
-		AppID:               "com.marcfargas.gomapi.test",
+		AppID:               "com.arrickspropane.drafthorse.test",
 		Title:               "DraftHorse",
 		Body:                "Draft created",
 		ActivationType:      toast.Foreground,

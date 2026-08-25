@@ -24,7 +24,7 @@ import (
 
 // Keyring service+user coordinates per CONTEXT D-11.
 const (
-	keyringService = "go-mapi"
+	keyringService = "DraftHorse"
 	keyringUser    = "oauth-tokens"
 )
 
@@ -309,8 +309,8 @@ func (am *AuthManager) prepareLoopback(ctx context.Context, expectedState string
 		})
 	}
 
-	const successHTML = `<!doctype html><html><head><meta charset="utf-8"><title>go-mapi</title></head><body style="font-family:sans-serif;padding:2em"><h2>Signed in to go-mapi</h2><p>You can close this tab and return to the app.</p></body></html>`
-	const failureHTML = `<!doctype html><html><head><meta charset="utf-8"><title>go-mapi</title></head><body style="font-family:sans-serif;padding:2em"><h2>Sign-in failed</h2><p>Return to go-mapi to try again.</p></body></html>`
+	const successHTML = `<!doctype html><html><head><meta charset="utf-8"><title>DraftHorse</title></head><body style="font-family:sans-serif;padding:2em"><h2>Signed in to DraftHorse</h2><p>You can close this tab and return to the app.</p></body></html>`
+	const failureHTML = `<!doctype html><html><head><meta charset="utf-8"><title>DraftHorse</title></head><body style="font-family:sans-serif;padding:2em"><h2>Sign-in failed</h2><p>Return to DraftHorse to try again.</p></body></html>`
 
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

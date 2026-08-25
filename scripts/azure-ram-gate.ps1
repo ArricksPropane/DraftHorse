@@ -1,19 +1,19 @@
 <#
 .SYNOPSIS
-    Phase 7 RAM gate — Azure orchestration for go-mapi WebView2 RAM measurement.
+    Phase 7 RAM gate — Azure orchestration for DraftHorse WebView2 RAM measurement.
 
 .DESCRIPTION
     Provisions an ephemeral Windows Server 2022 Datacenter VM (Standard_D4s_v3) in a
     fresh Azure resource group, installs WebView2 runtime, creates N test users added to
-    the Performance Log Users group, uploads the go-mapi binary, launches N concurrent
+    the Performance Log Users group, uploads the DraftHorse binary, launches N concurrent
     in-VM scheduled-task sessions running measure-ram.ps1, pulls the CSV back to the dev
     machine, then destroys the resource group.
 
     Azure CLI + PowerShell only. No IaC state. No manual Hetzner provisioning.
 
 .NOTES
-    Per-session metric = SUM of go-mapi.exe Private WS + all msedgewebview2.exe child
-    Private WS (correlated via Win32_Process.ParentProcessId == go-mapi.exe PID).
+    Per-session metric = SUM of DraftHorse.exe Private WS + all msedgewebview2.exe child
+    Private WS (correlated via Win32_Process.ParentProcessId == DraftHorse.exe PID).
     See scripts/azure-ram-gate.README.md for full prerequisites and gotchas.
 #>
 
@@ -23,8 +23,8 @@ param(
     [string] $SubscriptionId,
     [string] $Location       = 'westeurope',
     [string] $VmSize         = 'Standard_D4s_v3',
-    [string] $RgName         = "rg-gomapi-ramgate-$([DateTime]::UtcNow.ToString('yyyyMMddHHmm'))",
-    [string] $BinaryPath     = 'src/app/build/bin/go-mapi.exe',
+    [string] $RgName         = "rg-drafthorse-ramgate-$([DateTime]::UtcNow.ToString('yyyyMMddHHmm'))",
+    [string] $BinaryPath     = 'src/app/build/bin/DraftHorse.exe',
     [string] $MeasureScript  = 'scripts/measure-ram.ps1',
     [string] $CsvOut         = 'docs/measurements/phase-07-ram-gate.csv',
     [switch] $Confirm,
@@ -96,8 +96,8 @@ $binaryHash = (Get-FileHash -Path $BinaryPath -Algorithm SHA256).Hash
 Write-Host "  Binary SHA256: $binaryHash"
 
 # -------- provision --------
-$vmName       = 'gomapi-ramgate'  # Windows computer name ≤15 chars
-$adminUser    = 'gomapiadmin'
+$vmName       = 'drafthorse-ramgate'  # Windows computer name ≤15 chars
+$adminUser    = 'drafthorseadmin'
 # Generate strong password (memory only, never persisted)
 # Cryptographic RNG; works on pwsh 7 (System.Web unavailable on .NET Core).
 function New-StrongPassword {
@@ -166,14 +166,14 @@ if (-not `$m) { throw "FATAL: user $u not in Performance Log Users group -- Win3
 
     $bootstrap = @"
 `$ErrorActionPreference = 'Stop'
-New-Item -ItemType Directory -Path C:\gomapi -Force | Out-Null
-# Grant Users modify on C:\gomapi so ramtest* workers can write CSV fragments and flags
-icacls C:\gomapi /grant 'Users:(OI)(CI)M' /T | Out-Null
+New-Item -ItemType Directory -Path C:\drafthorse -Force | Out-Null
+# Grant Users modify on C:\drafthorse so ramtest* workers can write CSV fragments and flags
+icacls C:\drafthorse /grant 'Users:(OI)(CI)M' /T | Out-Null
 $($userLines -join "`n")
 
 # WebView2 Evergreen bootstrapper (silent install)
 `$wvUrl = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703'
-`$wvExe = 'C:\gomapi\MicrosoftEdgeWebview2Setup.exe'
+`$wvExe = 'C:\drafthorse\MicrosoftEdgeWebview2Setup.exe'
 Invoke-WebRequest -Uri `$wvUrl -OutFile `$wvExe -UseBasicParsing
 Start-Process -FilePath `$wvExe -ArgumentList '/silent','/install' -Wait
 
@@ -181,7 +181,7 @@ Start-Process -FilePath `$wvExe -ArgumentList '/silent','/install' -Wait
 `$wvKey = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
 `$wvVer = (Get-ItemProperty -Path `$wvKey -ErrorAction Stop).pv
 Write-Output "WEBVIEW2_VERSION=`$wvVer"
-Set-Content -Path C:\gomapi\webview2-version.txt -Value `$wvVer
+Set-Content -Path C:\drafthorse\webview2-version.txt -Value `$wvVer
 
 # Assertion: every ramtest user is in Performance Log Users
 for (`$i = 1; `$i -le $N; `$i++) {
@@ -207,7 +207,7 @@ Write-Output 'BOOTSTRAP_OK'
     Write-Host "  Bootstrap completed."
 
     # -------- upload binary --------
-    Write-Step "Uploading go-mapi.exe to VM"
+    Write-Step "Uploading DraftHorse.exe to VM"
     $binBytes  = [System.IO.File]::ReadAllBytes((Resolve-Path $BinaryPath))
     $binB64    = [Convert]::ToBase64String($binBytes)
     $scriptCap = 30000  # run-command payload soft cap (~32 KB)
@@ -215,8 +215,8 @@ Write-Output 'BOOTSTRAP_OK'
     if ($binB64.Length -lt $scriptCap) {
         $uploadScript = @"
 `$b = '$binB64'
-[System.IO.File]::WriteAllBytes('C:\gomapi\go-mapi.exe', [Convert]::FromBase64String(`$b))
-`$h = (Get-FileHash -Path 'C:\gomapi\go-mapi.exe' -Algorithm SHA256).Hash
+[System.IO.File]::WriteAllBytes('C:\drafthorse\DraftHorse.exe', [Convert]::FromBase64String(`$b))
+`$h = (Get-FileHash -Path 'C:\drafthorse\DraftHorse.exe' -Algorithm SHA256).Hash
 Write-Output "UPLOADED_SHA256=`$h"
 "@
         $uploadFile = Join-Path $env:TEMP "ramgate-upload-$RgName.ps1"
@@ -230,17 +230,17 @@ Write-Output "UPLOADED_SHA256=`$h"
     } else {
         # Fallback: transient Storage Account + SAS
         Write-Host "  Inline payload too large ($($binB64.Length) chars) — falling back to Storage Account SAS."
-        $saName = "gomapiram$(Get-Random -Minimum 1000 -Maximum 9999)"
+        $saName = "drafthorseram$(Get-Random -Minimum 1000 -Maximum 9999)"
         az storage account create --name $saName --resource-group $RgName --location $Location --sku Standard_LRS --output none
         $saKey = (az storage account keys list --resource-group $RgName --account-name $saName --query '[0].value' -o tsv)
         az storage container create --name drops --account-name $saName --account-key $saKey --output none
-        az storage blob upload --account-name $saName --account-key $saKey --container-name drops --name go-mapi.exe --file $BinaryPath --output none
+        az storage blob upload --account-name $saName --account-key $saKey --container-name drops --name DraftHorse.exe --file $BinaryPath --output none
         $expiry = (Get-Date).AddHours(2).ToString('yyyy-MM-ddTHH:mm:ssZ')
-        $sas = az storage blob generate-sas --account-name $saName --account-key $saKey --container-name drops --name go-mapi.exe --permissions r --expiry $expiry -o tsv
-        $sasUrl = "https://$saName.blob.core.windows.net/drops/go-mapi.exe?$sas"
+        $sas = az storage blob generate-sas --account-name $saName --account-key $saKey --container-name drops --name DraftHorse.exe --permissions r --expiry $expiry -o tsv
+        $sasUrl = "https://$saName.blob.core.windows.net/drops/DraftHorse.exe?$sas"
         $sasScript = @"
-Invoke-WebRequest -Uri '$sasUrl' -OutFile 'C:\gomapi\go-mapi.exe' -UseBasicParsing
-`$h = (Get-FileHash -Path 'C:\gomapi\go-mapi.exe' -Algorithm SHA256).Hash
+Invoke-WebRequest -Uri '$sasUrl' -OutFile 'C:\drafthorse\DraftHorse.exe' -UseBasicParsing
+`$h = (Get-FileHash -Path 'C:\drafthorse\DraftHorse.exe' -Algorithm SHA256).Hash
 Write-Output "UPLOADED_SHA256=`$h"
 "@
         $sasFile = Join-Path $env:TEMP "ramgate-sas-$RgName.ps1"
@@ -265,7 +265,7 @@ Write-Output "UPLOADED_SHA256=`$h"
     $msB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($msContent))
     $msUpload = @"
 `$b = '$msB64'
-[System.IO.File]::WriteAllBytes('C:\gomapi\measure-ram.ps1', [Convert]::FromBase64String(`$b))
+[System.IO.File]::WriteAllBytes('C:\drafthorse\measure-ram.ps1', [Convert]::FromBase64String(`$b))
 Write-Output 'MEASURE_SCRIPT_UPLOADED'
 "@
     $msFile = Join-Path $env:TEMP "ramgate-measure-$RgName.ps1"
@@ -278,10 +278,10 @@ Write-Output 'MEASURE_SCRIPT_UPLOADED'
     $taskLines = foreach ($u in $userPasswords.Keys) {
         $p = $userPasswords[$u]
         @"
-`$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\gomapi\measure-ram.ps1 -Worker -User $u$(if ($Smoke) { " -Smoke" })'
+`$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\drafthorse\measure-ram.ps1 -Worker -User $u$(if ($Smoke) { " -Smoke" })'
 `$trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddYears(10))
 `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1)
-Register-ScheduledTask -TaskName 'gomapi-ramtest-$u' -Action `$action -Trigger `$trigger -Settings `$settings -User '$u' -Password '$p' -RunLevel Limited -Force | Out-Null
+Register-ScheduledTask -TaskName 'drafthorse-ramtest-$u' -Action `$action -Trigger `$trigger -Settings `$settings -User '$u' -Password '$p' -RunLevel Limited -Force | Out-Null
 "@
     }
 
@@ -289,7 +289,7 @@ Register-ScheduledTask -TaskName 'gomapi-ramtest-$u' -Action `$action -Trigger `
 `$ErrorActionPreference = 'Stop'
 $($taskLines -join "`n")
 # Kick the orchestrator (runs as admin) which will Start-ScheduledTask for all and wait on flags
-Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','C:\gomapi\measure-ram.ps1','-Orchestrate','-N','$N'$(if ($Smoke) { ",'-Smoke'" }) -WindowStyle Hidden
+Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','C:\drafthorse\measure-ram.ps1','-Orchestrate','-N','$N'$(if ($Smoke) { ",'-Smoke'" }) -WindowStyle Hidden
 Write-Output 'ORCHESTRATOR_STARTED'
 "@
     $orchFile = Join-Path $env:TEMP "ramgate-orch-$RgName.ps1"
@@ -299,7 +299,7 @@ Write-Output 'ORCHESTRATOR_STARTED'
 
     # -------- poll for completion --------
     Write-Step "Polling for measurement-complete.flag (hard ${PollTimeoutMinutes}-min ceiling)"
-    $pollScript = "if (Test-Path 'C:\gomapi\measurement-complete.flag') { Write-Output 'DONE' } else { Write-Output 'PENDING' }"
+    $pollScript = "if (Test-Path 'C:\drafthorse\measurement-complete.flag') { Write-Output 'DONE' } else { Write-Output 'PENDING' }"
     $pollFile = Join-Path $env:TEMP "ramgate-poll-$RgName.ps1"
     Set-Content -Path $pollFile -Value $pollScript -Encoding UTF8
     $deadline = (Get-Date).AddMinutes($PollTimeoutMinutes)
@@ -316,7 +316,7 @@ Write-Output 'ORCHESTRATOR_STARTED'
 
     # -------- pull CSV --------
     Write-Step "Pulling CSV back from VM"
-    $pullScript = "Get-Content 'C:\gomapi\phase-07-ram-gate.csv' -Raw"
+    $pullScript = "Get-Content 'C:\drafthorse\phase-07-ram-gate.csv' -Raw"
     $pullFile = Join-Path $env:TEMP "ramgate-pull-$RgName.ps1"
     Set-Content -Path $pullFile -Value $pullScript -Encoding UTF8
     $pullRes = az vm run-command invoke --resource-group $RgName --name $vmName --command-id RunPowerShellScript --scripts "@$pullFile" --output json 2>&1
@@ -340,7 +340,7 @@ Write-Output 'ORCHESTRATOR_STARTED'
     Write-Host "  CSV written to $CsvOut ($($csvText.Length) chars)"
 
     # Also pull webview2 version
-    $wvPullScript = "Get-Content 'C:\gomapi\webview2-version.txt' -Raw"
+    $wvPullScript = "Get-Content 'C:\drafthorse\webview2-version.txt' -Raw"
     $wvFile = Join-Path $env:TEMP "ramgate-wv-$RgName.ps1"
     Set-Content -Path $wvFile -Value $wvPullScript -Encoding UTF8
     $wvRes = az vm run-command invoke --resource-group $RgName --name $vmName --command-id RunPowerShellScript --scripts "@$wvFile" --output json 2>&1

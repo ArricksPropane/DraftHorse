@@ -10,9 +10,9 @@ int test_simple_send() {
     std::cout << "\nTest: Simple Send (basic email)" << std::endl;
 
     // Load the DLL
-    HMODULE hDll = LoadLibraryA("go-mapi.dll");
+    HMODULE hDll = LoadLibraryA("DraftHorse.dll");
     if (!hDll) {
-        std::cerr << "Failed to load go-mapi.dll" << std::endl;
+        std::cerr << "Failed to load DraftHorse.dll" << std::endl;
         return 1;
     }
 
@@ -28,7 +28,7 @@ int test_simple_send() {
 
     // Create a simple message
     char subject[] = "Test Email - Simple Send";
-    char body[] = "This is a test email from the go-mapi test harness.";
+    char body[] = "This is a test email from the DraftHorse test harness.";
     char toAddress[] = "test@example.com";
     char toName[] = "Test User";
 

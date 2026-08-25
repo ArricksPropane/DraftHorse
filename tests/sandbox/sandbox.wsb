@@ -9,8 +9,8 @@
     <ClipboardRedirection>Disable</ClipboardRedirection>
     <MappedFolders>
         <MappedFolder>
-            <HostFolder>C:\dev\go-mapi</HostFolder>
-            <SandboxFolder>C:\go-mapi</SandboxFolder>
+            <HostFolder>C:\dev\DraftHorse</HostFolder>
+            <SandboxFolder>C:\DraftHorse</SandboxFolder>
             <ReadOnly>true</ReadOnly>
         </MappedFolder>
     </MappedFolders>

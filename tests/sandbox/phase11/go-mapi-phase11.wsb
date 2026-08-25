@@ -22,7 +22,7 @@
 
       NOTE: HostFolder must be the ABSOLUTE path on the host. Windows Sandbox
       does NOT resolve relative paths. Before launching, adjust the host path
-      below if the repo lives somewhere other than C:\dev\go-mapi.
+      below if the repo lives somewhere other than C:\dev\DraftHorse.
 
       D-13: Windows Sandbox is the clean-room target for the Phase 11 smoke.
       D-14: automate as much as practical; manual tail is explicit, short.
@@ -41,7 +41,7 @@
     <ClipboardRedirection>Enable</ClipboardRedirection>
     <MappedFolders>
         <MappedFolder>
-            <HostFolder>C:\dev\go-mapi\tests\sandbox\phase11</HostFolder>
+            <HostFolder>C:\dev\DraftHorse\tests\sandbox\phase11</HostFolder>
             <SandboxFolder>C:\phase11</SandboxFolder>
             <ReadOnly>false</ReadOnly>
         </MappedFolder>

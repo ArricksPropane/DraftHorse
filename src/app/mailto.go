@@ -7,9 +7,9 @@ import (
 
 // ARRICKS-09: mailto: protocol handler.
 //
-// The installer registers `go-mapi.exe --mailto "%1"` as the shell open
-// command for the go-mapi.mailto ProgID and announces it through the
-// Capabilities / RegisteredApplications model, so go-mapi is selectable as
+// The installer registers `DraftHorse.exe --mailto "%1"` as the shell open
+// command for the DraftHorse.mailto ProgID and announces it through the
+// Capabilities / RegisteredApplications model, so DraftHorse is selectable as
 // the mailto handler in Settings > Default apps (and via Intune
 // DefaultAssociations policy — see docs/mailto-default-associations.xml).
 //

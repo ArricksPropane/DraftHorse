@@ -9,7 +9,7 @@ package main
 // default browser therefore lands in the wrong account — Gmail's dead
 // "Temporary Error (404)" page in practice. Every Windows 11 PC already
 // ships a Chromium (Edge), and Edge/Chrome honor --user-data-dir, so the
-// app launches the draft in its OWN profile under go-mapi's LOCALAPPDATA:
+// app launches the draft in its OWN profile under DraftHorse's LOCALAPPDATA:
 // IT signs that profile into the location account once (the AccountChooser
 // link prompts for exactly that on first run), and from then on every draft
 // opens in the right account regardless of what the user's daily browser
@@ -32,16 +32,16 @@ var errNoChromiumBrowser = errors.New("no Edge or Chrome found via App Paths")
 var launchDraftInDedicatedBrowser = launchDedicatedBrowser
 
 // dedicatedBrowserProfileDir is the per-user isolated profile. Lives beside
-// the queue under %LOCALAPPDATA%\go-mapi; the uninstaller removes it (it
+// the queue under %LOCALAPPDATA%\DraftHorse; the uninstaller removes it (it
 // holds the location account's session cookies).
 func dedicatedBrowserProfileDir() string {
 	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-		return filepath.Join(localAppData, "go-mapi", "browser-profile")
+		return filepath.Join(localAppData, "DraftHorse", "browser-profile")
 	}
 	if cacheDir, err := os.UserCacheDir(); err == nil {
-		return filepath.Join(cacheDir, "go-mapi", "browser-profile")
+		return filepath.Join(cacheDir, "DraftHorse", "browser-profile")
 	}
-	return filepath.Join(".", "go-mapi", "browser-profile")
+	return filepath.Join(".", "DraftHorse", "browser-profile")
 }
 
 // dedicatedBrowserArgs is the pure argument builder (tested). --no-first-run

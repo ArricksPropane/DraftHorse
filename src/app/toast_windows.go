@@ -3,7 +3,7 @@
 package main
 
 // toast_windows.go is the Windows implementation of the toast notification
-// subsystem for go-mapi. Uses jackmordaunt/go-toast/v2 for COM activator
+// subsystem for DraftHorse. Uses jackmordaunt/go-toast/v2 for COM activator
 // registration and toast_shim_windows.go for Tag/Group/ClearToast (NOTIF-05).
 //
 // Privacy (QUAL-03): Toast payloads include ONLY:
@@ -54,9 +54,9 @@ func initToasts(a *App) error {
 
 // toastIconPath returns the absolute path to the app icon used in toast visuals.
 // jackmordaunt/go-toast requires an absolute path; the icon must be an .ico or .png.
-// We ship go-mapi.ico alongside the exe in both dev and prod layouts.
+// We ship DraftHorse.ico alongside the exe in both dev and prod layouts.
 func toastIconPath(exePath string) string {
-	return filepath.Join(filepath.Dir(exePath), "go-mapi.ico")
+	return filepath.Join(filepath.Dir(exePath), "DraftHorse.ico")
 }
 
 // cachedExePath is populated by initToasts; avoids repeated os.Executable calls.

@@ -60,8 +60,8 @@ apps** — the app shows a one-click shortcut to that page when needed
 (Windows does not allow apps to set this themselves).
 
 > The installer file is named `DraftHorse-setup.exe`; the binaries it
-> installs and every registry identifier intentionally remain `go-mapi*`
-> for upgrade compatibility — installs of earlier go-mapi 3.x versions
+> installs and every registry identifier intentionally remain `DraftHorse*`
+> for upgrade compatibility — installs of earlier DraftHorse 3.x versions
 > upgrade in place.
 
 ## How to use it
@@ -89,7 +89,7 @@ it yourself.
 
 The fork exists so a small business can own its scan-to-email path outright
 (it replaces Affixa, which retires in January 2027). On top of upstream
-go-mapi v3.0.0:
+DraftHorse v3.0.0:
 
 - **Scanner-critical fixes**: `MAPISendDocuments` implemented (upstream
   stubbed it while reporting success — silent mail loss for most scanner
@@ -127,6 +127,6 @@ contributors.
 For IT departments deploying at scale (silent install, Intune, group
 policy), see [ENTERPRISE.md](ENTERPRISE.md) — note the fork deploys via
 `DraftHorse-setup.exe /S` with detection on
-`HKLM\SOFTWARE\Clients\Mail\go-mapi`.
+`HKLM\SOFTWARE\Clients\Mail\DraftHorse`.
 
 For contributors and maintainers, see [DEVELOPMENT.md](DEVELOPMENT.md).

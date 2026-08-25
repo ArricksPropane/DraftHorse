@@ -2,11 +2,11 @@ package main
 
 // AUMIDs — pinned per RESEARCH §2 + CONTEXT.md §Specifics.
 const (
-	aumidDev  = "com.marcfargas.gomapi.dev"
-	aumidProd = "com.marcfargas.gomapi" // Phase 10 installer uses this; kept here for source truth.
+	aumidDev  = "com.arrickspropane.drafthorse.dev"
+	aumidProd = "com.arrickspropane.drafthorse" // Phase 10 installer uses this; kept here for source truth.
 )
 
-// toastActivatorGUID is the go-mapi-owned COM CLSID for toast activation.
+// toastActivatorGUID is the DraftHorse-owned COM CLSID for toast activation.
 // Generated fresh for Phase 9 (RESEARCH §9 landmines 2 + 8 — NEVER use the
 // jackmordaunt default {0F82E845-...} default GUID). MUST be identical across
 // dev + prod builds so a user upgrading from dev to prod does not end up with
@@ -16,9 +16,9 @@ const (
 const toastActivatorGUID = "{6352C677-78F0-444F-AAA9-724EB43DBCB0}"
 
 // toastGroup is the shared group string for all Phase 9 toasts. Enables
-// Windows to auto-collapse multiple pending toasts under a single go-mapi
+// Windows to auto-collapse multiple pending toasts under a single DraftHorse
 // banner in Action Center (D-08).
-const toastGroup = "go-mapi-queue"
+const toastGroup = "DraftHorse-queue"
 
 // Toast copy constants — matches UI-SPEC §Copywriting Contract exactly.
 // Kept here as a single source of truth so copy changes are localized.
@@ -51,7 +51,7 @@ func toastErrorCopy(category string) string {
 
 // aumidOverride is injected at build time via:
 //
-//	-ldflags "-X 'main.aumidOverride=com.marcfargas.gomapi'"
+//	-ldflags "-X 'main.aumidOverride=com.arrickspropane.drafthorse'"
 //
 // `var` (not const) is REQUIRED — -X only overwrites string vars. Mirrors the
 // pattern used for oauthClientID / oauthClientSecret in auth_credentials.go.

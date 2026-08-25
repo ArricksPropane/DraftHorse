@@ -1,16 +1,16 @@
 # scripts/unregister-dev-aumid.ps1
 # Removes the HKCU Start Menu shortcut created by register-dev-aumid.ps1.
-# Cleans up the "go-mapi (dev)" AUMID registration from Action Center.
+# Cleans up the "DraftHorse (dev)" AUMID registration from Action Center.
 #
 # Idempotent: no-op if the shortcut does not exist.
 #
 # Usage:
 #   .\scripts\unregister-dev-aumid.ps1
-#   .\scripts\unregister-dev-aumid.ps1 -Name 'go-mapi (dev)'
+#   .\scripts\unregister-dev-aumid.ps1 -Name 'DraftHorse (dev)'
 
 [CmdletBinding()]
 param(
-    [string]$Name = 'go-mapi (dev)'
+    [string]$Name = 'DraftHorse (dev)'
 )
 
 $ErrorActionPreference = 'Stop'

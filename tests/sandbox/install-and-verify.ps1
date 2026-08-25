@@ -1,14 +1,14 @@
 # install-and-verify.ps1 - In-sandbox runner for REL-02 full install -> verify -> uninstall flow
 # Runs inside the Windows Sandbox as SYSTEM via `wsb exec`.
-# Preconditions: C:\go-mapi is the project folder (read-only share), C:\output is writable.
+# Preconditions: C:\DraftHorse is the project folder (read-only share), C:\output is writable.
 # The installer MUST have been compiled already - this script does NOT run iscc.exe.
 # Compile DraftHorse-setup.exe on the HOST first (outside the sandbox) via
-#   iscc.exe /DGOMAPIVersion=2.0.0-local src/installer/go-mapi.iss
-# The resulting src/installer/dist/DraftHorse-setup.exe is read through the C:\go-mapi share.
+#   iscc.exe /DGOMAPIVersion=2.0.0-local src/installer/DraftHorse.iss
+# The resulting src/installer/dist/DraftHorse-setup.exe is read through the C:\DraftHorse share.
 
 $ErrorActionPreference = "Stop"
 $OutputFile = "C:\output\install-and-verify.log"
-$InstallerPath = "C:\go-mapi\src\installer\dist\DraftHorse-setup.exe"
+$InstallerPath = "C:\DraftHorse\src\installer\dist\DraftHorse-setup.exe"
 
 function Log($msg) {
     Write-Host $msg
@@ -24,7 +24,7 @@ Log ""
 Log "[1/6] Checking installer exists..."
 if (-not (Test-Path $InstallerPath)) {
     Log "FAILED: $InstallerPath not found. Compile it first on the host with:"
-    Log "  iscc.exe /DGOMAPIVersion=2.0.0-local src\installer\go-mapi.iss"
+    Log "  iscc.exe /DGOMAPIVersion=2.0.0-local src\installer\DraftHorse.iss"
     exit 1
 }
 Log "OK: Found $InstallerPath"
@@ -44,12 +44,12 @@ Log "OK: Installer exit code 0"
 Log ""
 Log "[3/6] Verifying HKLM registry keys..."
 $expectedKeys = @(
-    "HKLM:\SOFTWARE\Clients\Mail\go-mapi",
-    "HKLM:\SOFTWARE\Google\Chrome\NativeMessagingHosts\com.gomapi.host",
-    "HKLM:\SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.gomapi.host",
-    "HKLM:\SOFTWARE\Chromium\NativeMessagingHosts\com.gomapi.host",
-    "HKLM:\SOFTWARE\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.gomapi.host",
-    "HKLM:\SOFTWARE\Vivaldi\NativeMessagingHosts\com.gomapi.host"
+    "HKLM:\SOFTWARE\Clients\Mail\DraftHorse",
+    "HKLM:\SOFTWARE\Google\Chrome\NativeMessagingHosts\com.drafthorse.host",
+    "HKLM:\SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.drafthorse.host",
+    "HKLM:\SOFTWARE\Chromium\NativeMessagingHosts\com.drafthorse.host",
+    "HKLM:\SOFTWARE\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.drafthorse.host",
+    "HKLM:\SOFTWARE\Vivaldi\NativeMessagingHosts\com.drafthorse.host"
 )
 $regFail = $false
 foreach ($key in $expectedKeys) {
@@ -71,9 +71,9 @@ Log "[4/6] Verifying installed files..."
 # sandbox runs have none, so we don't assert its presence here. The
 # post-uninstall check at step 6 already excludes it for the same reason.
 $expectedFiles = @(
-    "$env:ProgramFiles\go-mapi\go-mapi.dll",
-    "$env:ProgramFiles\go-mapi\go-mapi-host.exe",
-    "$env:ProgramData\go-mapi\com.gomapi.host.json"
+    "$env:ProgramFiles\DraftHorse\DraftHorse.dll",
+    "$env:ProgramFiles\DraftHorse\DraftHorse-host.exe",
+    "$env:ProgramData\DraftHorse\com.drafthorse.host.json"
 )
 $fileFail = $false
 foreach ($f in $expectedFiles) {
@@ -90,7 +90,7 @@ Log "OK: all 3 files present"
 # Step 5: Silent uninstall
 Log ""
 Log "[5/6] Running silent uninstall..."
-$uninst = "$env:ProgramFiles\go-mapi\unins000.exe"
+$uninst = "$env:ProgramFiles\DraftHorse\unins000.exe"
 if (-not (Test-Path $uninst)) {
     Log "FAILED: uninstaller not found at $uninst"
     exit 1
@@ -109,9 +109,9 @@ $stillPresent = @()
 foreach ($key in $expectedKeys) {
     if (Test-Path $key) { $stillPresent += "registry: $key" }
 }
-foreach ($f in @("$env:ProgramFiles\go-mapi\go-mapi.dll",
-                 "$env:ProgramFiles\go-mapi\go-mapi-host.exe",
-                 "$env:ProgramData\go-mapi\com.gomapi.host.json")) {
+foreach ($f in @("$env:ProgramFiles\DraftHorse\DraftHorse.dll",
+                 "$env:ProgramFiles\DraftHorse\DraftHorse-host.exe",
+                 "$env:ProgramData\DraftHorse\com.drafthorse.host.json")) {
     if (Test-Path $f) { $stillPresent += "file: $f" }
 }
 if ($stillPresent.Count -gt 0) {

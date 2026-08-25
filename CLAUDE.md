@@ -15,14 +15,14 @@ in any Windows application creates a Gmail draft with the attachments in place.
 Fork additions on top of that: created drafts open in the browser
 (ARRICKS-08, `src/app/draftlink.go`, tray-toggleable), and the app registers
 as a `mailto:` handler through the Windows Default Apps model (ARRICKS-09,
-`go-mapi.mailto` ProgID + Capabilities/RegisteredApplications in the
-installer). A mailto click runs `go-mapi.exe --mailto "%1"`, which opens
+`DraftHorse.mailto` ProgID + Capabilities/RegisteredApplications in the
+installer). A mailto click runs `DraftHorse.exe --mailto "%1"`, which opens
 Gmail web compose prefilled from the URL and exits — no draft API call, no
 auth, still nothing ever sent. Fleet-wide default via Intune:
 `docs/mailto-default-associations.xml`.
 
 Drafts open in a dedicated isolated Edge/Chrome profile (ARRICKS-21,
-`src/app/draftbrowser.go`, `%LOCALAPPDATA%\go-mapi\browser-profile`, tray
+`src/app/draftbrowser.go`, `%LOCALAPPDATA%\DraftHorse\browser-profile`, tray
 toggle, default on) — the fleet uses delegated per-location mailboxes, so the
 user's own browser session is the wrong account by design; IT signs the
 dedicated profile into the location account once. Falls back to the default
@@ -58,24 +58,30 @@ test 30). The mailto default CANNOT be set programmatically (hash-protected
 UserChoice + the UCPD driver — deliberate Windows policy, do not fight it);
 the app only detects it and deep-links the user to Settings > Default apps.
 
-**Branding (ARRICKS-11):** the app's display name is **DraftHorse** — it only
-ever creates drafts; nothing sends. Display surfaces (installer UI, ARP
-DisplayName, Start Menu shortcut `DraftHorse.lnk`, Default Apps
-ApplicationName, the `Clients\Mail\go-mapi` subkey's `(Default)` value, tray,
-toasts, frontend) say DraftHorse. Every **identifier** stays `go-mapi`: the
-`Clients\Mail\go-mapi` key name and the `Clients\Mail` `(Default)` resolver
-value (the mapi32 stub opens the subkey named by that string), installed
-binary/DLL names, AUMID `com.marcfargas.gomapi`, `go-mapi.mailto` ProgID,
-credential target, queue/config paths, firewall rule, uninstall key path,
-Intune detection. Do not rename identifiers as part of branding work — the
-split is deliberate (upgrade continuity + everything above was CI-verified
-under these names). One deliberate exception (ARRICKS-14): the installer
-FILENAME is `DraftHorse-setup.exe` — it's a download-facing display surface,
-not an installed identifier. Release binaries older than that change carry
-the old `go-mapi-setup.exe` stable-download URL baked in; their "Download
-installer" button 404s once newer releases ship (their release-page link
-still works). The GCP OAuth consent-screen app name must match the
-DraftHorse copy in `PreAuthModal.svelte`.
+**Branding (ARRICKS-11, ended by V4):** the app is **DraftHorse** everywhere
+— it only ever creates drafts; nothing sends. Through 3.x, ARRICKS-11 split
+display (DraftHorse) from identifiers (go-mapi) for upgrade continuity; **4.0
+deliberately ended that split** while the installed base was 4 test machines
+(docs/V4-PLAN.md Phase 1) — the last moment the rename was cheap. Identifiers
+now: `Clients\Mail\DraftHorse` key + resolver value, `DraftHorse.exe` /
+`DraftHorse.dll`, AUMID `com.arrickspropane.drafthorse`, `DraftHorse.mailto`
+ProgID, credential target `DraftHorse`, `%LOCALAPPDATA%\DraftHorse` +
+`%APPDATA%\DraftHorse`, firewall rule, uninstall key, Intune detection.
+
+Three things deliberately did NOT rename — do not "finish the job":
+the **toastActivatorGUID** (identity, not branding — changing it recreates
+the dual-registration bug it prevents), the **Go module path**
+`github.com/marcfargas/go-mapi` and npm workspace names (invisible to users;
+renaming breaks upstream cherry-picks and npm lockfile sync), and **source
+filenames** like `go-mapi.nsi` (repo-internal). The legacy-cleanup strings in
+the installer's V4 MIGRATION block and `un.RemoveScheduledTask` reference
+go-mapi names ON PURPOSE — their job is scrubbing pre-4.0 installs; renaming
+them breaks the migration. Per-user migration lives in `src/app/migrate.go`
+(data dirs, credential target, stale HKCU heal mirror); machine-scope scrub
+lives in the installer's V4 MIGRATION block.
+
+The GCP OAuth consent-screen app name must match the DraftHorse copy in
+`PreAuthModal.svelte`.
 
 **Why a fork rather than upstream binaries:** it replaces Affixa, which retires
 **31 January 2027**. Owning the source is the entire point — the fork is what
@@ -96,8 +102,8 @@ and remember that a defect ships to ~40 machines, but only 4 can catch it now.
 | Desktop app | Go + Svelte 5 (Wails/WebView2) | `src/app/` | Tray, auth, draft creation |
 | Installer | NSIS | `src/installer/` | Mail-client registration, both bitnesses |
 
-Queue: `%LOCALAPPDATA%\go-mapi\queue\`. Tokens: Windows Credential Manager
-(`go-mapi` / `oauth-tokens`). **Nothing is ever sent** — the only Gmail endpoint
+Queue: `%LOCALAPPDATA%\DraftHorse\queue\`. Tokens: Windows Credential Manager
+(`DraftHorse` / `oauth-tokens`). **Nothing is ever sent** — the only Gmail endpoint
 called is `POST /gmail/v1/users/me/drafts`.
 
 ## House rules
@@ -180,7 +186,7 @@ broken x86 export table breaks 32-bit scanner software while everything else
 looks fine:
 
 ```powershell
-llvm-nm --extern-only src\interceptor\build-x86\bin\go-mapi.dll | Select-String MAPI
+llvm-nm --extern-only src\interceptor\build-x86\bin\DraftHorse.dll | Select-String MAPI
 ```
 
 ## Test
@@ -249,7 +255,7 @@ The follow-up items originally listed here landed as one series:
 ## Deployment
 
 All-users install, `DraftHorse-setup.exe /S`, deployed via Intune. Detection rule:
-`HKLM\SOFTWARE\Clients\Mail\go-mapi` → `DLLPath`. Sign the binaries first, then
+`HKLM\SOFTWARE\Clients\Mail\DraftHorse` → `DLLPath`. Sign the binaries first, then
 the installer that wraps them, always timestamped (`signtool /tr`).
 
 Firewall, if egress is filtered: `accounts.google.com`, `oauth2.googleapis.com`,

@@ -104,8 +104,8 @@ void TestUtilities::CleanupTestFiles(const std::string& tempDir) {
 }
 
 std::string TestUtilities::GetGoMapiTempDir() {
-    // ARRICKS-05: this returned %TEMP%\go-mapi, but the DLL moved its queue to
-    // %LOCALAPPDATA%\go-mapi\queue in quick/260423-msq. Every harness test has
+    // ARRICKS-05: this returned %TEMP%\DraftHorse, but the DLL moved its queue to
+    // %LOCALAPPDATA%\DraftHorse\queue in quick/260423-msq. Every harness test has
     // since been watching a directory the DLL never writes to. The harness is
     // also not wired into CTest, so the breakage stayed invisible in CI.
     //
@@ -126,8 +126,8 @@ std::string TestUtilities::GetGoMapiTempDir() {
     result.resize(size_needed - 1);
     WideCharToMultiByte(CP_UTF8, 0, basePath, -1, &result[0], size_needed, NULL, NULL);
 
-    // Append the queue directory: %LOCALAPPDATA%\go-mapi\queue
-    result = fs::path(result).append("go-mapi").append("queue").string();
+    // Append the queue directory: %LOCALAPPDATA%\DraftHorse\queue
+    result = fs::path(result).append("DraftHorse").append("queue").string();
     return result;
 }
 

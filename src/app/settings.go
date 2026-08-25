@@ -11,9 +11,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// AppSettings is the persisted per-user settings for go-mapi. Phase 9 ships
+// AppSettings is the persisted per-user settings for DraftHorse. Phase 9 ships
 // `Mode`; Phase 11 adds the flat update-check fields. Future phases may add
-// flat fields — do NOT nest. Marshaled to %APPDATA%\go-mapi\settings.json
+// flat fields — do NOT nest. Marshaled to %APPDATA%\DraftHorse\settings.json
 // via saveSettings (atomic, crash-safe).
 //
 // Pause state is INTENTIONALLY not persisted (D-15) — resets on every app
@@ -80,7 +80,7 @@ func settingsPath() string {
 	return filepath.Join(appDataDir(), "settings.json")
 }
 
-// loadSettings reads %APPDATA%\go-mapi\settings.json. Returns defaults on
+// loadSettings reads %APPDATA%\DraftHorse\settings.json. Returns defaults on
 // any read/parse error (first-run missing file, corrupt file, unknown Mode
 // value). Corrupt files are NOT moved aside in Phase 9 — D-15 scope means
 // the only persisted field is Mode, and resetting to "manual" on a corrupt

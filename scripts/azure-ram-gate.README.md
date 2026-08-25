@@ -1,7 +1,7 @@
 # `azure-ram-gate.ps1` — Phase 7 RAM gate automation
 
 This script provisions a one-shot Windows Server 2022 Datacenter VM on Azure, runs the
-go-mapi RAM measurement protocol with N concurrent in-VM sessions, pulls the CSV back,
+DraftHorse RAM measurement protocol with N concurrent in-VM sessions, pulls the CSV back,
 and destroys the resource group. Azure CLI + PowerShell only — **no Terraform**.
 
 Paired script: [`measure-ram.ps1`](./measure-ram.ps1) — does the actual sampling inside
@@ -22,7 +22,7 @@ the VM and the local CSV aggregation.
    az account show                      # verify the active subscription
    az account set --subscription <id>   # if multiple subscriptions
    ```
-3. **Plan 03 binary built and present at `src/app/build/bin/go-mapi.exe`** (see
+3. **Plan 03 binary built and present at `src/app/build/bin/DraftHorse.exe`** (see
    `.planning/phases/07-wails-shell-ram-gate/07-03-SUMMARY.md`).
 4. **Subscription has permission to create VMs in the chosen region** (default
    `westeurope`; override with `-Location`).
@@ -37,8 +37,8 @@ the VM and the local CSV aggregation.
 | `-SubscriptionId` | *(active)* | Override `az` active subscription for this run. |
 | `-Location` | `westeurope` | Azure region for the resource group / VM. |
 | `-VmSize` | `Standard_D4s_v3` | 4 vCPU / 16 GB RAM — sized for ≥10 concurrent sessions. |
-| `-RgName` | `rg-gomapi-ramgate-<UTC timestamp>` | Resource group name (ephemeral). |
-| `-BinaryPath` | `src/app/build/bin/go-mapi.exe` | Path to the Plan 03 binary (relative to repo root). |
+| `-RgName` | `rg-drafthorse-ramgate-<UTC timestamp>` | Resource group name (ephemeral). |
+| `-BinaryPath` | `src/app/build/bin/DraftHorse.exe` | Path to the Plan 03 binary (relative to repo root). |
 | `-MeasureScript` | `scripts/measure-ram.ps1` | On-VM benchmark script to upload. |
 | `-CsvOut` | `docs/measurements/phase-07-ram-gate.csv` | Where to write the pulled CSV. |
 | `-Confirm` | *(required)* | Must be set — script refuses to proceed without it (cost gate). |
@@ -113,14 +113,14 @@ pwsh scripts/measure-ram.ps1 -Aggregate docs/measurements/phase-07-ram-gate.csv
    assignment is edited out, `Win32_PerfRawData_PerfProc_Process` returns empty and the
    CSV fills with zeros **silently**. The bootstrap script asserts membership via
    `Get-LocalGroupMember` and throws if missing — do not weaken that check.
-2. **`Get-Counter` instance-name collisions** across multiple `go-mapi.exe` processes
+2. **`Get-Counter` instance-name collisions** across multiple `DraftHorse.exe` processes
    owned by different session users are why we key on `IDProcess` via
    `Win32_PerfRawData_PerfProc_Process` instead of `Get-Counter`. This gives unambiguous
    per-PID resolution without toggling the PerfMon "Show process identifier" registry
    setting on the VM.
-3. **Multi-process correlation.** Per-session metric is the **sum** of `go-mapi.exe`
+3. **Multi-process correlation.** Per-session metric is the **sum** of `DraftHorse.exe`
    Private WS + every `msedgewebview2.exe` child whose `ParentProcessId` equals the
-   go-mapi PID. Main-process-only is kept as a secondary diagnostic column
+   DraftHorse PID. Main-process-only is kept as a secondary diagnostic column
    (`go_mapi_ws_mb`) but the gate applies to `total_ws_mb`. Measuring only the main
    process would undercount substantially (REVIEWS HIGH).
 4. **`az vm run-command invoke` payload cap (~32 KB script).** The binary upload is
@@ -136,7 +136,7 @@ pwsh scripts/measure-ram.ps1 -Aggregate docs/measurements/phase-07-ram-gate.csv
    PROVISIONAL verdict. Driving mstsc/FreeRDP externally would be more accurate but is
    race-prone and fragile; the scheduled-task approach is the explicit locked decision
    (see memory `project_phase7_ram_gate_azure.md`).
-6. **Binary integrity.** SHA256 of the local `go-mapi.exe` is computed before upload and
+6. **Binary integrity.** SHA256 of the local `DraftHorse.exe` is computed before upload and
    verified against the VM copy. Mismatch = hard failure.
 7. **Admin password.** Generated with `System.Web.Security.Membership.GeneratePassword`
    at runtime and held in memory only — never written to disk, CSV, or log. The VM has

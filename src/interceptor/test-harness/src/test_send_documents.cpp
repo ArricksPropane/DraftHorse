@@ -41,9 +41,9 @@ bool WriteScratchFile(const std::filesystem::path& p, const std::string& body) {
 int test_send_documents() {
     std::cout << "\nTest: MAPISendDocuments (scanner path)" << std::endl;
 
-    HMODULE hDll = LoadLibraryA("go-mapi.dll");
+    HMODULE hDll = LoadLibraryA("DraftHorse.dll");
     if (!hDll) {
-        std::cerr << "Failed to load go-mapi.dll" << std::endl;
+        std::cerr << "Failed to load DraftHorse.dll" << std::endl;
         return 1;
     }
 
@@ -61,8 +61,8 @@ int test_send_documents() {
     wchar_t tempPathW[MAX_PATH];
     GetTempPathW(MAX_PATH, tempPathW);
     std::filesystem::path tempDirPath(tempPathW);
-    std::filesystem::path fileA = tempDirPath / "go-mapi-harness-scan-1.pdf";
-    std::filesystem::path fileB = tempDirPath / "go-mapi-harness-scan-2.pdf";
+    std::filesystem::path fileA = tempDirPath / "DraftHorse-harness-scan-1.pdf";
+    std::filesystem::path fileB = tempDirPath / "DraftHorse-harness-scan-2.pdf";
 
     if (!WriteScratchFile(fileA, "%PDF-1.4 harness page one\n") ||
         !WriteScratchFile(fileB, "%PDF-1.4 harness page two\n")) {

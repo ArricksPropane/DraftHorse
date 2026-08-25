@@ -7,7 +7,7 @@
 
 ## What was measured
 
-Per-session Private Working Set of go-mapi.exe (Wails + WebView2 Evergreen) under 5 concurrent independent user sessions on a Windows Server 2022 VM in Azure. Each session owns its own go-mapi.exe main process plus msedgewebview2.exe children (correlated via ParentProcessId). The gate metric is the **sum** at the 5-minute idle-post-webview-init checkpoint.
+Per-session Private Working Set of DraftHorse.exe (Wails + WebView2 Evergreen) under 5 concurrent independent user sessions on a Windows Server 2022 VM in Azure. Each session owns its own DraftHorse.exe main process plus msedgewebview2.exe children (correlated via ParentProcessId). The gate metric is the **sum** at the 5-minute idle-post-webview-init checkpoint.
 
 ## Result
 

@@ -18,9 +18,9 @@
 #                     12 (Credential Manager scrubbed), 13 (shortcut gone)
 #
 # Cross-plan literal contract (byte-for-byte match with 10-03 + 10-04):
-#   AUMID         = com.marcfargas.gomapi    (NOT com.marcfargas.gomapi.dev)
-#   Firewall rule = go-mapi OAuth loopback   (match 10-03 AddFirewallRule + 10-04 RemoveFirewallRule)
-#   Cred target   = go-mapi:oauth-tokens     (COLON separator — zalando/go-keyring Windows backend)
+#   AUMID         = com.arrickspropane.drafthorse    (NOT com.arrickspropane.drafthorse.dev)
+#   Firewall rule = DraftHorse OAuth loopback   (match 10-03 AddFirewallRule + 10-04 RemoveFirewallRule)
+#   Cred target   = DraftHorse:oauth-tokens     (COLON separator — zalando/go-keyring Windows backend)
 
 BeforeAll {
     # Dot-source the AUMID reader helper (defines Get-ShortcutAumid + .NET types).
@@ -31,29 +31,32 @@ BeforeAll {
     # Path resolution:
     #   From src/installer/tests/installer.Tests.ps1 ..\..\..\ = repo root
     $script:SetupExe     = Join-Path $PSScriptRoot '..\..\..\DraftHorse-setup.exe' | Resolve-Path -ErrorAction Stop | ForEach-Object Path
-    $script:InstallDir   = "$env:ProgramFiles\go-mapi"
-    $script:ProgramData  = "$env:ProgramData\go-mapi"
+    $script:InstallDir   = "$env:ProgramFiles\DraftHorse"
+    $script:ProgramData  = "$env:ProgramData\DraftHorse"
     $script:BackupJson   = "$script:ProgramData\uninst\previous-mail-client.json"
-    $script:MapiKey      = 'HKLM:\SOFTWARE\Clients\Mail\go-mapi'
+    $script:MapiKey      = 'HKLM:\SOFTWARE\Clients\Mail\DraftHorse'
     $script:MailKey      = 'HKLM:\SOFTWARE\Clients\Mail'
     # ARRICKS-11: display-name rebrand — the shortcut carries the display
     # name (it is also what toasts show for the stamped AUMID).
     $script:Shortcut     = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\DraftHorse.lnk"
-    $script:FirewallRule = 'go-mapi OAuth loopback'
-    $script:ExpectedAumid = 'com.marcfargas.gomapi'
-    $script:CredTarget   = 'go-mapi:oauth-tokens'
+    $script:FirewallRule = 'DraftHorse OAuth loopback'
+    $script:ExpectedAumid = 'com.arrickspropane.drafthorse'
+    $script:CredTarget   = 'DraftHorse:oauth-tokens'
     # QUICK-260423-ntu T3d — dual-bitness install surfaces. (The old
     # $script:MapiKey32 WOW6432Node path is gone with ARRICKS-10: Clients is
     # a shared key, so the 32-bit view is read via reg.exe /reg:32 instead.)
-    $script:InstallDir32 = "${env:ProgramFiles(x86)}\go-mapi"
+    $script:InstallDir32 = "${env:ProgramFiles(x86)}\DraftHorse"
 
     # Phase 11.1 D-03 / D-18 case 4: %APPDATA% path is the negative-assertion target.
     # The %ProgramData% path is already $script:Shortcut (set by Phase 10).
     $script:AppDataLnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DraftHorse.lnk'
 
     # Phase 11.1 Plan 11.1-05 — Scheduled Task assertions (D-08 / D-16 / D-18 cases 1, 2, 5, 6)
+    # The task name is UPSTREAM's pre-fork identifier on purpose: nothing ever
+    # creates it anymore; un.RemoveScheduledTask only ever DELETES it (V4 kept
+    # the go-mapi string there for the same reason).
     $script:TaskName    = 'go-mapi Auto Update'
-    $script:UpdatesDir  = Join-Path $env:ProgramData 'go-mapi\updates'
+    $script:UpdatesDir  = Join-Path $env:ProgramData 'DraftHorse\updates'
 
     Write-Host ("[Setup] SetupExe    = {0}" -f $script:SetupExe)
     Write-Host ("[Setup] InstallDir  = {0}" -f $script:InstallDir)
@@ -61,9 +64,26 @@ BeforeAll {
     Write-Host ("[Setup] CredTarget  = {0}" -f $script:CredTarget)
 }
 
-Describe "go-mapi installer round-trip" {
+Describe "DraftHorse installer round-trip" {
 
     Context "Silent install" {
+        # V4 MIGRATION (docs/V4-PLAN.md Phase 1) — plant the machine-scope
+        # artifacts a 3.x go-mapi install leaves behind, so the install below
+        # doubles as the upgrade-over-3.x scenario. Tests 36-37 assert the
+        # scrub; a fresh machine (nothing planted) must behave identically.
+        It "0. pre-seed legacy go-mapi machine artifacts (upgrade simulation)" {
+            New-Item -Path 'HKLM:\SOFTWARE\Clients\Mail\go-mapi' -Force | Out-Null
+            Set-ItemProperty -Path 'HKLM:\SOFTWARE\Clients\Mail\go-mapi' -Name 'DLLPath' -Value '%ProgramFiles%\go-mapi\go-mapi.dll'
+            New-Item -Path 'HKLM:\SOFTWARE\Classes\go-mapi.mailto' -Force | Out-Null
+            New-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -Name 'go-mapi' -Value 'SOFTWARE\Clients\Mail\go-mapi\Capabilities' -Force | Out-Null
+            New-Item -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi' -Force | Out-Null
+            Set-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'go-mapi' -Value '"C:\Program Files\go-mapi\go-mapi.exe"'
+            New-Item -Path (Join-Path $env:ProgramFiles 'go-mapi') -ItemType Directory -Force | Out-Null
+            Set-Content -Path (Join-Path $env:ProgramFiles 'go-mapi\go-mapi.exe') -Value 'stale'
+            netsh advfirewall firewall add rule name="go-mapi OAuth loopback" dir=in action=allow program="C:\Program Files\go-mapi\go-mapi.exe" | Out-Null
+            $true | Should -BeTrue
+        }
+
         # D-21 item 1
         It "1. silent install exits 0 with /S /D=<InstallDir>" {
             # NSIS /D= must be the LAST argument and NOT quoted (per RESEARCH Pitfall 5).
@@ -72,15 +92,31 @@ Describe "go-mapi installer round-trip" {
             $proc.ExitCode | Should -Be 0
         }
 
+        # V4 MIGRATION — everything test 0 planted must be gone. One test per
+        # surface so a partial scrub failure names its exact victim.
+        It "36. legacy go-mapi registry artifacts are scrubbed by the install" {
+            Test-Path 'HKLM:\SOFTWARE\Clients\Mail\go-mapi' | Should -BeFalse -Because 'a stale go-mapi client key would still be resolvable by the mapi32 stub'
+            Test-Path 'HKLM:\SOFTWARE\Classes\go-mapi.mailto' | Should -BeFalse
+            (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -ErrorAction SilentlyContinue).'go-mapi' | Should -BeNullOrEmpty
+            Test-Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi' | Should -BeFalse -Because 'two ARP rows across the upgrade, and the old uninstaller would scrub the new resolver'
+            (Get-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).'go-mapi' | Should -BeNullOrEmpty
+        }
+
+        It "37. legacy go-mapi install tree and firewall rule are scrubbed" {
+            Test-Path (Join-Path $env:ProgramFiles 'go-mapi') | Should -BeFalse
+            $rule = netsh advfirewall firewall show rule name="go-mapi OAuth loopback" 2>&1 | Out-String
+            $rule | Should -Match 'No rules match' -Because 'the old-name rule is orphaned once the old exe path is deleted'
+        }
+
         # D-21 item 2 (+ ARRICKS-16: the toast icon toastIconPath expects)
-        It "2. go-mapi.exe, go-mapi.dll and go-mapi.ico are deposited in InstallDir" {
-            Test-Path (Join-Path $script:InstallDir 'go-mapi.exe') | Should -BeTrue
-            Test-Path (Join-Path $script:InstallDir 'go-mapi.dll') | Should -BeTrue
-            Test-Path (Join-Path $script:InstallDir 'go-mapi.ico') | Should -BeTrue
+        It "2. DraftHorse.exe, DraftHorse.dll and DraftHorse.ico are deposited in InstallDir" {
+            Test-Path (Join-Path $script:InstallDir 'DraftHorse.exe') | Should -BeTrue
+            Test-Path (Join-Path $script:InstallDir 'DraftHorse.dll') | Should -BeTrue
+            Test-Path (Join-Path $script:InstallDir 'DraftHorse.ico') | Should -BeTrue
         }
 
         # D-21 item 3 — tightened by ARRICKS-10. The old assertion matched only
-        # the 'go-mapi.dll' suffix, which is exactly what let the shared-key
+        # the 'DraftHorse.dll' suffix, which is exactly what let the shared-key
         # last-write-wins bug (x86 path served to ALL callers) go unnoticed.
         # Assert the full raw value, its REG_EXPAND_SZ kind, and that this
         # 64-bit pwsh's expansion lands on the deposited x64 DLL.
@@ -89,28 +125,28 @@ Describe "go-mapi installer round-trip" {
             $key = Get-Item $script:MapiKey
             $key.GetValueKind('DLLPath') | Should -Be 'ExpandString'
             $key.GetValue('DLLPath', $null, 'DoNotExpandEnvironmentNames') |
-                Should -Be '%ProgramFiles%\go-mapi\go-mapi.dll' -Because 'a 32-bit installer writing outside SetRegView 64 gets %ProgramFiles% rewritten to %ProgramFiles(x86)% by WOW64'
+                Should -Be '%ProgramFiles%\DraftHorse\DraftHorse.dll' -Because 'a 32-bit installer writing outside SetRegView 64 gets %ProgramFiles% rewritten to %ProgramFiles(x86)% by WOW64'
             $expanded = (Get-ItemProperty -Path $script:MapiKey).DLLPath
-            $expanded | Should -Be (Join-Path $env:ProgramFiles 'go-mapi\go-mapi.dll')
+            $expanded | Should -Be (Join-Path $env:ProgramFiles 'DraftHorse\DraftHorse.dll')
             Test-Path $expanded | Should -BeTrue
             # ARRICKS-11: the client subkey's (Default) is its DISPLAY name;
             # the resolver (Default) on Clients\Mail must stay the subkey
-            # name 'go-mapi' — both asserted so a future edit can't swap them.
+            # name 'DraftHorse' — both asserted so a future edit can't swap them.
             (Get-ItemProperty -Path $script:MapiKey -Name '(default)').'(default)' | Should -Be 'DraftHorse'
-            (Get-ItemProperty -Path $script:MailKey -Name '(default)').'(default)' | Should -Be 'go-mapi'
+            (Get-ItemProperty -Path $script:MailKey -Name '(default)').'(default)' | Should -Be 'DraftHorse'
         }
 
         # ARRICKS-09: mailto handler + Default Apps (Capabilities/RegisteredApplications)
         It "26. mailto ProgID and Default Apps registration exist" {
-            $cmdKey = 'HKLM:\SOFTWARE\Classes\go-mapi.mailto\shell\open\command'
+            $cmdKey = 'HKLM:\SOFTWARE\Classes\DraftHorse.mailto\shell\open\command'
             Test-Path $cmdKey | Should -BeTrue
             $cmd = (Get-ItemProperty -Path $cmdKey -Name '(default)').'(default)'
-            $cmd | Should -Match 'go-mapi\.exe'
+            $cmd | Should -Match 'DraftHorse\.exe'
             $cmd | Should -Match '--mailto'
             (Get-ItemProperty -Path "$script:MapiKey\Capabilities\URLAssociations" -Name 'mailto').'mailto' |
-                Should -Be 'go-mapi.mailto'
-            (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -Name 'go-mapi').'go-mapi' |
-                Should -Be 'SOFTWARE\Clients\Mail\go-mapi\Capabilities'
+                Should -Be 'DraftHorse.mailto'
+            (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -Name 'DraftHorse').'DraftHorse' |
+                Should -Be 'SOFTWARE\Clients\Mail\DraftHorse\Capabilities'
         }
 
         # D-21 item 4
@@ -128,14 +164,14 @@ Describe "go-mapi installer round-trip" {
         }
 
         # D-21 item 5 — AUMID stamped on shortcut
-        It "5. Start Menu shortcut exists with AUMID == com.marcfargas.gomapi" {
+        It "5. Start Menu shortcut exists with AUMID == com.arrickspropane.drafthorse" {
             Test-Path $script:Shortcut | Should -BeTrue
             $actual = Get-ShortcutAumid -Path $script:Shortcut
             $actual | Should -Be $script:ExpectedAumid
         }
 
         # D-21 item 6
-        It "6. Windows Firewall inbound rule 'go-mapi OAuth loopback' exists" {
+        It "6. Windows Firewall inbound rule 'DraftHorse OAuth loopback' exists" {
             $rule = Get-NetFirewallRule -DisplayName $script:FirewallRule -ErrorAction SilentlyContinue
             $rule | Should -Not -BeNullOrEmpty
             $rule.Direction | Should -Be 'Inbound'
@@ -143,12 +179,12 @@ Describe "go-mapi installer round-trip" {
         }
 
         # QUICK-260423-ntu item 14 — install-time running-process guard (silent)
-        It "14. silent install succeeds when go-mapi.exe is already running in InstallDir" {
+        It "14. silent install succeeds when DraftHorse.exe is already running in InstallDir" {
             # Pre-condition: install completed in item 1. Launch a decoy process
             # from the installed path, then re-run the installer in /S mode and
             # assert the exe is still runnable post-install (i.e. the installer
             # closed the old instance cleanly, overwrote it, and did NOT abort).
-            $exe = Join-Path $script:InstallDir 'go-mapi.exe'
+            $exe = Join-Path $script:InstallDir 'DraftHorse.exe'
             $decoy = Start-Process -FilePath $exe -PassThru -WindowStyle Hidden
             try {
                 Start-Sleep -Seconds 1
@@ -162,9 +198,9 @@ Describe "go-mapi installer round-trip" {
         }
 
         # QUICK-260423-ntu item 16 — x86 DLL deposited alongside x64 DLL
-        It "16. go-mapi.dll is deposited in both ProgramFiles and ProgramFiles(x86)" {
-            Test-Path (Join-Path $script:InstallDir   'go-mapi.dll') | Should -BeTrue
-            Test-Path (Join-Path $script:InstallDir32 'go-mapi.dll') | Should -BeTrue
+        It "16. DraftHorse.dll is deposited in both ProgramFiles and ProgramFiles(x86)" {
+            Test-Path (Join-Path $script:InstallDir   'DraftHorse.dll') | Should -BeTrue
+            Test-Path (Join-Path $script:InstallDir32 'DraftHorse.dll') | Should -BeTrue
         }
 
         # QUICK-260423-ntu item 17 — each DLL has the matching PE bitness
@@ -174,8 +210,8 @@ Describe "go-mapi installer round-trip" {
                 $e = [BitConverter]::ToInt32($b, 0x3C)
                 return [BitConverter]::ToUInt16($b, $e + 4 + 20)
             }
-            Get-PeMagic (Join-Path $script:InstallDir   'go-mapi.dll') | Should -Be 0x20B
-            Get-PeMagic (Join-Path $script:InstallDir32 'go-mapi.dll') | Should -Be 0x10B
+            Get-PeMagic (Join-Path $script:InstallDir   'DraftHorse.dll') | Should -Be 0x20B
+            Get-PeMagic (Join-Path $script:InstallDir32 'DraftHorse.dll') | Should -Be 0x10B
         }
 
         # QUICK-260423-ntu item 18, reworked by ARRICKS-10. Clients is a WOW64
@@ -185,17 +221,17 @@ Describe "go-mapi installer round-trip" {
         # %ProgramFiles% value. reg.exe /reg:32 opens exactly that view. The
         # actual x86 DLL routing is proven end-to-end by item 29.
         It "18. 32-bit registry view sees the same unexpanded DLLPath (shared key)" {
-            $out = (& reg.exe query 'HKLM\SOFTWARE\Clients\Mail\go-mapi' /v DLLPath /reg:32) -join "`n"
+            $out = (& reg.exe query 'HKLM\SOFTWARE\Clients\Mail\DraftHorse' /v DLLPath /reg:32) -join "`n"
             $LASTEXITCODE | Should -Be 0
-            $out | Should -Match 'REG_EXPAND_SZ\s+%ProgramFiles%\\go-mapi\\go-mapi\.dll'
+            $out | Should -Match 'REG_EXPAND_SZ\s+%ProgramFiles%\\DraftHorse\\DraftHorse\.dll'
         }
 
         # Phase 11.1 D-05 / D-18 case 3 — silent reinstall overwrites both DLLs (T4 regression)
         It "21. silent reinstall over existing install overwrites both x64 and x86 DLLs" {
             # Pre-condition: prior items already installed once into $script:InstallDir.
             # Capture both DLLs' hashes before reinstall to detect "no overwrite happened".
-            $x64Path = Join-Path $script:InstallDir   'go-mapi.dll'
-            $x86Path = Join-Path $script:InstallDir32 'go-mapi.dll'
+            $x64Path = Join-Path $script:InstallDir   'DraftHorse.dll'
+            $x86Path = Join-Path $script:InstallDir32 'DraftHorse.dll'
             $x64Before = (Get-FileHash -Algorithm SHA256 -Path $x64Path).Hash
             $x86Before = (Get-FileHash -Algorithm SHA256 -Path $x86Path).Hash
 
@@ -233,13 +269,13 @@ Describe "go-mapi installer round-trip" {
             $key = Get-Item $script:MapiKey
             $key.GetValueKind('DLLPath') | Should -Be 'ExpandString'
             $key.GetValue('DLLPath', $null, 'DoNotExpandEnvironmentNames') |
-                Should -Be '%ProgramFiles%\go-mapi\go-mapi.dll'
+                Should -Be '%ProgramFiles%\DraftHorse\DraftHorse.dll'
             $expanded = (Get-ItemProperty -Path $script:MapiKey).DLLPath
-            $expanded | Should -Be (Join-Path $env:ProgramFiles 'go-mapi\go-mapi.dll')
+            $expanded | Should -Be (Join-Path $env:ProgramFiles 'DraftHorse\DraftHorse.dll')
             Test-Path $expanded | Should -BeTrue -Because "DLLPath must point at a deposited DLL"
-            $out32 = (& reg.exe query 'HKLM\SOFTWARE\Clients\Mail\go-mapi' /v DLLPath /reg:32) -join "`n"
+            $out32 = (& reg.exe query 'HKLM\SOFTWARE\Clients\Mail\DraftHorse' /v DLLPath /reg:32) -join "`n"
             $LASTEXITCODE | Should -Be 0
-            $out32 | Should -Match 'REG_EXPAND_SZ\s+%ProgramFiles%\\go-mapi\\go-mapi\.dll'
+            $out32 | Should -Match 'REG_EXPAND_SZ\s+%ProgramFiles%\\DraftHorse\\DraftHorse\.dll'
         }
 
         # Phase 11.1 D-03 / D-18 case 4 — Start Menu shortcut location regression
@@ -253,7 +289,7 @@ Describe "go-mapi installer round-trip" {
         # mapiprobe{64,32}.exe (built by installer-smoke.yml from
         # tests/probe/mapiprobe.c) call MAPISendMail through the in-box
         # mapi32.dll stub exactly like 64-bit Explorer "Send to" and 32-bit
-        # scanner software do, then report which go-mapi.dll actually loaded
+        # scanner software do, then report which DraftHorse.dll actually loaded
         # in-process. This is the on-real-Windows proof that the stub reads
         # Clients\Mail\<client>\DLLPath and expands REG_EXPAND_SZ with the
         # CALLER's environment — the fact the whole ARRICKS-10 design rests on.
@@ -261,9 +297,9 @@ Describe "go-mapi installer round-trip" {
             $probe = Join-Path $PSScriptRoot '..\..\..\mapiprobe64.exe' | Resolve-Path -ErrorAction Stop | ForEach-Object Path
             $out = & $probe 2>&1 | Out-String
             Write-Host $out
-            $LASTEXITCODE | Should -Be 0 -Because "the stub must resolve and load go-mapi.dll for a 64-bit caller"
+            $LASTEXITCODE | Should -Be 0 -Because "the stub must resolve and load DraftHorse.dll for a 64-bit caller"
             $out | Should -Match ([regex]::Escape("PROGRAMFILES=$env:ProgramFiles") + '\s')
-            $out | Should -Match ([regex]::Escape("RESOLVED=$env:ProgramFiles\go-mapi\go-mapi.dll") + '\s')
+            $out | Should -Match ([regex]::Escape("RESOLVED=$env:ProgramFiles\DraftHorse\DraftHorse.dll") + '\s')
             $out | Should -Match 'MAPIRC=0\s'
         }
 
@@ -271,18 +307,18 @@ Describe "go-mapi installer round-trip" {
             $probe = Join-Path $PSScriptRoot '..\..\..\mapiprobe32.exe' | Resolve-Path -ErrorAction Stop | ForEach-Object Path
             $out = & $probe 2>&1 | Out-String
             Write-Host $out
-            $LASTEXITCODE | Should -Be 0 -Because "the stub must resolve and load go-mapi.dll for a 32-bit caller"
+            $LASTEXITCODE | Should -Be 0 -Because "the stub must resolve and load DraftHorse.dll for a 32-bit caller"
             $out | Should -Match ([regex]::Escape("PROGRAMFILES=${env:ProgramFiles(x86)}") + '\s')
-            $out | Should -Match ([regex]::Escape("RESOLVED=${env:ProgramFiles(x86)}\go-mapi\go-mapi.dll") + '\s')
+            $out | Should -Match ([regex]::Escape("RESOLVED=${env:ProgramFiles(x86)}\DraftHorse\DraftHorse.dll") + '\s')
             $out | Should -Match 'MAPIRC=0\s'
         }
 
         # ARRICKS-19 item 32 — logon autostart. Without it, reboots leave the
         # queue watcher and the ARRICKS-13 guard dead (validation finding).
         It "32. logon autostart Run entry is registered (native view)" {
-            $run = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'go-mapi' -ErrorAction SilentlyContinue).'go-mapi'
+            $run = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'DraftHorse' -ErrorAction SilentlyContinue).'DraftHorse'
             $run | Should -Not -BeNullOrEmpty
-            $run | Should -Match 'go-mapi\.exe'
+            $run | Should -Match 'DraftHorse\.exe'
         }
 
         # ARRICKS-13 item 30 — empirical proof of the self-heal mechanism.
@@ -296,9 +332,9 @@ Describe "go-mapi installer round-trip" {
         # do not weaken the assertion; redesign the guard.
         It "30. HKCU Clients\Mail override outranks a stolen HKLM default (self-heal premise)" {
             try {
-                & reg.exe add 'HKCU\Software\Clients\Mail\go-mapi' /ve /d 'DraftHorse' /f | Out-Null
-                & reg.exe add 'HKCU\Software\Clients\Mail\go-mapi' /v DLLPath /t REG_EXPAND_SZ /d '%ProgramFiles%\go-mapi\go-mapi.dll' /f | Out-Null
-                & reg.exe add 'HKCU\Software\Clients\Mail' /ve /d 'go-mapi' /f | Out-Null
+                & reg.exe add 'HKCU\Software\Clients\Mail\DraftHorse' /ve /d 'DraftHorse' /f | Out-Null
+                & reg.exe add 'HKCU\Software\Clients\Mail\DraftHorse' /v DLLPath /t REG_EXPAND_SZ /d '%ProgramFiles%\DraftHorse\DraftHorse.dll' /f | Out-Null
+                & reg.exe add 'HKCU\Software\Clients\Mail' /ve /d 'DraftHorse' /f | Out-Null
                 & reg.exe add 'HKLM\SOFTWARE\Clients\Mail' /ve /d 'SomeStolenClient' /f | Out-Null
 
                 foreach ($probeExe in 'mapiprobe64.exe', 'mapiprobe32.exe') {
@@ -309,8 +345,8 @@ Describe "go-mapi installer round-trip" {
                     $out | Should -Match 'MAPIRC=0\s'
                 }
             } finally {
-                & reg.exe add 'HKLM\SOFTWARE\Clients\Mail' /ve /d 'go-mapi' /f | Out-Null
-                & reg.exe delete 'HKCU\Software\Clients\Mail\go-mapi' /f 2>$null | Out-Null
+                & reg.exe add 'HKLM\SOFTWARE\Clients\Mail' /ve /d 'DraftHorse' /f | Out-Null
+                & reg.exe delete 'HKCU\Software\Clients\Mail\DraftHorse' /f 2>$null | Out-Null
                 & reg.exe delete 'HKCU\Software\Clients\Mail' /ve /f 2>$null | Out-Null
             }
         }
@@ -336,11 +372,11 @@ Describe "go-mapi installer round-trip" {
         }
 
         # ARRICKS-06 — the binary must ignore the silent-update flag entirely.
-        It "22b. go-mapi.exe --update-check-silent is a no-op" {
-            $exe = Join-Path $script:InstallDir 'go-mapi.exe'
+        It "22b. DraftHorse.exe --update-check-silent is a no-op" {
+            $exe = Join-Path $script:InstallDir 'DraftHorse.exe'
             $proc = Start-Process -FilePath $exe -ArgumentList '--update-check-silent' -Wait -PassThru
             $proc.ExitCode | Should -Be 0
-            Test-Path (Join-Path $env:ProgramData 'go-mapi\updates\update.log') |
+            Test-Path (Join-Path $env:ProgramData 'DraftHorse\updates\update.log') |
                 Should -BeFalse -Because "ARRICKS-06: no silent update routine should run, so no update log should be produced"
         }
 
@@ -357,7 +393,7 @@ Describe "go-mapi installer round-trip" {
         }
 
         # Phase 11.1 D-16 / D-18 case 5 — uninstaller idempotently removes the task
-        # AND scrubs %ProgramData%\go-mapi\updates (D-18 case 6)
+        # AND scrubs %ProgramData%\DraftHorse\updates (D-18 case 6)
         It "24. uninstall removes the Scheduled Task even when /AUTOUPDATE=0 was used" {
             # /AUTOUPDATE=0 install — uninstall must still run schtasks /delete /f and exit 0.
             Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait | Out-Null
@@ -371,8 +407,8 @@ Describe "go-mapi installer round-trip" {
             # nothing is left behind in Task Scheduler post-uninstall.
             Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
 
-            # Uninstaller also scrubs %ProgramData%\go-mapi\updates (D-18 case 6).
-            Test-Path $script:UpdatesDir | Should -BeFalse -Because "uninstaller scrubs %ProgramData%\go-mapi\updates per D-18 case 6"
+            # Uninstaller also scrubs %ProgramData%\DraftHorse\updates (D-18 case 6).
+            Test-Path $script:UpdatesDir | Should -BeFalse -Because "uninstaller scrubs %ProgramData%\DraftHorse\updates per D-18 case 6"
         }
 
         # Phase 11.1 W7 — uninstaller scrubs *.old.<pid> orphan files left by silent updater
@@ -386,9 +422,9 @@ Describe "go-mapi installer round-trip" {
             Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait | Out-Null
 
             # Plant orphan files mimicking what swapInPlace would leave behind.
-            $orphan64  = Join-Path $script:InstallDir   'go-mapi.exe.old.123'
-            $orphanDll = Join-Path $script:InstallDir   'go-mapi.dll.old.456'
-            $orphan32  = Join-Path $script:InstallDir32 'go-mapi.dll.old.789'
+            $orphan64  = Join-Path $script:InstallDir   'DraftHorse.exe.old.123'
+            $orphanDll = Join-Path $script:InstallDir   'DraftHorse.dll.old.456'
+            $orphan32  = Join-Path $script:InstallDir32 'DraftHorse.dll.old.789'
             New-Item -ItemType File -Path $orphan64  -Force | Out-Null
             New-Item -ItemType File -Path $orphanDll -Force | Out-Null
             New-Item -ItemType File -Path $orphan32  -Force | Out-Null
@@ -405,7 +441,7 @@ Describe "go-mapi installer round-trip" {
 
             Test-Path $orphan64  | Should -BeFalse -Because "uninstaller MUST scrub *.old.<pid> orphans in `$INSTDIR (W7)"
             Test-Path $orphanDll | Should -BeFalse -Because "uninstaller MUST scrub *.old.<pid> orphans in `$INSTDIR (W7)"
-            Test-Path $orphan32  | Should -BeFalse -Because "uninstaller MUST scrub *.old.<pid> orphans in `$PROGRAMFILES32\go-mapi (W7)"
+            Test-Path $orphan32  | Should -BeFalse -Because "uninstaller MUST scrub *.old.<pid> orphans in `$PROGRAMFILES32\DraftHorse (W7)"
         }
     }
 
@@ -424,9 +460,9 @@ Describe "go-mapi installer round-trip" {
             # ARRICKS-13: seed the HKCU self-heal mirror exactly as the app's
             # default-mail guard writes it, so item 31 can assert the
             # uninstaller cleans up a self-healed machine.
-            & reg.exe add 'HKCU\Software\Clients\Mail\go-mapi' /ve /d 'DraftHorse' /f | Out-Null
-            & reg.exe add 'HKCU\Software\Clients\Mail\go-mapi' /v DLLPath /t REG_EXPAND_SZ /d '%ProgramFiles%\go-mapi\go-mapi.dll' /f | Out-Null
-            & reg.exe add 'HKCU\Software\Clients\Mail' /ve /d 'go-mapi' /f | Out-Null
+            & reg.exe add 'HKCU\Software\Clients\Mail\DraftHorse' /ve /d 'DraftHorse' /f | Out-Null
+            & reg.exe add 'HKCU\Software\Clients\Mail\DraftHorse' /v DLLPath /t REG_EXPAND_SZ /d '%ProgramFiles%\DraftHorse\DraftHorse.dll' /f | Out-Null
+            & reg.exe add 'HKCU\Software\Clients\Mail' /ve /d 'DraftHorse' /f | Out-Null
         }
 
         # D-21 item 7
@@ -450,14 +486,14 @@ Describe "go-mapi installer round-trip" {
         }
 
         # D-21 item 9
-        It "9. MAPI handler key HKLM\SOFTWARE\Clients\Mail\go-mapi is gone" {
+        It "9. MAPI handler key HKLM\SOFTWARE\Clients\Mail\DraftHorse is gone" {
             Test-Path $script:MapiKey | Should -BeFalse
         }
 
         # ARRICKS-09: mailto registration removed with the app
         # ARRICKS-19 item 33 — autostart entry removed by uninstall.
         It "33. logon autostart Run entry is gone after uninstall" {
-            $run = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'go-mapi' -ErrorAction SilentlyContinue).'go-mapi'
+            $run = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'DraftHorse' -ErrorAction SilentlyContinue).'DraftHorse'
             $run | Should -BeNullOrEmpty
         }
 
@@ -465,29 +501,29 @@ Describe "go-mapi installer round-trip" {
         # must be removed by uninstall: the subkey deleted, and the (Default)
         # pointer cleared (it named us, so it was ours to clear).
         It "31. HKCU self-heal mirror and pointer are gone after uninstall" {
-            Test-Path 'HKCU:\Software\Clients\Mail\go-mapi' | Should -BeFalse
+            Test-Path 'HKCU:\Software\Clients\Mail\DraftHorse' | Should -BeFalse
             $ptr = (Get-ItemProperty -Path 'HKCU:\Software\Clients\Mail' -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
-            $ptr | Should -Not -Be 'go-mapi'
+            $ptr | Should -Not -Be 'DraftHorse'
         }
 
         It "27. mailto ProgID and RegisteredApplications entry are gone" {
-            Test-Path 'HKLM:\SOFTWARE\Classes\go-mapi.mailto' | Should -BeFalse
-            (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -ErrorAction SilentlyContinue).'go-mapi' |
+            Test-Path 'HKLM:\SOFTWARE\Classes\DraftHorse.mailto' | Should -BeFalse
+            (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -ErrorAction SilentlyContinue).'DraftHorse' |
                 Should -BeNullOrEmpty
         }
 
         # D-21 item 10
-        It "10. firewall rule 'go-mapi OAuth loopback' is gone" {
+        It "10. firewall rule 'DraftHorse OAuth loopback' is gone" {
             Get-NetFirewallRule -DisplayName $script:FirewallRule -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
         }
 
         # D-21 item 11
-        It "11. %APPDATA%\go-mapi\ is gone for the runner user" {
-            Test-Path "$env:APPDATA\go-mapi" | Should -BeFalse
+        It "11. %APPDATA%\DraftHorse\ is gone for the runner user" {
+            Test-Path "$env:APPDATA\DraftHorse" | Should -BeFalse
         }
 
         # D-21 item 12 — Credential Manager scrub (colon target per PATTERNS.md Shared Pattern 3)
-        It "12. cmdkey /list:go-mapi:oauth-tokens returns no matching entries" {
+        It "12. cmdkey /list:DraftHorse:oauth-tokens returns no matching entries" {
             # cmdkey prints to stdout + may use stderr depending on locale; merge streams.
             $out = & cmdkey /list:$script:CredTarget 2>&1 | Out-String
             # cmdkey output contains 'Target:' lines when an entry matches, or a
@@ -506,10 +542,10 @@ Describe "go-mapi installer round-trip" {
         }
 
         # QUICK-260423-ntu item 15 — uninstall-time running-process guard (silent)
-        It "15. silent uninstall closes a running go-mapi.exe in InstallDir and removes the binary" {
+        It "15. silent uninstall closes a running DraftHorse.exe in InstallDir and removes the binary" {
             # Re-install first because item 7 already uninstalled.
             Start-Process -FilePath $script:SetupExe -ArgumentList '/S',"/D=$($script:InstallDir)" -Wait
-            $exe = Join-Path $script:InstallDir 'go-mapi.exe'
+            $exe = Join-Path $script:InstallDir 'DraftHorse.exe'
             $decoy = Start-Process -FilePath $exe -PassThru -WindowStyle Hidden
             try {
                 Start-Sleep -Seconds 1
@@ -525,19 +561,19 @@ Describe "go-mapi installer round-trip" {
         }
 
         # QUICK-260423-ntu item 19 — x86 DLL + install dir removed by uninstall
-        It "19. ProgramFiles(x86)\go-mapi is gone after uninstall" {
+        It "19. ProgramFiles(x86)\DraftHorse is gone after uninstall" {
             $exists = Test-Path $script:InstallDir32
             if ($exists) {
                 (Get-ChildItem $script:InstallDir32 -Force -ErrorAction SilentlyContinue).Count | Should -Be 0
             }
-            Test-Path (Join-Path $script:InstallDir32 'go-mapi.dll') | Should -BeFalse
+            Test-Path (Join-Path $script:InstallDir32 'DraftHorse.dll') | Should -BeFalse
         }
 
         # QUICK-260423-ntu item 20, reworked by ARRICKS-10: Clients is a WOW64
         # shared key, so assert the 32-bit VIEW no longer resolves the client
         # key after uninstall (reg.exe /reg:32 = KEY_WOW64_32KEY).
         It "20. 32-bit registry view MAPI handler key is gone after uninstall" {
-            & reg.exe query 'HKLM\SOFTWARE\Clients\Mail\go-mapi' /reg:32 2>$null | Out-Null
+            & reg.exe query 'HKLM\SOFTWARE\Clients\Mail\DraftHorse' /reg:32 2>$null | Out-Null
             $LASTEXITCODE | Should -Not -Be 0
         }
     }

@@ -137,16 +137,16 @@ jobs:
         working-directory: src/app
         shell: pwsh
         run: |
-          $ldf = "-X main.Version=${{ steps.version.outputs.version }} -X main.aumidOverride=com.marcfargas.gomapi -X main.oauthClientID=$env:GOMAPI_OAUTH_CLIENT_ID -X main.oauthClientSecret=$env:GOMAPI_OAUTH_CLIENT_SECRET"
+          $ldf = "-X main.Version=${{ steps.version.outputs.version }} -X main.aumidOverride=com.arrickspropane.drafthorse -X main.oauthClientID=$env:GOMAPI_OAUTH_CLIENT_ID -X main.oauthClientSecret=$env:GOMAPI_OAUTH_CLIENT_SECRET"
           wails build -platform windows/amd64 -ldflags "$ldf"
 
       - name: Stage unsigned binaries
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force staged | Out-Null
-          Copy-Item src/app/build/bin/go-mapi.exe staged/
-          Copy-Item src/interceptor/build-x64/bin/go-mapi.dll staged/go-mapi-x64.dll
-          Copy-Item src/interceptor/build-x86/bin/go-mapi.dll staged/go-mapi-x86.dll
+          Copy-Item src/app/build/bin/DraftHorse.exe staged/
+          Copy-Item src/interceptor/build-x64/bin/DraftHorse.dll staged/DraftHorse-x64.dll
+          Copy-Item src/interceptor/build-x86/bin/DraftHorse.dll staged/DraftHorse-x86.dll
 
       # SignPath v2 (errata: CONTEXT D-23 referenced @v1 — PATTERNS.md §Planner-Facing
       # Correction Log entry 2 mandates @v2).
@@ -155,7 +155,7 @@ jobs:
         id: upload-binaries
         uses: actions/upload-artifact@v4
         with:
-          name: go-mapi-binaries-unsigned
+          name: DraftHorse-binaries-unsigned
           path: staged/
 
       - name: SignPath — sign binaries (pass 1 of 2)
@@ -174,9 +174,9 @@ jobs:
         if: ${{ env.HAS_SIGNPATH == 'true' }}
         shell: pwsh
         run: |
-          Copy-Item staged-signed/go-mapi.exe src/app/build/bin/go-mapi.exe -Force
-          Copy-Item staged-signed/go-mapi-x64.dll src/interceptor/build-x64/bin/go-mapi.dll -Force
-          Copy-Item staged-signed/go-mapi-x86.dll src/interceptor/build-x86/bin/go-mapi.dll -Force
+          Copy-Item staged-signed/DraftHorse.exe src/app/build/bin/DraftHorse.exe -Force
+          Copy-Item staged-signed/DraftHorse-x64.dll src/interceptor/build-x64/bin/DraftHorse.dll -Force
+          Copy-Item staged-signed/DraftHorse-x86.dll src/interceptor/build-x86/bin/DraftHorse.dll -Force
 
       - name: Install NSIS via scoop (extras bucket)
         shell: pwsh
@@ -248,9 +248,9 @@ jobs:
 
           $assets = @(
             @{ Path = '${{ steps.final.outputs.path }}';              Name = 'DraftHorse-setup.exe' }
-            @{ Path = 'src/app/build/bin/go-mapi.exe';                Name = 'go-mapi.exe' }
-            @{ Path = 'src/interceptor/build-x64/bin/go-mapi.dll';    Name = 'go-mapi-x64.dll' }
-            @{ Path = 'src/interceptor/build-x86/bin/go-mapi.dll';    Name = 'go-mapi-x86.dll' }
+            @{ Path = 'src/app/build/bin/DraftHorse.exe';                Name = 'DraftHorse.exe' }
+            @{ Path = 'src/interceptor/build-x64/bin/DraftHorse.dll';    Name = 'DraftHorse-x64.dll' }
+            @{ Path = 'src/interceptor/build-x86/bin/DraftHorse.dll';    Name = 'DraftHorse-x86.dll' }
           )
 
           $lines = foreach ($a in $assets) {
@@ -273,17 +273,17 @@ jobs:
         shell: pwsh
         run: |
           # REL-09 fix (todo 2026-04-28): the Phase 11.1 silent updater
-          # (src/app/updates_silent.go) downloads go-mapi.exe + go-mapi-x64.dll +
-          # go-mapi-x86.dll from releases/latest/download/<name>. They were never
+          # (src/app/updates_silent.go) downloads DraftHorse.exe + DraftHorse-x64.dll +
+          # DraftHorse-x86.dll from releases/latest/download/<name>. They were never
           # attached to the release until now, causing 404 on every silent run.
           # Pick the signed branch when SignPath ran, else fall back to the
           # unsigned staged/ tree. Filenames must match the SHA256SUMS.txt
           # manifest (already produced above).
           $src = if (Test-Path 'staged-signed') { 'staged-signed' } else { 'staged' }
           New-Item -ItemType Directory -Force release-bins | Out-Null
-          Copy-Item "$src/go-mapi.exe"     release-bins/
-          Copy-Item "$src/go-mapi-x64.dll" release-bins/
-          Copy-Item "$src/go-mapi-x86.dll" release-bins/
+          Copy-Item "$src/DraftHorse.exe"     release-bins/
+          Copy-Item "$src/DraftHorse-x64.dll" release-bins/
+          Copy-Item "$src/DraftHorse-x86.dll" release-bins/
           Write-Host "Staged release binaries from ${src}:"
           Get-ChildItem release-bins | ForEach-Object { Write-Host "  $($_.Name)  $($_.Length) bytes" }
 
@@ -294,9 +294,9 @@ jobs:
           files: |
             ${{ steps.final.outputs.path }}
             SHA256SUMS.txt
-            release-bins/go-mapi.exe
-            release-bins/go-mapi-x64.dll
-            release-bins/go-mapi-x86.dll
+            release-bins/DraftHorse.exe
+            release-bins/DraftHorse-x64.dll
+            release-bins/DraftHorse-x86.dll
           draft: false
           prerelease: ${{ steps.version.outputs.prerelease }}
           body_path: .github/release-template.md

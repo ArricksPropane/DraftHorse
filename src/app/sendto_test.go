@@ -19,17 +19,17 @@ import (
 func sandboxSendToSeams(t *testing.T) {
 	t.Helper()
 	origExt, origFileExts := mapiMailExtHKCUPath, mapiMailFileExtsPath
-	mapiMailExtHKCUPath = `Software\go-mapi-test\ARRICKS20\Classes\.MAPIMail`
-	mapiMailFileExtsPath = `Software\go-mapi-test\ARRICKS20\FileExts\.MAPIMail`
+	mapiMailExtHKCUPath = `Software\DraftHorse-test\ARRICKS20\Classes\.MAPIMail`
+	mapiMailFileExtsPath = `Software\DraftHorse-test\ARRICKS20\FileExts\.MAPIMail`
 	t.Cleanup(func() {
 		for _, p := range []string{
 			mapiMailFileExtsPath + `\UserChoice`,
 			mapiMailFileExtsPath,
 			mapiMailExtHKCUPath,
-			`Software\go-mapi-test\ARRICKS20\Classes`,
-			`Software\go-mapi-test\ARRICKS20\FileExts`,
-			`Software\go-mapi-test\ARRICKS20`,
-			`Software\go-mapi-test`,
+			`Software\DraftHorse-test\ARRICKS20\Classes`,
+			`Software\DraftHorse-test\ARRICKS20\FileExts`,
+			`Software\DraftHorse-test\ARRICKS20`,
+			`Software\DraftHorse-test`,
 		} {
 			_ = registry.DeleteKey(registry.CURRENT_USER, p)
 		}

@@ -3,13 +3,14 @@
 Audience: Windows / IT admins deploying DraftHorse at scale — Intune,
 managed desktops, RDS/Citrix, group policy.
 
-> DraftHorse is a hardened fork of upstream go-mapi. **Installed binary
-> and registry identifier names intentionally remain `go-mapi*`** so
-> existing go-mapi 3.x installs upgrade in place; display surfaces —
-> including the installer filename `DraftHorse-setup.exe`, Add/Remove
-> Programs, Start Menu, Default Apps, and the app UI — say DraftHorse.
-> Deployment tooling should key off the `go-mapi` identifiers throughout
-> this document.
+> DraftHorse is a hardened fork of upstream go-mapi. **As of 4.0, every
+> installed identifier is `DraftHorse`** — binaries, registry keys, data
+> paths, detection rules. (Through 3.x, identifiers were `go-mapi`; the 4.0
+> installer migrates machine scope and the app migrates per-user state
+> automatically.) Deployment tooling should key off the `DraftHorse`
+> identifiers throughout this document; if a fleet report ever shows
+> `go-mapi` keys or folders, that machine missed the 4.0 migration —
+> run the diagnostics script's stale-leftovers section.
 
 ## At a glance
 
@@ -47,7 +48,7 @@ Practical consequences for managed deployments:
 - **WDAC** policies requiring signed binaries will block the app; allow by
   hash or path until signed releases ship.
 - **AppLocker**: use Hash rules against `SHA256SUMS.txt`, or Path rules
-  anchored at `%ProgramFiles%\go-mapi\` and `%ProgramFiles(x86)%\go-mapi\`.
+  anchored at `%ProgramFiles%\DraftHorse\` and `%ProgramFiles(x86)%\DraftHorse\`.
 
 ## Install modes
 
@@ -59,29 +60,29 @@ machine-wide.
 
 File layout:
 
-- `%ProgramFiles%\go-mapi\` — app (`go-mapi.exe`), x64 MAPI DLL,
+- `%ProgramFiles%\DraftHorse\` — app (`DraftHorse.exe`), x64 MAPI DLL,
   uninstaller, diagnostics scripts
-- `%ProgramFiles(x86)%\go-mapi\` — x86 MAPI DLL (32-bit scanner software
+- `%ProgramFiles(x86)%\DraftHorse\` — x86 MAPI DLL (32-bit scanner software
   and other 32-bit MAPI callers load this one)
 
 Registry footprint (machine):
 
-- `HKLM\SOFTWARE\Clients\Mail\go-mapi` — MAPI registration. `DLLPath` is a
-  single `REG_EXPAND_SZ` value, `%ProgramFiles%\go-mapi\go-mapi.dll`;
+- `HKLM\SOFTWARE\Clients\Mail\DraftHorse` — MAPI registration. `DLLPath` is a
+  single `REG_EXPAND_SZ` value, `%ProgramFiles%\DraftHorse\DraftHorse.dll`;
   Windows expands it per caller, so 32-bit and 64-bit MAPI callers each
   load the matching DLL from ONE registration. (`SOFTWARE\Clients` is a
   WOW64 *shared* key — there is no separate WOW6432Node registration, and
   tooling should not look for one.)
-- `HKLM\SOFTWARE\Clients\Mail` `(Default)` = `go-mapi` (default MAPI client
+- `HKLM\SOFTWARE\Clients\Mail` `(Default)` = `DraftHorse` (default MAPI client
   pointer; previous value backed up and restored on uninstall)
-- `HKLM\SOFTWARE\Classes\go-mapi.mailto` — `mailto:` ProgID
-- `HKLM\SOFTWARE\Clients\Mail\go-mapi\Capabilities` +
-  `HKLM\SOFTWARE\RegisteredApplications\go-mapi` — Windows Default Apps
+- `HKLM\SOFTWARE\Classes\DraftHorse.mailto` — `mailto:` ProgID
+- `HKLM\SOFTWARE\Clients\Mail\DraftHorse\Capabilities` +
+  `HKLM\SOFTWARE\RegisteredApplications\DraftHorse` — Windows Default Apps
   registration (the app appears as **DraftHorse** in Settings > Default
   apps)
-- `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi` —
+- `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\DraftHorse` —
   Add/Remove Programs (DisplayName: DraftHorse)
-- `HKLM\Software\Microsoft\Windows\CurrentVersion\Run` value `go-mapi` —
+- `HKLM\Software\Microsoft\Windows\CurrentVersion\Run` value `DraftHorse` —
   logon autostart (all users). The queue watcher and the default-mail
   guard only work while the tray app runs; the installer also relaunches
   the app immediately after interactive installs (SYSTEM-context pushes
@@ -89,21 +90,21 @@ Registry footprint (machine):
 
 Registry footprint (per user, written by the app at runtime):
 
-- `HKCU\Software\Clients\Mail\go-mapi` (+ the HKCU `(Default)` pointer) —
+- `HKCU\Software\Clients\Mail\DraftHorse` (+ the HKCU `(Default)` pointer) —
   written **only** if the app's default-mail guard detects that another
   product has stolen the machine-wide MAPI default (see *Default-mail
   self-healing* below). The uninstaller removes the uninstalling user's
   copy.
 
 The installer backs up the previous default mail client name to
-`%ProgramData%\go-mapi\uninst\previous-mail-client.json` and restores it on
+`%ProgramData%\DraftHorse\uninst\previous-mail-client.json` and restores it on
 uninstall. The uninstaller also removes the legacy upstream
-`go-mapi Auto Update` Scheduled Task if a pre-fork install left one behind.
+`DraftHorse Auto Update` Scheduled Task if a pre-fork install left one behind.
 
 ## Default-mail self-healing (fleet-relevant behavior)
 
 Every hour (and at startup), the running app checks that
-`Clients\Mail (Default)` still resolves to `go-mapi`. If another installer
+`Clients\Mail (Default)` still resolves to `DraftHorse`. If another installer
 (commonly Outlook) has claimed the default, the app re-claims it for the
 **current user** by writing an unelevated per-user override at
 `HKCU\Software\Clients\Mail`. This keeps scanner scan-to-email working
@@ -113,7 +114,7 @@ Plan for this on machines where users legitimately run another Simple MAPI
 mail client: with DraftHorse installed and running, DraftHorse **will** win
 the MAPI default for that user within the hour. If a host needs a different
 default client, don't deploy DraftHorse to it (or stop the tray app).
-Repairs are logged to `%APPDATA%\go-mapi\app.log`.
+Repairs are logged to `%APPDATA%\DraftHorse\app.log`.
 
 ## mailto: default (Settings > Default apps)
 
@@ -129,7 +130,7 @@ allow apps to set themselves as the mailto default programmatically
   Configuration (or DISM `/Import-DefaultAppAssociations` for imaged
   hosts).
 
-A mailto click runs `go-mapi.exe --mailto "%1"`, which opens Gmail web
+A mailto click runs `DraftHorse.exe --mailto "%1"`, which opens Gmail web
 compose prefilled from the link and exits. No draft API call, no stored
 credentials involved.
 
@@ -137,7 +138,7 @@ credentials involved.
 
 After a draft is created, DraftHorse opens it in **its own isolated browser
 window** — Edge (or Chrome) launched with a private profile directory at
-`%LOCALAPPDATA%\go-mapi\browser-profile` — rather than the user's default
+`%LOCALAPPDATA%\DraftHorse\browser-profile` — rather than the user's default
 browser. This is deliberate for the delegated-mailbox fleet model: the app
 is signed into the *location* account, while staff browsers are signed in
 as the staff member (the location mailbox is only reachable there through
@@ -170,7 +171,7 @@ locations regardless of `/D`, because the MAPI registration resolves
 there):
 
 ```
-DraftHorse-setup.exe /S /D=C:\Program Files\go-mapi
+DraftHorse-setup.exe /S /D=C:\Program Files\DraftHorse
 ```
 
 The installer is idempotent — running it over an existing install upgrades
@@ -180,13 +181,13 @@ The legacy `/AUTOUPDATE=1` flag is accepted and ignored.
 ### Exit codes
 
 NSIS conventions: `0` success, `1` user/interactive cancel, `2` runtime
-failure (including `go-mapi.exe` still running after the 10-second
+failure (including `DraftHorse.exe` still running after the 10-second
 graceful-close poll on silent installs). Treat any non-zero exit as
 failure.
 
 ### Detection rule (Intune / SCCM)
 
-Key: `HKLM\SOFTWARE\Clients\Mail\go-mapi`, value `DLLPath` exists.
+Key: `HKLM\SOFTWARE\Clients\Mail\DraftHorse`, value `DLLPath` exists.
 (The Uninstall key also works; the Clients\Mail key is the one that
 actually makes the product functional, so it is the better health signal.)
 
@@ -202,7 +203,7 @@ In-place upgrade over a running app is supported (the installer closes
 the tray app gracefully, with a silent-mode retry window).
 
 To disable even the update *check* per user, untick "Check for updates"
-in the tray menu (persisted per user in `%APPDATA%\go-mapi\settings.json`).
+in the tray menu (persisted per user in `%APPDATA%\DraftHorse\settings.json`).
 
 ## Verify download integrity
 
@@ -242,12 +243,12 @@ If you filter outbound traffic, allow exactly these:
 > reached via `www.googleapis.com`.
 
 No telemetry. No content retention. Email content is never stored outside
-Gmail's own API; queued messages transit `%LOCALAPPDATA%\go-mapi\queue\`
+Gmail's own API; queued messages transit `%LOCALAPPDATA%\DraftHorse\queue\`
 on the local machine only, and attachments are constrained to that
 directory by validation.
 
 Credential storage: per-user OAuth tokens in Windows Credential Manager
-(target `go-mapi:oauth-tokens`, DPAPI-scoped). OAuth scopes:
+(target `DraftHorse:oauth-tokens`, DPAPI-scoped). OAuth scopes:
 `gmail.compose` (create drafts), `gmail.settings.basic` (reads the
 account's signature so drafts carry it — the only settings call made),
 and basic profile. The app cannot send, delete, or read mail.
@@ -261,16 +262,16 @@ and basic profile. The app cannot send, delete, or read mail.
 
 Sign-in opens a short-lived loopback listener on `127.0.0.1` (ephemeral
 port). The installer creates a program-scoped inbound allow rule named
-`go-mapi OAuth loopback` for `%ProgramFiles%\go-mapi\go-mapi.exe` to
+`DraftHorse OAuth loopback` for `%ProgramFiles%\DraftHorse\DraftHorse.exe` to
 suppress the first-bind consent prompt. If GPO blocks the installer's
 `netsh` write, pre-create an identical rule via policy:
 
 ```powershell
 New-NetFirewallRule `
-  -DisplayName "go-mapi OAuth loopback" `
+  -DisplayName "DraftHorse OAuth loopback" `
   -Direction Inbound `
   -Action Allow `
-  -Program "$env:ProgramFiles\go-mapi\go-mapi.exe" `
+  -Program "$env:ProgramFiles\DraftHorse\DraftHorse.exe" `
   -Profile Any
 ```
 
@@ -289,12 +290,12 @@ The uninstaller scrubs the uninstalling user's profile and all
 machine-wide locations. It does **not** enumerate other user profiles.
 Per-user residue after uninstall (harmless — see below):
 
-- `%APPDATA%\go-mapi\` (settings, log)
-- `%LOCALAPPDATA%\go-mapi\browser-profile\` (dedicated browser profile —
+- `%APPDATA%\DraftHorse\` (settings, log)
+- `%LOCALAPPDATA%\DraftHorse\browser-profile\` (dedicated browser profile —
   holds the location account's Google session; clear it for non-uninstalling
   users if policy requires)
-- Credential Manager target `go-mapi:oauth-tokens` (DPAPI-scoped)
-- `HKCU\Software\Clients\Mail\go-mapi` for users other than the
+- Credential Manager target `DraftHorse:oauth-tokens` (DPAPI-scoped)
+- `HKCU\Software\Clients\Mail\DraftHorse` for users other than the
   uninstalling one, if the default-mail guard ever self-healed in their
   session
 
@@ -304,11 +305,11 @@ dangling pointer Windows ignores. If policy requires cleanup anyway, run
 per user at logon:
 
 ```powershell
-Remove-Item -Recurse -Force "$env:APPDATA\go-mapi" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "$env:LOCALAPPDATA\go-mapi\browser-profile" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "HKCU:\Software\Clients\Mail\go-mapi" -ErrorAction SilentlyContinue
-cmdkey /list:go-mapi:oauth-tokens 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) { cmdkey /delete:go-mapi:oauth-tokens | Out-Null }
+Remove-Item -Recurse -Force "$env:APPDATA\DraftHorse" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\DraftHorse\browser-profile" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "HKCU:\Software\Clients\Mail\DraftHorse" -ErrorAction SilentlyContinue
+cmdkey /list:DraftHorse:oauth-tokens 2>$null | Out-Null
+if ($LASTEXITCODE -eq 0) { cmdkey /delete:DraftHorse:oauth-tokens | Out-Null }
 ```
 
 ### No MSI

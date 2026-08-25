@@ -1,38 +1,38 @@
 # scripts/register-dev-aumid.ps1
-# Registers a HKCU Start Menu shortcut for go-mapi dev builds with AUMID
-# "com.marcfargas.gomapi.dev" so toast notifications during `wails dev` persist
+# Registers a HKCU Start Menu shortcut for DraftHorse dev builds with AUMID
+# "com.arrickspropane.drafthorse.dev" so toast notifications during `wails dev` persist
 # in Windows Action Center.
 #
 # Idempotent: running twice is a no-op (skip-if-exists). Safe to re-run after
 # every git pull. Re-run with -Force to recreate the shortcut.
 #
 # Phase 10 (INST-04) will ship the prod equivalent via the NSIS installer with:
-#   - AUMID: com.marcfargas.gomapi (no .dev suffix)
-#   - Shortcut path: %ProgramFiles%\go-mapi\go-mapi.lnk
+#   - AUMID: com.arrickspropane.drafthorse (no .dev suffix)
+#   - Shortcut path: %ProgramFiles%\DraftHorse\DraftHorse.lnk
 #   - Registration: NSIS installer (not PowerShell).
 #
 # Usage:
 #   .\scripts\register-dev-aumid.ps1
-#   .\scripts\register-dev-aumid.ps1 -ExePath 'C:\path\to\go-mapi.exe'
+#   .\scripts\register-dev-aumid.ps1 -ExePath 'C:\path\to\DraftHorse.exe'
 #   .\scripts\register-dev-aumid.ps1 -Force  # recreate even if shortcut exists
 
 [CmdletBinding()]
 param(
-    [string]$Aumid   = 'com.marcfargas.gomapi.dev',
-    [string]$Name    = 'go-mapi (dev)',
-    [string]$ExePath,                  # absolute path to go-mapi.exe; defaults below
+    [string]$Aumid   = 'com.arrickspropane.drafthorse.dev',
+    [string]$Name    = 'DraftHorse (dev)',
+    [string]$ExePath,                  # absolute path to DraftHorse.exe; defaults below
     [switch]$Force                     # recreate shortcut even if it already exists
 )
 
 $ErrorActionPreference = 'Stop'
 
 if (-not $ExePath) {
-    # Default: src/app/build/bin/go-mapi.exe relative to repo root.
+    # Default: src/app/build/bin/DraftHorse.exe relative to repo root.
     $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-    $ExePath  = Join-Path $repoRoot 'src\app\build\bin\go-mapi.exe'
+    $ExePath  = Join-Path $repoRoot 'src\app\build\bin\DraftHorse.exe'
 }
 if (-not (Test-Path -LiteralPath $ExePath)) {
-    Write-Warning "go-mapi.exe not found at $ExePath"
+    Write-Warning "DraftHorse.exe not found at $ExePath"
     Write-Warning 'Run `wails build` first, or pass -ExePath explicitly.'
     # Still proceed: the shortcut can point to a not-yet-existing path;
     # wails build will place the binary there before the next dev session.
@@ -53,7 +53,7 @@ $wsh = New-Object -ComObject WScript.Shell
 $sc  = $wsh.CreateShortcut($lnkPath)
 $sc.TargetPath       = $ExePath
 $sc.WorkingDirectory = Split-Path $ExePath -Parent
-$sc.Description      = 'go-mapi (dev) — MAPI-to-Gmail bridge'
+$sc.Description      = 'DraftHorse (dev) — MAPI-to-Gmail bridge'
 $sc.Save()
 [System.Runtime.InteropServices.Marshal]::ReleaseComObject($wsh) | Out-Null
 
