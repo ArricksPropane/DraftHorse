@@ -202,6 +202,13 @@ func (a *App) startup(ctx context.Context) {
 	// (set above) for its ticker goroutine.
 	a.startDefaultMailGuard()
 
+	// ARRICKS-29: fetch the signature once, now, on its own goroutine. A
+	// grant that predates gmail.settings.basic is reported at startup
+	// instead of after the user has already sent an unsigned draft, and the
+	// first scan of the day no longer pays the fetch latency. Never blocks
+	// startup and never fails it — see primeSignatureCache.
+	go a.primeSignatureCache(a.shutdownCtx)
+
 	// Phase 9: start automode goroutine. Gated on mode + paused at drain time.
 	// Wire pruneBacklogSkip after every queue-update emit (D-10: backlog cleanup).
 	if a.bridge != nil {

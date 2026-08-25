@@ -137,6 +137,17 @@ func (a *App) onTrayReady() {
 		a.isDraftBrowserDedicated(),
 	)
 
+	// ARRICKS-29: the signature-scope warning row. Hidden unless a fetch has
+	// actually returned 403, so a healthy install never sees it. Same
+	// Show/Hide pattern as mDownload below — the row is created once and
+	// toggled from the refresh branch, never rebuilt (systray cannot remove
+	// items, and rebuilding the menu would drop every ClickedCh subscriber).
+	mSignatureScope := systray.AddMenuItem(
+		"Signature missing — sign out and back in",
+		"This PC's sign-in predates the signature permission. Signing out and back in once restores signatures on new drafts.",
+	)
+	mSignatureScope.Hide()
+
 	// Phase 11 — update status rows + actions (D-05, D-06, D-07).
 	// Placement: between Pause and Quit, with a separator above and below to
 	// visually group "update" as a distinct section.
@@ -167,7 +178,7 @@ func (a *App) onTrayReady() {
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit", "Exit DraftHorse")
 
-	logInfo("tray ready: menu items registered (Show, Pause watching, open-drafts toggle, update status + toggle + check-now, Quit)")
+	logInfo("tray ready: menu items registered (Show, Pause watching, open-drafts toggle, signature warning, update status + toggle + check-now, Quit)")
 
 	go func() {
 		for {
@@ -210,6 +221,13 @@ func (a *App) onTrayReady() {
 				} else {
 					mDedicatedBrowser.Uncheck()
 				}
+			case <-mSignatureScope.ClickedCh:
+				// ARRICKS-29: open the main window, where sign-out lives.
+				// Deliberately NOT a one-click sign-out: revoking the token
+				// from a tray row would strand a user mid-drain with no
+				// warning, and the fix is only worth doing when they can
+				// immediately sign back in.
+				a.showWindow()
 			case <-mToggleUpdates.ClickedCh:
 				// Flip the opt-out flag. setUpdateChecksEnabled writes through the
 				// App settings path (D-05 — no second persistence path) and signals
@@ -268,6 +286,14 @@ func (a *App) onTrayReady() {
 					mDownload.Show()
 				} else {
 					mDownload.Hide()
+				}
+				// ARRICKS-29: surface (or clear) the signature-scope warning.
+				// Clears on its own after a sign-out/in because
+				// resetSignatureCache drops the flag.
+				if a.signatureScopeMissing() {
+					mSignatureScope.Show()
+				} else {
+					mSignatureScope.Hide()
 				}
 			case <-a.shutdownCtx.Done():
 				return

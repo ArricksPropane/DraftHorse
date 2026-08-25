@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -265,6 +266,21 @@ type SendAsEntry struct {
 	Signature   string `json:"signature"`
 }
 
+// ErrSignatureScopeMissing marks the one signature-fetch failure a user can
+// actually fix (ARRICKS-29). A Gmail 403 on settings/sendAs means the stored
+// grant predates the gmail.settings.basic scope added in 3.8.0.
+//
+// The trap it exists to surface: refreshing an OAuth token returns the scopes
+// the grant was ORIGINALLY issued with. Upgrading the binary never widens an
+// existing grant, so a machine that signed in on 3.6.x keeps producing unsigned
+// drafts forever, silently, no matter how many times it updates. Only a fresh
+// authorization (sign out, sign in) fixes it. Validated 2026-08-25 on a
+// scanner PC that had been shipping unsigned drafts for a day.
+//
+// Callers match with errors.Is and tell the user; every OTHER fetch failure
+// stays an anonymous transient error that simply retries on the next draft.
+var ErrSignatureScopeMissing = errors.New("signature scope missing")
+
 // GetPrimarySignature fetches the account's default sendAs signature.
 // Requires the gmail.settings.basic scope (ARRICKS-24); a token from a
 // pre-3.8 sign-in returns 403 until the user re-consents — callers treat
@@ -286,7 +302,9 @@ func (gc *GmailClient) GetPrimarySignature() (string, error) {
 		return "", fmt.Errorf("token expired")
 	}
 	if resp.StatusCode == 403 {
-		return "", fmt.Errorf("signature fetch forbidden — sign out and back in once to grant the settings-read permission added in 3.8")
+		// Wrapped, not replaced: the message is what lands in app.log and it
+		// already states the remedy. The sentinel is what the app matches on.
+		return "", fmt.Errorf("signature fetch forbidden — sign out and back in once to grant the settings-read permission added in 3.8: %w", ErrSignatureScopeMissing)
 	}
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)

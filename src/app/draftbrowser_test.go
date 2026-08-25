@@ -21,11 +21,16 @@ func TestDedicatedBrowserArgs(t *testing.T) {
 		`--user-data-dir=C:\Users\x\AppData\Local\go-mapi\browser-profile`,
 		"--no-first-run",
 		"--no-default-browser-check",
-		"--new-window",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("args missing %q: %v", want, args)
 		}
+	}
+	// ARRICKS-28: --new-window must STAY out. With it, Chromium's singleton
+	// handoff opens a brand-new window per scan instead of reusing the
+	// profile's existing one. This assertion is the regression guard.
+	if strings.Contains(joined, "--new-window") {
+		t.Errorf("--new-window must not be passed (ARRICKS-28 window reuse): %v", args)
 	}
 	if args[len(args)-1] != "https://accounts.google.com/AccountChooser?x=1" {
 		t.Errorf("URL must be the final argument, got %v", args)

@@ -27,7 +27,28 @@ toggle, default on) — the fleet uses delegated per-location mailboxes, so the
 user's own browser session is the wrong account by design; IT signs the
 dedicated profile into the location account once. Falls back to the default
 browser when no Edge/Chrome exists. Do NOT bundle a browser (size, patching,
-Google blocks sign-in in embedded WebViews).
+Google blocks sign-in in embedded WebViews). **ARRICKS-28:** `--new-window` is
+deliberately NOT passed — Chromium's profile singleton then reuses the existing
+window (new tab, window raised) instead of stacking one window per scan. Tabs
+accumulate inside that window; closing them would need a CDP debug port on the
+profile holding the location mailbox's cookies, which was considered and
+rejected.
+
+Toast XML is validated before it reaches XmlLite (ARRICKS-30,
+`src/app/toast_shim_windows.go`). **Every arrival toast in every log we have
+(back to 3.0.1-arricks.1) died at `LoadXml HRESULT 0xc00ce50d`** — so the
+manual-mode "Create draft" button has never appeared on any machine. What
+isolates it: the arrival toast is the only one carrying a raw ampersand
+(`launch="action=open&emailId=..."`), and the success/error/summary toasts use
+a bare `action=open` and get all the way to `put_Tag`. Apparent intermittency
+in the logs is `emitArrivalToast`'s early return when the window is visible or
+the app is paused — those toasts were never attempted. The builder now renders,
+checks the result parses, and re-renders with escaped fields only if it does
+not. CI's first run of the new tests pinned down the template's behavior
+empirically: it escapes TEXT NODES (Title, Body) itself but leaves ATTRIBUTE
+values raw — so the escape pass touches only the attribute-bound fields
+(launch/arguments/icon); escaping Title or Body double-escapes into a literal
+`&amp;` on screen.
 
 A default-mail guard (ARRICKS-13, `src/app/defaultmail.go`) checks at startup
 and hourly that the Simple MAPI default still resolves to this app, and
@@ -61,8 +82,10 @@ DraftHorse copy in `PreAuthModal.svelte`.
 makes us independent of a single upstream maintainer.
 
 **Primary use case: scanner "Scan to Email."** ScanSnap and Epson document
-scanners on ~12 Windows 11 PCs, Google Workspace tenant `arrickspropane.com`.
-When judging any change, ask what it does to a scan-to-email workflow first.
+scanners, Google Workspace tenant `arrickspropane.com`. Currently **4 instances
+deployed for testing**; the Intune rollout target is **~40 Windows 11 PCs**.
+When judging any change, ask what it does to a scan-to-email workflow first —
+and remember that a defect ships to ~40 machines, but only 4 can catch it now.
 
 ## Architecture
 
@@ -115,6 +138,17 @@ These encode decisions that cost real analysis. Do not undo them casually.
    to **Internal** user type — that is what bounds exposure of the client
    secret baked into the binary. The GCP OAuth client's scope list must
    include settings.basic or consent fails.
+
+   **Adding a scope does not widen existing grants.** Refreshing a token
+   returns the scopes the grant was originally issued with, so a machine that
+   signed in on an older build keeps getting 403s forever, no matter how many
+   times it updates. Only a fresh authorization (sign out, sign in) fixes it.
+   This cost a day of silently unsigned drafts on a scanner PC in August 2026.
+   ARRICKS-29 makes it self-reporting: a 403 on settings/sendAs now raises a
+   tray row and one toast telling the user to sign out and back in, and the
+   signature is fetched at startup so the warning appears before the first
+   bad draft rather than after. **If you ever add another scope, the rollout
+   step is a sign-out/in on every already-deployed machine.**
 7. **Never log email bodies, subjects, or recipient addresses.** `logging.go`
    states this contract; upstream honors it and so do we.
 

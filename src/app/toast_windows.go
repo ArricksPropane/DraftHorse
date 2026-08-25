@@ -186,6 +186,32 @@ func emitSummaryInvalidGrantToast(_ *App) {
 	}
 }
 
+// emitSignatureScopeToast fires the ARRICKS-29 one-shot: the stored OAuth
+// grant predates gmail.settings.basic, so every draft this session ships
+// unsigned until the user re-authorizes.
+//
+// Treated as an error-class toast (fires regardless of window state, D-11):
+// it reports work that already came out wrong, and the tray row is the only
+// other surface. draftSignature guarantees it fires at most once per session
+// — a backlog drain must not produce one toast per queued email.
+//
+// No action buttons: sign-out lives in the main window, and a toast button
+// that silently revoked the user's session would be a worse surprise than
+// the missing signature. Clicking the toast opens the window.
+func emitSignatureScopeToast(_ *App) {
+	n := toast.Notification{
+		AppID:               activeAUMID(),
+		Title:               toastCopySignatureScopeTitle,
+		Body:                toastCopySignatureScopeBody,
+		Icon:                toastIconPath(mustExePath()),
+		ActivationType:      toast.Foreground,
+		ActivationArguments: "action=open",
+	}
+	if err := shimPushWithTagGroup(activeAUMID(), n, "signature:scope-missing", toastGroup); err != nil {
+		logError("toast: signature-scope push failed: %v", err)
+	}
+}
+
 // clearToastForEmail removes the toast(s) associated with a processed email
 // from Action Center (NOTIF-05). Called after MarkProcessed / Delete.
 // Clears the arrival toast (tag = emailID) and the error toast (tag = emailID+":err").

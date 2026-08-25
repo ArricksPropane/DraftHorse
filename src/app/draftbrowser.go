@@ -45,15 +45,29 @@ func dedicatedBrowserProfileDir() string {
 }
 
 // dedicatedBrowserArgs is the pure argument builder (tested). --no-first-run
-// and --no-default-browser-check suppress the fresh-profile onboarding
-// pages; --new-window keeps the draft out of any existing window of the
-// same profile instance.
+// and --no-default-browser-check suppress the fresh-profile onboarding pages.
+//
+// ARRICKS-28: --new-window is deliberately ABSENT (it was here through
+// ARRICKS-21..27). Chromium treats a profile as a singleton: launching a
+// second time with the same --user-data-dir hands the URL to the already-
+// running instance instead of starting a new browser. With --new-window that
+// handoff spawned a fresh window per scan, so a day of scanning buried the
+// desktop in Gmail windows. Without it, the URL opens as a tab in the profile's
+// existing window and Chromium raises that window to the foreground — one
+// window, correct account, and the tab is still a fresh server fetch of the
+// Drafts list (the ARRICKS-27 requirement: a raised-but-unreloaded tab would
+// show the PRE-scan list and hide the very draft we just made).
+//
+// Tabs still accumulate inside that one window. Closing them would require
+// driving the browser over CDP (--remote-debugging-port), which means an
+// unauthenticated local debug port on the profile holding the location
+// mailbox's session cookies — explicitly rejected 2026-08-25. One window with
+// several tabs is the accepted trade.
 func dedicatedBrowserArgs(profileDir, url string) []string {
 	return []string{
 		"--user-data-dir=" + profileDir,
 		"--no-first-run",
 		"--no-default-browser-check",
-		"--new-window",
 		url,
 	}
 }
