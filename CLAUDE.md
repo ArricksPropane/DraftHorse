@@ -50,6 +50,18 @@ values raw — so the escape pass touches only the attribute-bound fields
 (launch/arguments/icon); escaping Title or Body double-escapes into a literal
 `&amp;` on screen.
 
+Two Gmail accounts (V4 Phase 2, docs/V4-PLAN.md): both stay signed in; ONE is
+active and every scan drafts to it. The chooser is radio rows in the tray and
+a switcher in the window — never a prompt in the scan flow (Dave's explicit
+model). Per-slot state: credential entries (`oauth-tokens` / `oauth-tokens-2`
+under the `DraftHorse` service), signature caches + ARRICKS-29 scope flags,
+and — critically — dedicated browser profiles (`browser-profile`,
+`browser-profile-2`): the `/u/0` drafts URL is only correct because a profile
+holds exactly ONE Google session; never let two accounts share a profile.
+Slot 0 keeps the pre-V4 paths so migration and IT's signed-in profile carry
+over untouched. The active manager is pinned per Gmail call; a mid-drain
+switch is a documented benign race (see the accounts section in auth.go).
+
 A default-mail guard (ARRICKS-13, `src/app/defaultmail.go`) checks at startup
 and hourly that the Simple MAPI default still resolves to this app, and
 self-heals a stolen default through an unelevated HKCU mirror (the stub reads

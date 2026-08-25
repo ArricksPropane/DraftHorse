@@ -134,6 +134,20 @@ A mailto click runs `DraftHorse.exe --mailto "%1"`, which opens Gmail web
 compose prefilled from the link and exits. No draft API call, no stored
 credentials involved.
 
+## Two accounts per machine (4.0)
+
+DraftHorse holds up to **two** signed-in Gmail accounts. Exactly one is
+**active** — every scan drafts to it. The user switches from the tray
+("Draft to: …" radio rows) or the in-app switcher; nothing prompts during a
+scan. Tokens are stored as two Credential Manager entries under the
+`DraftHorse` service (`oauth-tokens`, `oauth-tokens-2`).
+
+Runbook: each signed-in account needs its OWN dedicated browser profile
+signed in once by IT — `browser-profile` for account 1, `browser-profile-2`
+for account 2 (see below for why they must never share one). Adding a second
+account = "Sign in" on its slot in the app + one sign-in in the second
+profile window when the first draft opens.
+
 ## Opening drafts: the dedicated browser profile
 
 After a draft is created, DraftHorse opens it in **its own isolated browser

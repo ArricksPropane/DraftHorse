@@ -11,6 +11,11 @@ vi.mock('../../wailsjs/go/main/App', () => ({
   GetAuthStatus: vi.fn(),
   SignIn: vi.fn(),
   SignOut: vi.fn(),
+  // V4 two-account bindings
+  GetAccounts: vi.fn(),
+  SetActiveAccount: vi.fn(),
+  SignInAccount: vi.fn(),
+  SignOutAccount: vi.fn(),
 }));
 vi.mock('../../wailsjs/runtime/runtime', () => ({
   EventsOn: vi.fn(() => () => {}),
