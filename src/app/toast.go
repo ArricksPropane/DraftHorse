@@ -27,6 +27,12 @@ const (
 	toastCopyDraftFailedNetwork   = "Draft failed — Network error"
 	toastCopyDraftFailedGmail     = "Draft failed — Gmail error"
 	toastCopySummaryInvalidGrant  = "Sign-in expired — emails queued for manual review"
+
+	// ARRICKS-29. Deliberately states the remedy, not the cause: "your
+	// sign-in predates the signature permission" means nothing to the person
+	// at the scanner. Sign out, sign in — that is the whole fix.
+	toastCopySignatureScopeTitle = "DraftHorse: signature missing from drafts"
+	toastCopySignatureScopeBody  = "Sign out and back in once to restore your Gmail signature."
 )
 
 // toastErrorCopy maps a Plan 03 errorCategory to user-facing error text.

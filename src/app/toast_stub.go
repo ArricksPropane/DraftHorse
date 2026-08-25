@@ -12,4 +12,5 @@ func emitArrivalToast(_ *App, _ mapi.EmailWithId)       {}
 func emitDraftSuccessToast(_ *App, _, _ string)         {}
 func emitErrorToast(_ *App, _, _ string)                {}
 func emitSummaryInvalidGrantToast(_ *App)               {}
+func emitSignatureScopeToast(_ *App)                    {}
 func clearToastForEmail(_ string)                       {}
