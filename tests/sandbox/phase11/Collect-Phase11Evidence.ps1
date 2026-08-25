@@ -5,10 +5,10 @@
 # persists - that's the whole point of the .wsb MappedFolders block).
 #
 # Responsibilities:
-#   - Copy %APPDATA%\go-mapi\app.log into the evidence directory (captures
+#   - Copy %APPDATA%\DraftHorse\app.log into the evidence directory (captures
 #     OAuth/queue/Gmail activity the human performed during the manual tail).
-#   - Copy %LOCALAPPDATA%\go-mapi\*.log if present.
-#   - Snapshot the MAPI JSON staging dir (%TEMP%\go-mapi\) before the app
+#   - Copy %LOCALAPPDATA%\DraftHorse\*.log if present.
+#   - Snapshot the MAPI JSON staging dir (%TEMP%\DraftHorse\) before the app
 #     deletes processed files - useful if the draft step failed.
 #   - Dump installer/uninstaller logs from %TEMP%.
 #   - Write a final evidence-manifest.json listing every file collected with
@@ -84,11 +84,11 @@ Write-Host "[collect] Evidence directory: $EvidenceDir"
 $logsDir = Join-Path $EvidenceDir 'logs'
 New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
 
-Copy-IfExists -Src "$env:APPDATA\go-mapi\app.log"      -DestDir $logsDir -Label 'app.log'
-Copy-IfExists -Src "$env:LOCALAPPDATA\go-mapi"         -DestDir $logsDir -Label 'LocalAppData\go-mapi'
-Copy-IfExists -Src "$env:TEMP\go-mapi"                 -DestDir $logsDir -Label 'TEMP\go-mapi (MAPI JSON staging)'
-Copy-IfExists -Src "$env:TEMP\nsis-uninst-go-mapi.log" -DestDir $logsDir -Label 'NSIS uninstall log'
-Copy-IfExists -Src "$env:TEMP\nsis-install-go-mapi.log" -DestDir $logsDir -Label 'NSIS install log'
+Copy-IfExists -Src "$env:APPDATA\DraftHorse\app.log"      -DestDir $logsDir -Label 'app.log'
+Copy-IfExists -Src "$env:LOCALAPPDATA\DraftHorse"         -DestDir $logsDir -Label 'LocalAppData\DraftHorse'
+Copy-IfExists -Src "$env:TEMP\DraftHorse"                 -DestDir $logsDir -Label 'TEMP\DraftHorse (MAPI JSON staging)'
+Copy-IfExists -Src "$env:TEMP\nsis-uninst-DraftHorse.log" -DestDir $logsDir -Label 'NSIS uninstall log'
+Copy-IfExists -Src "$env:TEMP\nsis-install-DraftHorse.log" -DestDir $logsDir -Label 'NSIS install log'
 
 New-EvidenceManifest -EvidenceDir $EvidenceDir
 

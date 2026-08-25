@@ -24,7 +24,7 @@ std::wstring FsUtils::GetBaseQueueDir() {
     if (!result.empty() && result.back() != L'\\') {
         result += L'\\';
     }
-    result += L"go-mapi\\queue";
+    result += L"DraftHorse\\queue";
     return result;
 }
 
@@ -43,7 +43,7 @@ bool FsUtils::EnsureOutputDirectory() {
     }
 
     // SHCreateDirectoryExW handles nested creation (creates the parent
-    // %LOCALAPPDATA%\go-mapi too if needed).
+    // %LOCALAPPDATA%\DraftHorse too if needed).
     // ERROR_ALREADY_EXISTS / ERROR_FILE_EXISTS are success cases.
     int rc = SHCreateDirectoryExW(nullptr, queueDir.c_str(), nullptr);
     if (rc != ERROR_SUCCESS && rc != ERROR_ALREADY_EXISTS && rc != ERROR_FILE_EXISTS) {
@@ -94,7 +94,7 @@ std::wstring FsUtils::GenerateUniqueFilename() {
 }
 
 std::wstring FsUtils::GetAttachmentsDirForStem(const std::wstring& stem) {
-    // Sibling of the JSON file: %LOCALAPPDATA%\go-mapi\queue\<stem>
+    // Sibling of the JSON file: %LOCALAPPDATA%\DraftHorse\queue\<stem>
     // (no trailing separator — callers append the basename themselves).
     std::wstring base = GetBaseQueueDir();
     if (base.empty()) return L"";

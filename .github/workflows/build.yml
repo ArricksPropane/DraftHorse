@@ -55,7 +55,7 @@ jobs:
 
       - name: Run Test Harness
         working-directory: src/interceptor
-        run: .\build-x64\bin\go-mapi-test-harness.exe .\build-x64\bin\go-mapi.dll
+        run: .\build-x64\bin\go-mapi-test-harness.exe .\build-x64\bin\DraftHorse.dll
         continue-on-error: true
 
       - name: Run C++ Unit Tests (doctest via ctest)
@@ -65,14 +65,14 @@ jobs:
       - name: Upload DLL Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: go-mapi-dll-${{ matrix.config }}
-          path: src/interceptor/build-x64/bin/go-mapi.dll
+          name: DraftHorse-dll-${{ matrix.config }}
+          path: src/interceptor/build-x64/bin/DraftHorse.dll
           if-no-files-found: warn
 
       - name: Upload Test Harness Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: go-mapi-tests-${{ matrix.config }}
+          name: DraftHorse-tests-${{ matrix.config }}
           path: src/interceptor/build-x64/bin/go-mapi-test-harness.exe
           if-no-files-found: warn
 
@@ -147,6 +147,6 @@ jobs:
       - name: Upload Wails app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: go-mapi-wails-app
+          name: DraftHorse-wails-app
           path: src/app/build/bin/
           if-no-files-found: warn

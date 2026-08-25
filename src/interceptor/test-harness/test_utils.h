@@ -7,7 +7,7 @@
 
 namespace mapi_test {
 
-// Test utilities for loading and testing the go-mapi DLL
+// Test utilities for loading and testing the DraftHorse DLL
 
 // Function pointer type for MAPISendMail
 typedef ULONG (WINAPI *MAPISendMailFunc)(
@@ -20,7 +20,7 @@ typedef ULONG (WINAPI *MAPISendMailFunc)(
 
 class TestUtilities {
 public:
-    // Load the go-mapi.dll and get the function pointer
+    // Load the DraftHorse.dll and get the function pointer
     static MAPISendMailFunc LoadMAPISendMail(const std::string& dllPath);
 
     // Verify a JSON file was created in the temp directory
@@ -32,7 +32,7 @@ public:
     // Clean up test files
     static void CleanupTestFiles(const std::string& tempDir);
 
-    // Get the go-mapi temp directory
+    // Get the DraftHorse temp directory
     static std::string GetGoMapiTempDir();
 
     // Print test result

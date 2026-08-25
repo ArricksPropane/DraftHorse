@@ -19,7 +19,7 @@ isn't available.
   PowerShell 5.1 will parse but the harness uses `-raw` JSON output from
   `wsb` which is easier to handle in pwsh.
 - **Clone location:** the committed `sandbox.wsb` config assumes the repo
-  lives at `C:\dev\go-mapi` (marcwin convention). If your clone is
+  lives at `C:\dev\DraftHorse` (marcwin convention). If your clone is
   elsewhere, edit `<HostFolder>` in `sandbox.wsb` before running the
   harness. The `run-sandbox-test.ps1` orchestrator does NOT use the
   `.wsb` file directly — it dynamically shares `$PSScriptRoot | Split-Path | Split-Path`
@@ -37,7 +37,7 @@ pwsh tests\sandbox\run-sandbox-test.ps1 -RegistrationOnly
 ```
 
 Runs `test-dll-registration.ps1` inside the sandbox. Asserts that the DLL
-exists, the `HKLM\SOFTWARE\Clients\Mail\go-mapi` key can be written, and
+exists, the `HKLM\SOFTWARE\Clients\Mail\DraftHorse` key can be written, and
 the default Mail client is correctly set. This is the pre-existing test
 that shipped before Phase 5.
 
@@ -48,8 +48,8 @@ Compile the installer on the host FIRST:
 ```powershell
 # From repo root
 cd src\interceptor; .\build.ps1 -Config Release -Clean; cd ..\..
-cd src\native-host; go build -ldflags "-s -w -X main.Version=2.0.0-local" -o build\go-mapi-host.exe .; cd ..\..
-& "C:\Program Files (x86)\Inno Setup 6\iscc.exe" /DGOMAPIVersion=2.0.0-local src\installer\go-mapi.iss
+cd src\native-host; go build -ldflags "-s -w -X main.Version=2.0.0-local" -o build\DraftHorse-host.exe .; cd ..\..
+& "C:\Program Files (x86)\Inno Setup 6\iscc.exe" /DGOMAPIVersion=2.0.0-local src\installer\DraftHorse.iss
 ```
 
 Then run the full sandbox flow:
@@ -61,13 +61,13 @@ pwsh tests\sandbox\run-sandbox-test.ps1 -FullTest
 This:
 1. Stops any existing sandbox instance (`wsb list` + `wsb stop`).
 2. Launches a fresh sandbox (`wsb start --raw`).
-3. Shares the project folder read-only to `C:\go-mapi` inside.
-4. Shares `$env:TEMP\go-mapi-sandbox-output` as writable `C:\output` for log retrieval.
+3. Shares the project folder read-only to `C:\DraftHorse` inside.
+4. Shares `$env:TEMP\DraftHorse-sandbox-output` as writable `C:\output` for log retrieval.
 5. Runs `test-dll-registration.ps1` (DLL sanity check).
 6. Runs `install-and-verify.ps1`:
    - Silent install of `DraftHorse-setup.exe` with `/VERYSILENT /SUPPRESSMSGBOXES`
-   - Asserts 6 HKLM registry keys (Clients\Mail\go-mapi + 5 browser native messaging hosts)
-   - Asserts installed files (`go-mapi.dll`, `go-mapi-host.exe`, `com.gomapi.host.json`, `previous-mail-client.json`)
+   - Asserts 6 HKLM registry keys (Clients\Mail\DraftHorse + 5 browser native messaging hosts)
+   - Asserts installed files (`DraftHorse.dll`, `DraftHorse-host.exe`, `com.drafthorse.host.json`, `previous-mail-client.json`)
    - Silent uninstall via `unins000.exe /VERYSILENT`
    - Asserts clean post-uninstall state (no files, no registry leftovers)
 7. Copies the `install-and-verify.log` back to the host.
@@ -99,10 +99,10 @@ Windows Defender scanning the sandbox template.
   `src\installer\dist\DraftHorse-setup.exe` on the host BEFORE starting
   the sandbox and exits with a compile-command hint if missing.
 - **Silent install exit code non-zero** — check
-  `$env:TEMP\go-mapi-sandbox-output\inno-install.log` (copied from
+  `$env:TEMP\DraftHorse-sandbox-output\inno-install.log` (copied from
   `C:\output` inside the sandbox).
 - **Registry key missing** — `install-and-verify.log` lists the exact
-  missing key. Cross-reference against `src/installer/go-mapi.iss`
+  missing key. Cross-reference against `src/installer/DraftHorse.iss`
   `[Registry]` section.
 - **Windows Defender scanning interferes** — sandbox-internal Defender
   is enabled by default. If the install step times out, add

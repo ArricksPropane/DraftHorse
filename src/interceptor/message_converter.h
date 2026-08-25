@@ -29,7 +29,7 @@ std::string AnsiToUtf8(const char* ansi);
 std::string FilenameFromPath(const std::string& path);
 
 // Byte cap applied by SanitizeFilename. Keeps queue paths clear of MAX_PATH:
-// %LOCALAPPDATA% + "\go-mapi\queue\" + 26-char stem + "\" + basename.
+// %LOCALAPPDATA% + "\DraftHorse\queue\" + 26-char stem + "\" + basename.
 constexpr size_t kMaxSanitizedBasename = 128;
 
 // ARRICKS-02: reduce an arbitrary caller-supplied filename (or full path) to a

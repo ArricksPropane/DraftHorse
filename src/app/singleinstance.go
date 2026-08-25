@@ -11,12 +11,12 @@ import (
 
 // mutexName is scoped to the Windows session (Local\ prefix), so each RDS user gets one instance.
 // Ref: PITFALLS §7, RESEARCH §Pattern 4, REVIEWS HIGH Plan 03.
-const mutexName = `Local\go-mapi-singleton-v3`
+const mutexName = `Local\DraftHorse-singleton-v4`
 
 // raiseEventName is the session-scoped named event the first instance listens on.
 // Second instance calls SetEvent to ask first instance to show its window.
 // Replaces FindWindowW title-based raise (REVIEWS HIGH — title spoofing / locale / timing risk).
-const raiseEventName = `Local\go-mapi-raise-v3`
+const raiseEventName = `Local\DraftHorse-raise-v4`
 
 var (
 	mutexHandle windows.Handle

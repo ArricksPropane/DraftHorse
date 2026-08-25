@@ -10,9 +10,9 @@ int test_multiple_recipients() {
     std::cout << "\nTest: Multiple Recipients (TO, CC, BCC)" << std::endl;
 
     // Load the DLL
-    HMODULE hDll = LoadLibraryA("go-mapi.dll");
+    HMODULE hDll = LoadLibraryA("DraftHorse.dll");
     if (!hDll) {
-        std::cerr << "Failed to load go-mapi.dll" << std::endl;
+        std::cerr << "Failed to load DraftHorse.dll" << std::endl;
         return 1;
     }
 

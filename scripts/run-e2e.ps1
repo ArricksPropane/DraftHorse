@@ -3,7 +3,7 @@
   Build the e2e-tagged Wails binary and run the Playwright suite.
 
 .DESCRIPTION
-  Phase 11 plan 06. Builds src/app/build/bin/go-mapi.exe with -tags e2e and
+  Phase 11 plan 06. Builds src/app/build/bin/DraftHorse.exe with -tags e2e and
   ldflags-injected fake OAuth credentials so checkOAuthCredentials() does
   not fatal-exit. Then invokes `npm run e2e` from the repo root.
 
@@ -60,16 +60,16 @@ if (-not $NoBuild) {
   }
 }
 
-$binary = Join-Path $repoRoot 'src/app/build/bin/go-mapi.exe'
+$binary = Join-Path $repoRoot 'src/app/build/bin/DraftHorse.exe'
 if (-not (Test-Path $binary)) {
   throw "expected $binary after build but it does not exist"
 }
 Write-Host "[run-e2e] binary at $binary" -ForegroundColor Green
 
-# Belt-and-braces: kill any orphan go-mapi.exe from a previous failed run
+# Belt-and-braces: kill any orphan DraftHorse.exe from a previous failed run
 # (the single-instance mutex would block our spawn otherwise — T-11-06-03).
-Get-Process -Name 'go-mapi' -ErrorAction SilentlyContinue | ForEach-Object {
-  Write-Host "[run-e2e] killing orphan go-mapi.exe pid=$($_.Id)" -ForegroundColor Yellow
+Get-Process -Name 'DraftHorse' -ErrorAction SilentlyContinue | ForEach-Object {
+  Write-Host "[run-e2e] killing orphan DraftHorse.exe pid=$($_.Id)" -ForegroundColor Yellow
   Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
 }
 
@@ -82,7 +82,7 @@ if ($SmokeOnly) {
 $exitCode = $LASTEXITCODE
 
 # Final cleanup pass — any test that crashed mid-run leaves orphans.
-Get-Process -Name 'go-mapi' -ErrorAction SilentlyContinue | ForEach-Object {
+Get-Process -Name 'DraftHorse' -ErrorAction SilentlyContinue | ForEach-Object {
   Write-Host "[run-e2e] post-run cleanup pid=$($_.Id)" -ForegroundColor Yellow
   Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
 }

@@ -66,15 +66,24 @@ func (a *App) draftSignature(fetch func() (string, error)) string {
 	return sig
 }
 
+// activeSigCache returns the ACTIVE account's cache (V4: signature and
+// scope-warning state are per-slot — accounts have different signatures and
+// re-consent independently). Slot choice at fetch time carries the benign
+// mid-drain switch race documented on the accounts section in auth.go.
+func (a *App) activeSigCache() *signatureCache {
+	return &a.sigCache[a.activeSlot()]
+}
+
 // fetchSignatureLocked owns the cache mutex for the whole read-or-fetch and
 // reports whether the caller should raise the ARRICKS-29 warning. Split from
 // draftSignature purely so the notification lands outside the lock while the
 // unlock stays deferred (panic-safe, as it was before ARRICKS-29).
 func (a *App) fetchSignatureLocked(fetch func() (string, error)) (string, bool) {
-	a.sigCache.mu.Lock()
-	defer a.sigCache.mu.Unlock()
-	if a.sigCache.fetched {
-		return a.sigCache.value, false
+	c := a.activeSigCache()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.fetched {
+		return c.value, false
 	}
 	sig, err := fetch()
 	if err != nil {
@@ -83,18 +92,18 @@ func (a *App) fetchSignatureLocked(fetch func() (string, error)) (string, bool) 
 		// stays an anonymous log line that retries on the next draft.
 		notify := false
 		if errors.Is(err, mapi.ErrSignatureScopeMissing) {
-			a.sigCache.scopeMissing = true
-			if !a.sigCache.warned {
-				a.sigCache.warned = true
+			c.scopeMissing = true
+			if !c.warned {
+				c.warned = true
 				notify = true
 			}
 		}
 		logError("signature: fetch failed, draft goes unsigned this attempt: %v", err)
 		return "", notify
 	}
-	a.sigCache.fetched = true
-	a.sigCache.value = sig
-	a.sigCache.scopeMissing = false
+	c.fetched = true
+	c.value = sig
+	c.scopeMissing = false
 	logInfo("signature: loaded (%d bytes)", len(sig))
 	return sig, false
 }
@@ -114,9 +123,10 @@ var announceSignatureScope = func(a *App) {
 // signatureScopeMissing reports whether the stored grant is known to lack
 // gmail.settings.basic. Read by the tray refresh loop.
 func (a *App) signatureScopeMissing() bool {
-	a.sigCache.mu.Lock()
-	defer a.sigCache.mu.Unlock()
-	return a.sigCache.scopeMissing
+	c := a.activeSigCache()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.scopeMissing
 }
 
 // primeSignatureCache does the ARRICKS-24 fetch once at startup instead of
@@ -162,10 +172,20 @@ func (a *App) primeSignatureCache(ctx context.Context) {
 // ARRICKS-29 tray row clears, since signing out and back in is precisely
 // the fix it asks for.
 func (a *App) resetSignatureCache() {
-	a.sigCache.mu.Lock()
-	defer a.sigCache.mu.Unlock()
-	a.sigCache.fetched = false
-	a.sigCache.value = ""
-	a.sigCache.scopeMissing = false
-	a.sigCache.warned = false
+	a.resetSignatureCacheSlot(a.activeSlot())
+}
+
+// resetSignatureCacheSlot drops one slot's cached signature and scope
+// warning. Sign-out of that slot is precisely the fix the warning asks for.
+func (a *App) resetSignatureCacheSlot(slot int) {
+	if slot < 0 || slot >= len(a.sigCache) {
+		return
+	}
+	c := &a.sigCache[slot]
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.fetched = false
+	c.value = ""
+	c.scopeMissing = false
+	c.warned = false
 }

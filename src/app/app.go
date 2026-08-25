@@ -19,7 +19,8 @@ type App struct {
 	trayEnd          func()
 	watcher          *mapi.EmailWatcher // initialized in startup
 	bridge           *watcherBridge     // initialized in startup
-	auth             *AuthManager       // OAuth token lifecycle
+	auth             *AuthManager       // the ACTIVE account (V4: points into accounts)
+	accounts         [2]*AuthManager    // V4 two-account roster; auth == accounts[activeSlot]
 	sessionEndCancel func()             // cancels the session-end message pump
 	shutdownCtx      context.Context
 	shutdownCancel   context.CancelFunc
@@ -47,8 +48,10 @@ type App struct {
 	// Automode goroutine handle. Started in startup; stopped in shutdown.
 	automode *automode
 
-	// ARRICKS-24: session-scoped Gmail signature cache (signature.go).
-	sigCache signatureCache
+	// ARRICKS-24: session-scoped Gmail signature caches, one per account
+	// slot (V4 — signatures and the ARRICKS-29 scope warning are
+	// per-account; index matches a.accounts).
+	sigCache [2]signatureCache
 
 	// Backlog skip-set (D-10): emails that failed automode with errorCategory
 	// "signed-out" during a signed-out window stay manual after re-auth.
@@ -112,15 +115,25 @@ type App struct {
 
 // NewApp creates a new App instance.
 func NewApp() *App {
-	return &App{
-		auth:          NewAuthManager(),
+	a := &App{
 		backlogSkip:   make(map[string]struct{}),
 		settings:      AppSettings{Mode: defaultMode},
 		trayRefreshCh: make(chan struct{}, 1),
 	}
+	// V4: two account slots; slot 0 is active until settings load says
+	// otherwise (startup repoints a.auth before bootstrapAuth runs).
+	a.accounts[0] = NewAuthManagerForSlot(0)
+	a.accounts[1] = NewAuthManagerForSlot(1)
+	a.auth = a.accounts[0]
+	return a
 }
 
 func (a *App) startup(ctx context.Context) {
+	// V4 migration MUST run before anything touches the per-user state it
+	// moves: the log file (APPDATA), the queue watcher (LOCALAPPDATA), the
+	// keyring (bootstrapAuth), and the HKCU heal mirror (defaultmail guard).
+	migrateLegacyState()
+
 	a.ctx = ctx
 	a.shutdownCtx, a.shutdownCancel = context.WithCancel(context.Background())
 	// StartHidden: true → visible starts false. Mirror that here so toggleWindow
@@ -179,10 +192,33 @@ func (a *App) startup(ctx context.Context) {
 		}
 	})
 
+	// Phase 9 settings load — moved BEFORE bootstrapAuth in V4 because the
+	// persisted active_account decides which slot a.auth points at when
+	// bootstrap emits the first auth-changed. loadSettings is a pure file
+	// read; nothing between the old and new position consumed settings.
+	a.settingsMu.Lock()
+	a.settings = loadSettings()
+	activeSlot := a.settings.ActiveAccount
+	a.settingsMu.Unlock()
+	logInfo("settings loaded: mode=%s", a.settings.Mode)
+	if am := a.account(activeSlot); am != nil {
+		a.auth = am
+	}
+
 	// Phase 8: load persisted OAuth tokens and emit initial auth-changed.
 	// Must run after a.ctx is cached (line 42) and after tray is started
 	// (line 47) because SetTrayError is called from bootstrapAuth.
+	// V4: the INACTIVE slot loads its persisted tokens too (no refresh, no
+	// userinfo — that happens if/when it becomes active), so the switcher
+	// can show it as signed-in immediately.
 	a.bootstrapAuth()
+	for i, am := range a.accounts {
+		if am != nil && am != a.auth {
+			if err := am.LoadFromKeyring(); err != nil {
+				logError("accounts: slot %d keyring load: %v", i, err)
+			}
+		}
+	}
 
 	// Phase 9: initialize toast notification stack (Windows only; no-op on other platforms).
 	// Must run after bootstrapAuth so initToasts can reference ctx. Errors are non-fatal —
@@ -190,12 +226,6 @@ func (a *App) startup(ctx context.Context) {
 	if err := initToasts(a); err != nil {
 		logError("toast: init failed: %v", err)
 	}
-
-	// Phase 9: load persisted settings (mode field, D-13).
-	a.settingsMu.Lock()
-	a.settings = loadSettings()
-	a.settingsMu.Unlock()
-	logInfo("settings loaded: mode=%s", a.settings.Mode)
 
 	// ARRICKS-13: default-mail guard — startup check + hourly self-heal of
 	// the Simple MAPI client default (see defaultmail.go). Needs shutdownCtx
@@ -643,7 +673,7 @@ func (a *App) GetSettings() AppSettings {
 	return s
 }
 
-// SaveSettings persists AppSettings to %APPDATA%\go-mapi\settings.json.
+// SaveSettings persists AppSettings to %APPDATA%\DraftHorse\settings.json.
 // Delegates to setMode for validation + wake-automode-if-mode-flipped. In
 // Phase 9 Mode is the only field; future phases may surface more here.
 func (a *App) SaveSettings(s AppSettings) error {

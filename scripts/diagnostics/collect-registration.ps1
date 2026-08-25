@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-  Collect go-mapi MAPI registration + DLL diagnostics into a timestamped text file.
+  Collect DraftHorse MAPI registration + DLL diagnostics into a timestamped text file.
 
 .DESCRIPTION
-  Produces a single text report at $OutputDir\go-mapi-registration-<yyyyMMdd-HHmmss>.txt
+  Produces a single text report at $OutputDir\DraftHorse-registration-<yyyyMMdd-HHmmss>.txt
   covering:
     1. Header (host, user, OS bitness, process bitness)
     2. HKLM mail clients (native view)
     3. HKLM mail clients (WOW6432 view)
-    4. HKLM go-mapi registration (both views)
+    4. HKLM DraftHorse registration (both views)
     5. DLL presence, size, SHA256, PE bitness (32 vs 64)
     6. DLL export probe via LoadLibraryEx + GetProcAddress
     7. Footer
@@ -32,7 +32,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 
-$scriptVersion = '1.2'   # ARRICKS-19: + HKCU/UserChoice/autostart/process; ARRICKS-20: + SendTo plumbing
+$scriptVersion = '2.0'   # V4: all identifiers renamed go-mapi -> DraftHorse; report now also flags stale go-mapi keys (pre-4.0 leftovers)
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 if (-not (Test-Path -LiteralPath $OutputDir)) {
@@ -44,7 +44,7 @@ if (-not (Test-Path -LiteralPath $OutputDir)) {
     }
 }
 
-$out = Join-Path $OutputDir "go-mapi-registration-$timestamp.txt"
+$out = Join-Path $OutputDir "DraftHorse-registration-$timestamp.txt"
 
 function Append-Banner {
     param([string]$Title)
@@ -87,7 +87,7 @@ function Safe-Invoke {
 # Section 1: Header
 # -----------------------------------------------------------------------------
 Append-Banner 'Header'
-Append-Line "go-mapi registration report (script v$scriptVersion)"
+Append-Line "DraftHorse registration report (script v$scriptVersion)"
 Append-Line "Timestamp     : $(Get-Date -Format 'yyyy-MM-ddTHH:mm:sszzz')"
 Append-Line "Computer      : $env:COMPUTERNAME"
 Append-Line "User          : $env:USERNAME"
@@ -160,11 +160,11 @@ Safe-Invoke 'HKLM WOW6432 Mail clients' {
 }
 
 # -----------------------------------------------------------------------------
-# Section 4: HKLM go-mapi registration (native + WOW6432)
+# Section 4: HKLM DraftHorse registration (native + WOW6432)
 # -----------------------------------------------------------------------------
-Append-Banner 'HKLM go-mapi registration'
-foreach ($root in @('HKLM:\SOFTWARE\Clients\Mail\go-mapi',
-                    'HKLM:\SOFTWARE\WOW6432Node\Clients\Mail\go-mapi')) {
+Append-Banner 'HKLM DraftHorse registration'
+foreach ($root in @('HKLM:\SOFTWARE\Clients\Mail\DraftHorse',
+                    'HKLM:\SOFTWARE\WOW6432Node\Clients\Mail\DraftHorse')) {
     Append-Line ''
     Append-Line "Key: $root"
     Safe-Invoke "Dump $root" {
@@ -205,6 +205,34 @@ foreach ($root in @('HKLM:\SOFTWARE\Clients\Mail\go-mapi',
 }
 
 # -----------------------------------------------------------------------------
+# Section 4a (v2.0 / V4): stale pre-4.0 go-mapi leftovers. All four locations
+# are scrubbed by the 4.0 installer (machine scope) or migrate.go (per-user);
+# anything listed here survived migration and explains "worked before upgrade".
+Append-Banner 'STALE PRE-4.0 (go-mapi) LEFTOVERS — all should say ABSENT'
+foreach ($stale in @(
+    'HKLM:\SOFTWARE\Clients\Mail\go-mapi',
+    'HKCU:\Software\Clients\Mail\go-mapi',
+    'HKLM:\SOFTWARE\Classes\go-mapi.mailto',
+    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi'
+)) {
+    if (Test-Path -LiteralPath $stale) {
+        Append-Line "PRESENT (stale — migration missed it): $stale"
+    } else {
+        Append-Line "absent: $stale"
+    }
+}
+foreach ($staleDir in @(
+    (Join-Path $env:ProgramFiles 'go-mapi'),
+    (Join-Path $env:LOCALAPPDATA 'go-mapi'),
+    (Join-Path $env:APPDATA 'go-mapi')
+)) {
+    if (Test-Path -LiteralPath $staleDir) {
+        Append-Line "PRESENT (stale dir): $staleDir"
+    } else {
+        Append-Line "absent: $staleDir"
+    }
+}
+
 # Section 4b (v1.1 / ARRICKS-19): HKCU self-heal layer + mailto UserChoice +
 # autostart + running-process state — the surfaces the ARRICKS-13 guard and
 # the ARRICKS-19 autostart operate on.
@@ -218,16 +246,16 @@ Safe-Invoke 'HKCU Clients\Mail' {
         } else {
             Append-Line '  HKCU (default) = <not set>'
         }
-        if (Test-Path -LiteralPath 'HKCU:\Software\Clients\Mail\go-mapi') {
-            $sub = Get-ItemProperty -LiteralPath 'HKCU:\Software\Clients\Mail\go-mapi' -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath 'HKCU:\Software\Clients\Mail\DraftHorse') {
+            $sub = Get-ItemProperty -LiteralPath 'HKCU:\Software\Clients\Mail\DraftHorse' -ErrorAction SilentlyContinue
             if ($sub) {
                 foreach ($p in $sub.PSObject.Properties) {
                     if ($p.Name -like 'PS*') { continue }
-                    Append-Line "  go-mapi mirror: $($p.Name) = $($p.Value)"
+                    Append-Line "  DraftHorse mirror: $($p.Name) = $($p.Value)"
                 }
             }
         } else {
-            Append-Line '  (no HKCU go-mapi mirror — guard has not needed to self-heal)'
+            Append-Line '  (no HKCU DraftHorse mirror — guard has not needed to self-heal)'
         }
     } else {
         Append-Line '(no HKCU:\Software\Clients\Mail key)'
@@ -240,7 +268,7 @@ Safe-Invoke 'mailto UserChoice' {
     if (Test-Path -LiteralPath $uc) {
         $p = Get-ItemProperty -LiteralPath $uc -ErrorAction SilentlyContinue
         if ($p -and ($p.PSObject.Properties.Name -contains 'ProgId')) {
-            Append-Line "  ProgId = $($p.ProgId)   (go-mapi.mailto = DraftHorse)"
+            Append-Line "  ProgId = $($p.ProgId)   (DraftHorse.mailto = DraftHorse)"
         } else {
             Append-Line '  ProgId = <not set>'
         }
@@ -252,20 +280,20 @@ Safe-Invoke 'mailto UserChoice' {
 Append-Banner 'Autostart + running processes (ARRICKS-19)'
 Safe-Invoke 'Run key' {
     $run = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue
-    if ($run -and ($run.PSObject.Properties.Name -contains 'go-mapi')) {
-        Append-Line "  HKLM Run\go-mapi = $($run.'go-mapi')"
+    if ($run -and ($run.PSObject.Properties.Name -contains 'DraftHorse')) {
+        Append-Line "  HKLM Run\DraftHorse = $($run.'DraftHorse')"
     } else {
-        Append-Line '  HKLM Run\go-mapi = <not registered> (pre-ARRICKS-19 install?)'
+        Append-Line '  HKLM Run\DraftHorse = <not registered> (pre-ARRICKS-19 install?)'
     }
 }
 Safe-Invoke 'Processes' {
-    $procs = Get-Process -Name 'go-mapi' -ErrorAction SilentlyContinue
+    $procs = Get-Process -Name 'DraftHorse' -ErrorAction SilentlyContinue
     if ($procs) {
         foreach ($p in $procs) {
-            Append-Line "  go-mapi.exe running: PID $($p.Id), started $($p.StartTime)"
+            Append-Line "  DraftHorse.exe running: PID $($p.Id), started $($p.StartTime)"
         }
     } else {
-        Append-Line '  go-mapi.exe NOT RUNNING — queue watcher and default-mail guard are inactive'
+        Append-Line '  DraftHorse.exe NOT RUNNING — queue watcher and default-mail guard are inactive'
     }
     foreach ($name in @('OUTLOOK', 'olk')) {
         $o = Get-Process -Name $name -ErrorAction SilentlyContinue
@@ -316,8 +344,8 @@ Safe-Invoke '.MAPIMail association' {
 Append-Banner 'DLL presence / PE bitness / SHA256'
 
 $dllCandidates = @(
-    "$env:ProgramFiles\go-mapi\go-mapi.dll",
-    "${env:ProgramFiles(x86)}\go-mapi\go-mapi.dll"
+    "$env:ProgramFiles\DraftHorse\DraftHorse.dll",
+    "${env:ProgramFiles(x86)}\DraftHorse\DraftHorse.dll"
 )
 
 function Get-PEBitness {

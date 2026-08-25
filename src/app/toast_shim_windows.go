@@ -473,7 +473,7 @@ func createToastNotificationFromDoc(doc *ole.IUnknown) (*toastNotification, erro
 
 // setTagGroup calls QueryInterface for IToastNotification2 and invokes
 // put_Tag + put_Group on the notification object. Tag enables per-notification
-// removal from Action Center; Group enables go-mapi notification collapse.
+// removal from Action Center; Group enables DraftHorse notification collapse.
 func setTagGroup(n *toastNotification, tag, group string) error {
 	itf, err := n.ptr.QueryInterface(ole.NewGUID(guidIToastNotification2))
 	if err != nil {

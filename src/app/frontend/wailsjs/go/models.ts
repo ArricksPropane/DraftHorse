@@ -31,6 +31,26 @@ export namespace main {
 	        this.last_update_check = source["last_update_check"];
 	    }
 	}
+	export class AccountInfo {
+	    slot: number;
+	    authenticated: boolean;
+	    email?: string;
+	    name?: string;
+	    active: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.slot = source["slot"];
+	        this.authenticated = source["authenticated"];
+	        this.email = source["email"];
+	        this.name = source["name"];
+	        this.active = source["active"];
+	    }
+	}
 	export class AuthStatus {
 	    authenticated: boolean;
 	    email?: string;

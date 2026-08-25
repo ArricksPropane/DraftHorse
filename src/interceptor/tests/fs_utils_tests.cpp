@@ -12,7 +12,7 @@
 //   - WriteErrorForStem: writes errors\<stem>.error with a reason.
 //
 // These tests write real files into a temp scratch dir under CMAKE_BINARY_DIR
-// so they do not pollute the user's %LOCALAPPDATA%\go-mapi\queue\. They never
+// so they do not pollute the user's %LOCALAPPDATA%\DraftHorse\queue\. They never
 // mutate real queue state.
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
@@ -37,7 +37,7 @@ static std::wstring makeScratchDir(const wchar_t* leaf) {
     REQUIRE(n > 0);
     std::wstring dir(tempBase);
     if (!dir.empty() && dir.back() != L'\\') dir += L'\\';
-    dir += L"go-mapi-tk6-tests\\";
+    dir += L"DraftHorse-tk6-tests\\";
     dir += leaf;
     SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
     return dir;

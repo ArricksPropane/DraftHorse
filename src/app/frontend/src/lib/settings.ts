@@ -73,7 +73,7 @@ export async function openDefaultAppsSettings(): Promise<void> {
   await OpenDefaultAppsSettings();
 }
 
-/** Read persisted settings from Go (settings.json in %APPDATA%\go-mapi\). */
+/** Read persisted settings from Go (settings.json in %APPDATA%\DraftHorse\). */
 export async function fetchSettings(): Promise<AppSettings> {
   return await GetSettings();
 }

@@ -1,4 +1,4 @@
-# go-mapi — Development Guide
+# DraftHorse — Development Guide
 
 Audience: contributors and maintainers. End users do not need any of this — see [README](./README.md) for installation. IT admins deploying at scale should see [ENTERPRISE.md](./ENTERPRISE.md).
 
@@ -8,8 +8,8 @@ Two components linked by a filesystem drop:
 
 ```
 ┌─────────────────────┐       ┌─────────────────┐       ┌────────────────────┐
-│ Any Windows app     │       │ %LOCALAPPDATA%\ │       │ go-mapi (Wails)    │
-│ (Word, Excel,       │──────▶│ go-mapi\queue\  │──────▶│  • Go backend      │
+│ Any Windows app     │       │ %LOCALAPPDATA%\ │       │ DraftHorse (Wails)    │
+│ (Word, Excel,       │──────▶│ DraftHorse\queue\  │──────▶│  • Go backend      │
 │  Outlook Express,   │       │ *.json (DLL     │       │  • Svelte 5 UI     │
 │  etc.)              │       │  writes one     │       │  • WebView2 window │
 └─────────────────────┘       └─────────────────┘       └────────────────────┘
@@ -17,7 +17,7 @@ Two components linked by a filesystem drop:
          │ MAPISendMail / MAPISendMailW                          │ Gmail API (PKCE + Credential Manager)
          ▼                                                       ▼
 ┌─────────────────────┐                                  ┌────────────────────┐
-│ go-mapi.dll (C++)   │                                  │ Gmail drafts       │
+│ DraftHorse.dll (C++)   │                                  │ Gmail drafts       │
 └─────────────────────┘                                  └────────────────────┘
 ```
 
@@ -25,7 +25,7 @@ Two components linked by a filesystem drop:
 
 | Component | Language | Location | Role |
 |-----------|----------|----------|------|
-| MAPI interceptor | C++17 | `src/interceptor/` | Intercepts `MAPISendMail`/`W`, writes email JSON to `%LOCALAPPDATA%\go-mapi\queue\`. Unchanged from v1. |
+| MAPI interceptor | C++17 | `src/interceptor/` | Intercepts `MAPISendMail`/`W`, writes email JSON to `%LOCALAPPDATA%\DraftHorse\queue\`. Unchanged from v1. |
 | Shared core | Go 1.25 | `internal/mapi/` | Email parsing, validation, watcher (`fsnotify`), Gmail HTTP client + RFC 2822 MIME builder |
 | Wails app (backend) | Go 1.25 | `src/app/` | Tray + window lifecycle, auth (OAuth PKCE loopback + Windows Credential Manager via `zalando/go-keyring`), watcher bridge, App-struct bindings |
 | Frontend | TypeScript + Svelte 5 | `src/app/frontend/` | WebView2 UI: welcome / sign-in / queue / Auto-draft toggle |
@@ -62,7 +62,7 @@ tests/protocol-fixtures/     # JSON fixtures consumed by internal/mapi integrati
 
 ```
 git clone https://github.com/marcfargas/go-mapi.git
-cd go-mapi
+cd DraftHorse
 npm install
 ```
 
@@ -91,7 +91,7 @@ npm run check     # go vet + svelte-check
 
 ```
 cd src/app && wails build -platform windows/amd64
-# → src/app/build/bin/go-mapi.exe
+# → src/app/build/bin/DraftHorse.exe
 ```
 
 ## Race detector
@@ -104,7 +104,7 @@ Matches the per-PR CI gate and the nightly race-detector workflow.
 
 ## IPC protocol
 
-The C++ DLL writes JSON files to `%LOCALAPPDATA%\go-mapi\queue\`; the Go core in `internal/mapi/protocol.go` validates and consumes them. The `MailMessage` struct in that file is the canonical schema.
+The C++ DLL writes JSON files to `%LOCALAPPDATA%\DraftHorse\queue\`; the Go core in `internal/mapi/protocol.go` validates and consumes them. The `MailMessage` struct in that file is the canonical schema.
 
 ## Planning artifacts
 

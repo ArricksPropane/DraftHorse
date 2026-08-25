@@ -18,12 +18,12 @@ using namespace mapi_test;
 
 int main(int argc, char* argv[]) {
     std::cout << "=================================" << std::endl;
-    std::cout << "  go-mapi MAPI Test Harness" << std::endl;
+    std::cout << "  DraftHorse MAPI Test Harness" << std::endl;
     std::cout << "=================================" << std::endl;
     std::cout << std::endl;
 
     // Determine DLL path
-    std::string dllPath = "go-mapi.dll";
+    std::string dllPath = "DraftHorse.dll";
     if (argc > 1) {
         dllPath = argv[1];
     }

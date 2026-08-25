@@ -18,7 +18,7 @@ import { WatchDirHelper } from './email';
 //   1. Start fake-gmail + fake-oauth servers on ephemeral ports.
 //   2. Pick a free CDP port (try 9223..9233).
 //   3. Build a one-hour-from-now OAuth token blob and stash it in env.
-//   4. Spawn build/bin/go-mapi.exe with WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+//   4. Spawn build/bin/DraftHorse.exe with WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 //      pointed at our chosen CDP port and the four GOMAPI_E2E_* overrides.
 //   5. Poll http://127.0.0.1:$PORT/json/version until CDP responds (≤ 20s).
 //   6. chromium.connectOverCDP → grab the first non-empty page.
@@ -41,7 +41,7 @@ export interface WailsAppFixture {
 }
 
 const REPO_ROOT = resolve(__dirname, '..', '..', '..');
-const APP_BINARY = join(REPO_ROOT, 'src', 'app', 'build', 'bin', 'go-mapi.exe');
+const APP_BINARY = join(REPO_ROOT, 'src', 'app', 'build', 'bin', 'DraftHorse.exe');
 
 function isPortFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -113,8 +113,8 @@ export const test = base.extend<{ app: WailsAppFixture }>({
       );
     }
 
-    const watchDir = await mkdtemp(join(tmpdir(), 'gomapi-e2e-watch-'));
-    const appDataDir = await mkdtemp(join(tmpdir(), 'gomapi-e2e-appdata-'));
+    const watchDir = await mkdtemp(join(tmpdir(), 'drafthorse-e2e-watch-'));
+    const appDataDir = await mkdtemp(join(tmpdir(), 'drafthorse-e2e-appdata-'));
     const gmail = await startFakeGmail();
     const oauth = await startFakeOAuth();
     const cdpPort = await pickCdpPort();

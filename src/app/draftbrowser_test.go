@@ -15,10 +15,10 @@ import (
 // and the default-browser fallback, and the settings default.
 
 func TestDedicatedBrowserArgs(t *testing.T) {
-	args := dedicatedBrowserArgs(`C:\Users\x\AppData\Local\go-mapi\browser-profile`, "https://accounts.google.com/AccountChooser?x=1")
+	args := dedicatedBrowserArgs(`C:\Users\x\AppData\Local\DraftHorse\browser-profile`, "https://accounts.google.com/AccountChooser?x=1")
 	joined := strings.Join(args, " ")
 	for _, want := range []string{
-		`--user-data-dir=C:\Users\x\AppData\Local\go-mapi\browser-profile`,
+		`--user-data-dir=C:\Users\x\AppData\Local\DraftHorse\browser-profile`,
 		"--no-first-run",
 		"--no-default-browser-check",
 	} {
@@ -39,8 +39,14 @@ func TestDedicatedBrowserArgs(t *testing.T) {
 
 func TestDedicatedBrowserProfileDirUnderLocalAppData(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", `C:\Users\x\AppData\Local`)
-	if got, want := dedicatedBrowserProfileDir(), filepath.Join(`C:\Users\x\AppData\Local`, "go-mapi", "browser-profile"); got != want {
-		t.Errorf("dedicatedBrowserProfileDir() = %q, want %q", got, want)
+	if got, want := dedicatedBrowserProfileDir(0), filepath.Join(`C:\Users\x\AppData\Local`, "DraftHorse", "browser-profile"); got != want {
+		t.Errorf("dedicatedBrowserProfileDir(0) = %q, want %q", got, want)
+	}
+	// V4: slot 1 gets its OWN profile — one Google session per profile is
+	// what keeps the /u/0 drafts URL pointing at the right account. Slot 0
+	// keeps the pre-V4 path so IT's signed-in profile survives the upgrade.
+	if got, want := dedicatedBrowserProfileDir(1), filepath.Join(`C:\Users\x\AppData\Local`, "DraftHorse", "browser-profile-2"); got != want {
+		t.Errorf("dedicatedBrowserProfileDir(1) = %q, want %q", got, want)
 	}
 }
 
@@ -63,7 +69,7 @@ func TestOpenDraftInBrowserPrefersDedicatedProfile(t *testing.T) {
 	defaultOpens := make(chan string, 2)
 	dedicatedOpens := make(chan string, 2)
 	openDraftURL = func(u string) error { defaultOpens <- u; return nil }
-	launchDraftInDedicatedBrowser = func(u string) error { dedicatedOpens <- u; return nil }
+	launchDraftInDedicatedBrowser = func(u string, _ int) error { dedicatedOpens <- u; return nil }
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
@@ -90,7 +96,7 @@ func TestOpenDraftInBrowserFallsBackWhenNoChromium(t *testing.T) {
 
 	defaultOpens := make(chan string, 2)
 	openDraftURL = func(u string) error { defaultOpens <- u; return nil }
-	launchDraftInDedicatedBrowser = func(string) error { return errNoChromiumBrowser }
+	launchDraftInDedicatedBrowser = func(string, int) error { return errNoChromiumBrowser }
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
@@ -109,7 +115,7 @@ func TestOpenDraftInBrowserDedicatedOffUsesDefault(t *testing.T) {
 
 	defaultOpens := make(chan string, 2)
 	openDraftURL = func(u string) error { defaultOpens <- u; return nil }
-	launchDraftInDedicatedBrowser = func(string) error { return errors.New("must not be called") }
+	launchDraftInDedicatedBrowser = func(string, int) error { return errors.New("must not be called") }
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
@@ -132,10 +138,10 @@ func TestDraftOpenDelaySettingDefaults(t *testing.T) {
 	}
 	write := func(body string) {
 		t.Helper()
-		if err := os.MkdirAll(filepath.Join(dir, "go-mapi"), 0o700); err != nil {
+		if err := os.MkdirAll(filepath.Join(dir, "DraftHorse"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "go-mapi", "settings.json"), []byte(body), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "DraftHorse", "settings.json"), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -169,17 +175,17 @@ func TestDraftBrowserDedicatedSettingDefaults(t *testing.T) {
 		t.Error("DraftBrowserDedicated should default to true on first run")
 	}
 	// Pre-3.7 file without the field → true.
-	if err := os.MkdirAll(filepath.Join(dir, "go-mapi"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "DraftHorse"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "go-mapi", "settings.json"), []byte(`{"mode":"manual","open_draft_in_browser":true}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "DraftHorse", "settings.json"), []byte(`{"mode":"manual","open_draft_in_browser":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := loadSettings(); !got.DraftBrowserDedicated {
 		t.Error("DraftBrowserDedicated should default to true when the field is absent")
 	}
 	// Explicit opt-out is honored.
-	if err := os.WriteFile(filepath.Join(dir, "go-mapi", "settings.json"), []byte(`{"mode":"manual","draft_browser_dedicated":false}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "DraftHorse", "settings.json"), []byte(`{"mode":"manual","draft_browser_dedicated":false}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := loadSettings(); got.DraftBrowserDedicated {

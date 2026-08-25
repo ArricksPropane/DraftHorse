@@ -32,16 +32,16 @@ try {
     # `-gcflags "all=-N -l"`. Build production with devtools instead — same
     # env-var credential fallback (auth_credentials.go init()) drives both paths.
     # Trade-off: no hot reload; rerun this script after editing Go/Svelte code.
-    Write-Host 'Building go-mapi (production + devtools)...'
+    Write-Host 'Building DraftHorse (production + devtools)...'
     wails build -devtools
     if ($LASTEXITCODE -ne 0) { throw 'wails build failed' }
 
-    $binary = Join-Path (Get-Location) 'build' 'bin' 'go-mapi.exe'
+    $binary = Join-Path (Get-Location) 'build' 'bin' 'DraftHorse.exe'
     if (-not (Test-Path $binary)) { throw "Binary not produced at $binary" }
 
     Write-Host "Launching $binary..."
     & $binary
-    if ($LASTEXITCODE -ne 0) { throw "go-mapi exited with code $LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0) { throw "DraftHorse exited with code $LASTEXITCODE" }
 } finally {
     Pop-Location
 }

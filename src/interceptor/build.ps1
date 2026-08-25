@@ -1,5 +1,5 @@
 # build.ps1
-# Build script for go-mapi interceptor using mingw-mstorsjo-llvm-ucrt
+# Build script for DraftHorse interceptor using mingw-mstorsjo-llvm-ucrt
 # (triple-prefixed clang driver — x86_64-w64-mingw32-clang[++] or
 #  i686-w64-mingw32-clang[++]).
 #
@@ -29,7 +29,7 @@ $interceptorRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $buildDir = Join-Path $interceptorRoot "build-$Arch"
 
 Write-Host "================================"
-Write-Host "  go-mapi Interceptor Build"
+Write-Host "  DraftHorse Interceptor Build"
 Write-Host "  (mingw-mstorsjo-llvm-ucrt / clang + Ninja)"
 Write-Host "  Arch: $Arch"
 Write-Host "================================"

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ARRICKS-09: make go-mapi the mailto: handler fleet-wide.
+  ARRICKS-09: make DraftHorse the mailto: handler fleet-wide.
 
   Windows 11 hash-protects per-user UserChoice keys, so no installer can
   seize a protocol default. The supported ways to set it:
 
-    - Per machine, by hand: Settings > Apps > Default apps > go-mapi >
+    - Per machine, by hand: Settings > Apps > Default apps > DraftHorse >
       mailto. One click, sticks until changed.
 
     - Fleet-wide via Intune: deploy this file with the
@@ -21,5 +21,5 @@
   set machine-wide by the installer itself.
 -->
 <DefaultAssociations>
-  <Association Identifier="mailto" ProgId="go-mapi.mailto" ApplicationName="go-mapi" />
+  <Association Identifier="mailto" ProgId="DraftHorse.mailto" ApplicationName="DraftHorse" />
 </DefaultAssociations>

@@ -137,6 +137,15 @@ func (a *App) onTrayReady() {
 		a.isDraftBrowserDedicated(),
 	)
 
+	// V4 two-account rows — radio-style: exactly one is checked (the ACTIVE
+	// account every scan drafts to). Titles carry the account emails and are
+	// refreshed from the refresh branch below, same as the update rows.
+	// Rows for signed-out slots read "(not signed in)" and clicking one
+	// still activates it — the window then shows the sign-in screen, which
+	// is exactly the add-second-account flow.
+	mAccount0 := systray.AddMenuItemCheckbox("Draft to: …", "Scans create drafts in this account", true)
+	mAccount1 := systray.AddMenuItemCheckbox("Draft to: (not signed in)", "Scans create drafts in this account", false)
+
 	// ARRICKS-29: the signature-scope warning row. Hidden unless a fetch has
 	// actually returned 403, so a healthy install never sees it. Same
 	// Show/Hide pattern as mDownload below — the row is created once and
@@ -178,7 +187,7 @@ func (a *App) onTrayReady() {
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit", "Exit DraftHorse")
 
-	logInfo("tray ready: menu items registered (Show, Pause watching, open-drafts toggle, signature warning, update status + toggle + check-now, Quit)")
+	logInfo("tray ready: menu items registered (Show, Pause watching, open-drafts toggle, account rows, signature warning, update status + toggle + check-now, Quit)")
 
 	go func() {
 		for {
@@ -220,6 +229,14 @@ func (a *App) onTrayReady() {
 					mDedicatedBrowser.Check()
 				} else {
 					mDedicatedBrowser.Uncheck()
+				}
+			case <-mAccount0.ClickedCh:
+				if err := a.SetActiveAccount(0); err != nil {
+					logError("tray: SetActiveAccount(0): %v", err)
+				}
+			case <-mAccount1.ClickedCh:
+				if err := a.SetActiveAccount(1); err != nil {
+					logError("tray: SetActiveAccount(1): %v", err)
 				}
 			case <-mSignatureScope.ClickedCh:
 				// ARRICKS-29: open the main window, where sign-out lives.
@@ -286,6 +303,20 @@ func (a *App) onTrayReady() {
 					mDownload.Show()
 				} else {
 					mDownload.Hide()
+				}
+				// V4: account row titles + radio state track the roster.
+				accounts := a.GetAccounts()
+				for i, m := range []*systray.MenuItem{mAccount0, mAccount1} {
+					label := "Draft to: (not signed in)"
+					if i < len(accounts) && accounts[i].Email != "" {
+						label = "Draft to: " + accounts[i].Email
+					}
+					m.SetTitle(label)
+					if i < len(accounts) && accounts[i].Active {
+						m.Check()
+					} else {
+						m.Uncheck()
+					}
 				}
 				// ARRICKS-29: surface (or clear) the signature-scope warning.
 				// Clears on its own after a sign-out/in because

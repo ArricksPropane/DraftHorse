@@ -60,9 +60,9 @@ func showWebView2MissingDialog() {
 	// sessionend.go, settings.go, singleinstance.go idiom).
 	title, _ := syscall.UTF16PtrFromString("DraftHorse — WebView2 required")
 	body, _ := syscall.UTF16PtrFromString(
-		"Microsoft Edge WebView2 Runtime is required to run go-mapi.\r\n\r\n" +
+		"Microsoft Edge WebView2 Runtime is required to run DraftHorse.\r\n\r\n" +
 			"Your system browser will now open the Microsoft download page. " +
-			"Install the runtime, then relaunch go-mapi.")
+			"Install the runtime, then relaunch DraftHorse.")
 	procMessageBoxW.Call(
 		0, // hWnd = null → system-modal
 		uintptr(unsafe.Pointer(body)),

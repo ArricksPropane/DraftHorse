@@ -22,7 +22,7 @@ func TestAppDataDir_EnvPrecedence(t *testing.T) {
 		t.Setenv("GOMAPI_APPDATA_DIR", "")
 		t.Setenv("APPDATA", "C:\\Users\\test\\AppData\\Roaming")
 		got := appDataDir()
-		want := filepath.Join("C:\\Users\\test\\AppData\\Roaming", "go-mapi")
+		want := filepath.Join("C:\\Users\\test\\AppData\\Roaming", "DraftHorse")
 		if got != want {
 			t.Errorf("APPDATA path: got %q, want %q", got, want)
 		}
@@ -40,11 +40,11 @@ func TestAppDataDir_EnvPrecedence(t *testing.T) {
 }
 
 // TestWatcherDir_EnvPrecedence — quick/260423-msq rewires the resolution chain
-// to ignore TEMP/TMP entirely and resolve via %LOCALAPPDATA%\go-mapi\queue to
+// to ignore TEMP/TMP entirely and resolve via %LOCALAPPDATA%\DraftHorse\queue to
 // match the DLL-side SHGetFolderPathW(CSIDL_LOCAL_APPDATA) path.
 //
 //	1. GOMAPI_WATCH_DIR        → used as-is (test / per-session override)
-//	2. %LOCALAPPDATA%\go-mapi\queue
+//	2. %LOCALAPPDATA%\DraftHorse\queue
 //	3. platform fallback (os.UserCacheDir) — POSIX CI compile only
 //
 // TEMP and TMP are intentionally NOT consulted. This regression guard fails
@@ -73,7 +73,7 @@ func TestWatcherDir_EnvPrecedence(t *testing.T) {
 		t.Setenv("TEMP", bogusTemp)
 		t.Setenv("TMP", bogusTmp)
 
-		want := filepath.Join(localAppData, "go-mapi", "queue")
+		want := filepath.Join(localAppData, "DraftHorse", "queue")
 		got := watcherDir()
 		if got != want {
 			t.Errorf("watcherDir() = %q, want %q", got, want)
@@ -108,7 +108,7 @@ func TestUpdatesStagingDir_EnvPrecedence(t *testing.T) {
 		t.Setenv("GOMAPI_UPDATES_DIR", "")
 		t.Setenv("ProgramData", `C:\ProgramData`)
 		got := updatesStagingDir()
-		want := filepath.Join(`C:\ProgramData`, "go-mapi", "updates")
+		want := filepath.Join(`C:\ProgramData`, "DraftHorse", "updates")
 		if got != want {
 			t.Errorf("ProgramData should be used: got %q, want %q", got, want)
 		}
@@ -117,8 +117,8 @@ func TestUpdatesStagingDir_EnvPrecedence(t *testing.T) {
 		t.Setenv("GOMAPI_UPDATES_DIR", "")
 		t.Setenv("ProgramData", "")
 		got := updatesStagingDir()
-		// Just assert it ends with go-mapi/updates and is rooted in TempDir.
-		wantSuffix := filepath.Join("go-mapi", "updates")
+		// Just assert it ends with DraftHorse/updates and is rooted in TempDir.
+		wantSuffix := filepath.Join("DraftHorse", "updates")
 		if !strings.HasSuffix(got, wantSuffix) {
 			t.Errorf("fallback should end with %q, got %q", wantSuffix, got)
 		}

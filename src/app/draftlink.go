@@ -103,6 +103,9 @@ func (a *App) openDraftInBrowser(messageID string) {
 	if a.auth != nil {
 		email = a.auth.Status().Email
 	}
+	// V4: the account slot is captured HERE alongside the email so the
+	// async open uses the profile matching the account that owns the draft.
+	slot := a.activeSlot()
 	// Everything the launch needs is captured HERE, before the goroutine —
 	// the async hop must not read App state later (races with settings
 	// writes and shutdown).
@@ -132,7 +135,7 @@ func (a *App) openDraftInBrowser(messageID string) {
 			}
 		}
 		if dedicated {
-			err := launchDraftInDedicatedBrowser(draftsListURL(email, true))
+			err := launchDraftInDedicatedBrowser(draftsListURL(email, true), slot)
 			if err == nil {
 				return
 			}

@@ -19,9 +19,9 @@
 #   6. [HUMAN] Complete OAuth consent in the browser window the app opens.
 #      Script polls app.log for "oauth: signed in as" to detect completion.
 #   7. Auto-trigger a MAPI call via `mailto:` (Windows routes this through
-#      whatever is registered as the default mail client — that is now go-mapi).
-#   8. Verify the queue JSON file appeared in %TEMP%\go-mapi\.
-#   9. [HUMAN] Click "Create draft" in the go-mapi window. Script polls app.log
+#      whatever is registered as the default mail client — that is now DraftHorse).
+#   8. Verify the queue JSON file appeared in %TEMP%\DraftHorse\.
+#   9. [HUMAN] Click "Create draft" in the DraftHorse window. Script polls app.log
 #      for "gmail: draft created id=" to detect completion.
 #  10. [HUMAN] Glance at Gmail Drafts to confirm the draft actually appeared.
 #      Script prompts for y/n and records the answer in evidence.
@@ -132,9 +132,9 @@ function Launch-App {
     # shortcut can land in either the all-users or per-user Start Menu depending
     # on the elevation account. Check both, then fall back to the exe directly.
     $candidates = @(
-        "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\go-mapi.lnk",
-        "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\go-mapi.lnk",
-        "$env:ProgramFiles\go-mapi\go-mapi.exe"
+        "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\DraftHorse.lnk",
+        "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\DraftHorse.lnk",
+        "$env:ProgramFiles\DraftHorse\DraftHorse.exe"
     )
     $launchTarget = $null
     foreach ($c in $candidates) {
@@ -148,7 +148,7 @@ function Launch-App {
     Start-Process -FilePath $launchTarget | Out-Null
     # Wait for app process to appear, up to 15s.
     for ($i = 0; $i -lt 30; $i++) {
-        $p = Get-Process -Name 'go-mapi' -ErrorAction SilentlyContinue
+        $p = Get-Process -Name 'DraftHorse' -ErrorAction SilentlyContinue
         if ($p) { Write-StepLog INFO "App process PID=$($p.Id)"; return $p }
         Start-Sleep -Milliseconds 500
     }
@@ -156,7 +156,7 @@ function Launch-App {
     $null
 }
 
-function Get-AppLogPath { Join-Path $env:APPDATA 'go-mapi\app.log' }
+function Get-AppLogPath { Join-Path $env:APPDATA 'DraftHorse\app.log' }
 
 function Wait-ForLogLine {
     param(
@@ -181,8 +181,8 @@ function Wait-ForLogLine {
 
 function Trigger-MapiSend {
     # `Start-Process "mailto:..."` goes through ShellExecuteEx, which resolves
-    # via HKLM\SOFTWARE\Clients\Mail (set by the installer to go-mapi). The
-    # MAPI DLL then writes JSON to %TEMP%\go-mapi\ and the watcher picks it up.
+    # via HKLM\SOFTWARE\Clients\Mail (set by the installer to DraftHorse). The
+    # MAPI DLL then writes JSON to %TEMP%\DraftHorse\ and the watcher picks it up.
     $target = 'mailto:phase11-smoke@example.com?subject=Phase%2011%20smoke%20test&body=Automated%20smoke%20message%20from%20sandbox.'
     Write-StepLog INFO "Triggering MAPI send via mailto: handler"
     Start-Process $target
@@ -190,7 +190,7 @@ function Trigger-MapiSend {
 
 function Wait-ForQueueFile {
     param([int]$TimeoutSeconds = 15)
-    $queueDir = Join-Path $env:TEMP 'go-mapi'
+    $queueDir = Join-Path $env:TEMP 'DraftHorse'
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
         if (Test-Path -LiteralPath $queueDir) {
@@ -204,7 +204,7 @@ function Wait-ForQueueFile {
 }
 
 function Uninstall-GoMapi {
-    $uninst = 'C:\Program Files\go-mapi\uninstall.exe'
+    $uninst = 'C:\Program Files\DraftHorse\uninstall.exe'
     if (-not (Test-Path -LiteralPath $uninst)) {
         Write-StepLog WARN "Uninstaller not found at $uninst"
         return $false
@@ -217,13 +217,13 @@ function Uninstall-GoMapi {
 
 function Test-CleanUninstall {
     $residual = @()
-    if (Test-Path 'C:\Program Files\go-mapi') {
-        $left = Get-ChildItem 'C:\Program Files\go-mapi' -Recurse -ErrorAction SilentlyContinue
-        if ($left) { $residual += "C:\Program Files\go-mapi still exists ($($left.Count) items)" }
+    if (Test-Path 'C:\Program Files\DraftHorse') {
+        $left = Get-ChildItem 'C:\Program Files\DraftHorse' -Recurse -ErrorAction SilentlyContinue
+        if ($left) { $residual += "C:\Program Files\DraftHorse still exists ($($left.Count) items)" }
     }
-    $hklm = 'HKLM:\SOFTWARE\Clients\Mail\go-mapi'
+    $hklm = 'HKLM:\SOFTWARE\Clients\Mail\DraftHorse'
     if (Test-Path $hklm) { $residual += "$hklm still exists" }
-    $aumid = 'HKCR:\com.marcfargas.gomapi'
+    $aumid = 'HKCR:\com.arrickspropane.drafthorse'
     if (Test-Path $aumid) { $residual += "$aumid still exists (AUMID)" }
     if ($residual) { Write-StepLog WARN "Residual after uninstall: $($residual -join '; ')" }
     else           { Write-StepLog INFO 'No residual: clean uninstall confirmed' }
@@ -335,8 +335,8 @@ try {
     $results.queue = if ($queuePath) { "PASS ($queuePath)" } else { 'FAIL (no queue JSON)' }
     Save-Screenshot -OutPath (Join-Path $script:EvidenceDir 'screenshots\05-queue-row.png') -Label 'queue-row'
 
-    # ---- HUMAN: click Create draft in the go-mapi window ----
-    Prompt-Human 'Click "Create draft" on the queue row in the go-mapi window. Press ENTER after the row clears.' | Out-Null
+    # ---- HUMAN: click Create draft in the DraftHorse window ----
+    Prompt-Human 'Click "Create draft" on the queue row in the DraftHorse window. Press ENTER after the row clears.' | Out-Null
     $draftOk = Wait-ForLogLine -Pattern 'gmail: draft created id=' -TimeoutSeconds $DraftWaitSeconds -Label 'draft created'
     $results.draft = if ($draftOk) { 'PASS' } else { 'FAIL (timeout waiting for gmail: draft created id=)' }
     Save-Screenshot -OutPath (Join-Path $script:EvidenceDir 'screenshots\06-draft-created.png') -Label 'draft-created'

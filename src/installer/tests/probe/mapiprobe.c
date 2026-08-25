@@ -3,7 +3,7 @@
  *
  * Calls MAPISendMail through the in-box mapi32.dll stub exactly the way real
  * Simple MAPI callers (32-bit scanner software, 64-bit Explorer "Send to")
- * do, then reports which go-mapi.dll the stub actually resolved and loaded.
+ * do, then reports which DraftHorse.dll the stub actually resolved and loaded.
  * This is the ground truth the registry assertions in installer.Tests.ps1
  * cannot provide: it proves the stub expands the REG_EXPAND_SZ DLLPath with
  * the *caller's* environment, per bitness, on real Windows.
@@ -15,10 +15,10 @@
  *   BITNESS=64|32
  *   PROGRAMFILES=<per-process %ProgramFiles% expansion>
  *   MAPIRC=<MAPISendMail return code>       (0 = SUCCESS_SUCCESS)
- *   RESOLVED=<full path of loaded go-mapi.dll>|<none>
+ *   RESOLVED=<full path of loaded DraftHorse.dll>|<none>
  *
- * Exit codes: 0 = go-mapi.dll loaded in-process; 2 = stub missing/broken;
- * 3 = stub ran but never loaded go-mapi.dll (misregistration).
+ * Exit codes: 0 = DraftHorse.dll loaded in-process; 2 = stub missing/broken;
+ * 3 = stub ran but never loaded DraftHorse.dll (misregistration).
  */
 
 #include <windows.h>
@@ -104,7 +104,7 @@ int main(void) {
     ULONG rc = sendMail(0, 0, &msg, 0, 0);
     printf("MAPIRC=%lu\n", rc);
 
-    HMODULE provider = GetModuleHandleA("go-mapi.dll");
+    HMODULE provider = GetModuleHandleA("DraftHorse.dll");
     if (provider == NULL) {
         printf("RESOLVED=<none>\n");
         return 3;

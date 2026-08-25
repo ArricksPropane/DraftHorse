@@ -7,15 +7,15 @@
       -Orchestrate -N <int>  : Runs as VM admin. Starts all per-user scheduled tasks,
                                waits for per-user done flags, concatenates per-user CSV
                                fragments into the canonical CSV, drops measurement-complete.flag.
-      -Worker -User <name>   : Runs inside each per-user scheduled task. Launches go-mapi.exe,
+      -Worker -User <name>   : Runs inside each per-user scheduled task. Launches DraftHorse.exe,
                                samples cold-start / idle-pre-webview / idle-post-webview
                                across 3 iterations, writes per-user CSV fragment.
       -Aggregate <path>      : Runs on dev machine after CSV pulled. Prints mean/max/stddev
                                on total_ws_mb across scenarios.
 
-    Per-session metric (primary gate): SUM of go-mapi.exe Private WS + all
+    Per-session metric (primary gate): SUM of DraftHorse.exe Private WS + all
     msedgewebview2.exe child Private WS (correlated via Win32_Process.ParentProcessId).
-    go-mapi.exe-only Private WS recorded separately as secondary diagnostic.
+    DraftHorse.exe-only Private WS recorded separately as secondary diagnostic.
 
     Critical gotcha: each session user MUST be a member of the local `Performance Log Users`
     group, else Win32_PerfRawData_PerfProc_Process returns empty.
@@ -38,7 +38,7 @@ param(
     [Parameter(ParameterSetName = 'Aggregate', Mandatory = $true)]
     [string] $Aggregate,
 
-    [string] $WorkDir = 'C:\gomapi',
+    [string] $WorkDir = 'C:\drafthorse',
 
     # Smoke mode: 1 iteration, 10s idles -- pipeline validation only, NOT real gate data.
     [switch] $Smoke
@@ -47,7 +47,7 @@ param(
 # FIRST THING: write a startup marker so we know powershell.exe at least loaded
 # the script. Happens before StrictMode/ErrorAction so it can't be aborted.
 try {
-    $startupLog = 'C:\gomapi\startup-debug.log'
+    $startupLog = 'C:\drafthorse\startup-debug.log'
     $paramSet = if ($PSCmdlet -and $PSCmdlet.ParameterSetName) { $PSCmdlet.ParameterSetName } else { '(unresolved)' }
     "[$([DateTime]::UtcNow.ToString('o'))] ENTER PID=$PID User=$env:USERNAME ParamSet=$paramSet Worker=$Worker Orchestrate=$Orchestrate User-arg='$User' N=$N Smoke=$Smoke" |
         Out-File -FilePath $startupLog -Append -Encoding UTF8 -ErrorAction SilentlyContinue
@@ -69,8 +69,8 @@ function Sample-Session {
         [string] $OutputCsv
     )
 
-    # Find go-mapi.exe processes owned by this session user.
-    $allGm = Get-CimInstance Win32_Process -Filter "Name='go-mapi.exe'"
+    # Find DraftHorse.exe processes owned by this session user.
+    $allGm = Get-CimInstance Win32_Process -Filter "Name='DraftHorse.exe'"
     $gmForUser = foreach ($p in $allGm) {
         $owner = (Invoke-CimMethod -InputObject $p -MethodName GetOwner).User
         if ($owner -eq $SessionUser) { $p }
@@ -84,7 +84,7 @@ function Sample-Session {
         $wvChildren = Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe' AND ParentProcessId=$gmPid"
 
         # Private Working Set -- keyed by IDProcess for unambiguous per-PID resolution
-        # (avoids Get-Counter instance-name collisions across multiple go-mapi processes).
+        # (avoids Get-Counter instance-name collisions across multiple DraftHorse processes).
         $gmPerf = Get-CimInstance Win32_PerfRawData_PerfProc_Process -Filter "IDProcess=$gmPid"
         $gmWsBytes = if ($gmPerf) { $gmPerf.WorkingSetPrivate } else { 0 }
         $gmWsMb    = [math]::Round($gmWsBytes / 1MB, 2)
@@ -133,7 +133,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Worker') {
     # Canonical header so merge is simple (ensure present via one dummy write + overwrite)
     # Actually we rely on Export-Csv to emit header on first Append -- OK.
 
-    $exePath = Join-Path $WorkDir 'go-mapi.exe'
+    $exePath = Join-Path $WorkDir 'DraftHorse.exe'
 
     for ($iter = 1; $iter -le $iterCount; $iter++) {
         # Cold start
@@ -156,8 +156,8 @@ if ($PSCmdlet.ParameterSetName -eq 'Worker') {
         Start-Sleep -Seconds $idlePost
         Sample-Session -SessionUser $User -Iteration $iter -Scenario 'idle-post-webview' -OutputCsv $outCsv
 
-        # Close all go-mapi.exe + msedgewebview2.exe for this user before next iter
-        Get-Process -Name go-mapi -ErrorAction SilentlyContinue |
+        # Close all DraftHorse.exe + msedgewebview2.exe for this user before next iter
+        Get-Process -Name DraftHorse -ErrorAction SilentlyContinue |
             Where-Object { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" |
                 ForEach-Object { (Invoke-CimMethod -InputObject $_ -MethodName GetOwner).User }) -eq $User } |
             Stop-Process -Force -ErrorAction SilentlyContinue
@@ -190,7 +190,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Orchestrate') {
 
     # Start all tasks near-simultaneously
     for ($i = 1; $i -le $N; $i++) {
-        Start-ScheduledTask -TaskName "gomapi-ramtest-ramtest$i"
+        Start-ScheduledTask -TaskName "drafthorse-ramtest-ramtest$i"
     }
 
     # Wait for all per-user flags

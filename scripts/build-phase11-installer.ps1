@@ -14,13 +14,13 @@
 #
 # Prerequisites (one-time):
 # - NSIS installed and on PATH (`scoop install nsis` or `choco install nsis`).
-# - Fresh `go-mapi.exe` at `src\app\build\bin\`:
+# - Fresh `DraftHorse.exe` at `src\app\build\bin\`:
 #       set -a; source .env.local; set +a
 #       cd src/app && wails build -platform windows/amd64 \
 #           -ldflags "-X main.Version=3.0.0-rc.1 \
 #                     -X main.oauthClientID=$GOMAPI_OAUTH_CLIENT_ID \
 #                     -X main.oauthClientSecret=$GOMAPI_OAUTH_CLIENT_SECRET \
-#                     -X main.aumidOverride=com.marcfargas.gomapi \
+#                     -X main.aumidOverride=com.arrickspropane.drafthorse \
 #                     -s -w"
 #
 # NOTE: `aumidOverride` lives in `package main` (src/app/toast.go). The Go
@@ -28,7 +28,7 @@
 # full-module-path form (`github.com/marcfargas/go-mapi/app.aumidOverride`)
 # is silently ignored, leaving the binary with the dev AUMID. This matches
 # the ldflag form used by `.github/workflows/installer-release.yml` for GA.
-# - Fresh `go-mapi.dll` at `src\interceptor\build\bin\` (`npm run build:interceptor`).
+# - Fresh `DraftHorse.dll` at `src\interceptor\build\bin\` (`npm run build:interceptor`).
 #
 # Output:
 # - Installer copied to `tests\sandbox\phase11\installer\DraftHorse-setup.exe`
@@ -50,8 +50,8 @@ if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
 }
 
 foreach ($p in @(
-    'src\app\build\bin\go-mapi.exe',
-    'src\interceptor\build\bin\go-mapi.dll'
+    'src\app\build\bin\DraftHorse.exe',
+    'src\interceptor\build\bin\DraftHorse.dll'
 )) {
     $full = Join-Path $RepoRoot $p
     if (-not (Test-Path -LiteralPath $full)) {
