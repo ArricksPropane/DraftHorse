@@ -145,8 +145,15 @@ Section "Install" SecInstall
 
   ; Old ARP entry (the new write below uses Uninstall\DraftHorse — without
   ; this, Add/Remove Programs shows two rows and the old uninstaller would
-  ; scrub the NEW Clients\Mail resolver if ever run).
+  ; scrub the NEW Clients\Mail resolver if ever run). Uninstall is a WOW64
+  ; REDIRECTED key (unlike Clients\Mail / Classes / RegisteredApplications,
+  ; which are shared) — smoke test 36 proved a single delete from this
+  ; 32-bit installer only reaches the WOW6432Node view, so delete BOTH.
+  SetRegView 64
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi"
+  SetRegView 32
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi"
+  SetRegView default
 
   ; Old firewall rule (new rule name is added later this section).
   ExecWait 'netsh advfirewall firewall delete rule name="go-mapi OAuth loopback"' $0
@@ -964,6 +971,7 @@ Section "Uninstall"
   ; uninstalling-user-only caveat as step 7. Best-effort: a running Edge
   ; window on this profile may pin some files until it closes.
   RMDir /r "$LOCALAPPDATA\DraftHorse\browser-profile"
+  RMDir /r "$LOCALAPPDATA\DraftHorse\browser-profile-2"  ; V4 slot-2 account profile
 
   ; 8. Windows Credential Manager — target is "<service>:<username>" per
   ; zalando/go-keyring Windows backend (PATTERNS.md §Shared Pattern 3).

@@ -44,6 +44,14 @@ export function SetTrayIdle(arg1:string):Promise<void>;
 
 export function SetUpdateChecksEnabled(arg1:boolean):Promise<void>;
 
+export function GetAccounts():Promise<Array<main.AccountInfo>>;
+
+export function SetActiveAccount(arg1:number):Promise<void>;
+
+export function SignInAccount(arg1:number):Promise<void>;
+
+export function SignOutAccount(arg1:number):Promise<void>;
+
 export function SignIn():Promise<void>;
 
 export function SignOut():Promise<void>;

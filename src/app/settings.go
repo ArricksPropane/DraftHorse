@@ -46,6 +46,10 @@ type AppSettings struct {
 	// attachment chip until reopened (same behavior Affixa had). Default
 	// 4000; field-tunable via settings.json without a rebuild; 0 disables.
 	DraftOpenDelayMs int `json:"draft_open_delay_ms"`
+	// V4 two-account support: the account slot (0 or 1) that scans draft
+	// to. Set from the tray radio rows or the window switcher; every other
+	// value clamps to 0 so a hand-edited file cannot point at nothing.
+	ActiveAccount int `json:"active_account"`
 }
 
 const defaultMode = "manual"
@@ -103,6 +107,7 @@ func loadSettings() AppSettings {
 		OpenDraftInBrowser  *bool  `json:"open_draft_in_browser"`
 		DraftBrowserDedicated *bool `json:"draft_browser_dedicated"`
 		DraftOpenDelayMs      *int  `json:"draft_open_delay_ms"`
+		ActiveAccount         *int  `json:"active_account"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		logError("settings: parse error, using defaults: %v", err)
@@ -124,6 +129,10 @@ func loadSettings() AppSettings {
 	// ARRICKS-21: absent (pre-3.7 settings files) → default true.
 	if raw.DraftBrowserDedicated != nil {
 		out.DraftBrowserDedicated = *raw.DraftBrowserDedicated
+	}
+	// V4: absent (pre-4.0 files) → slot 0; anything but 0/1 clamps to 0.
+	if raw.ActiveAccount != nil && *raw.ActiveAccount == 1 {
+		out.ActiveAccount = 1
 	}
 	// ARRICKS-23: absent → default 4000ms; clamp field-typos to [0, 60s].
 	if raw.DraftOpenDelayMs != nil {

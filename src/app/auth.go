@@ -25,7 +25,12 @@ import (
 // Keyring service+user coordinates per CONTEXT D-11.
 const (
 	keyringService = "DraftHorse"
-	keyringUser    = "oauth-tokens"
+	// keyringUser is ACCOUNT SLOT 1's credential-manager username. V4
+	// two-account support (docs/V4-PLAN.md Phase 2) stores slot 2 under
+	// keyringUser2; the value for slot 1 is unchanged so a 3.x/4.0-single
+	// token (and migrate.go's moved token) lands in slot 1 automatically.
+	keyringUser  = "oauth-tokens"
+	keyringUser2 = "oauth-tokens-2"
 )
 
 // KeyringStore abstracts the OS credential store so tests can inject a fake.
@@ -138,6 +143,21 @@ type AuthManager struct {
 	// (zalando/go-keyring); tests inject fakeKeyringStore for cross-platform
 	// unit tests. Always non-nil — constructors set it.
 	keyring KeyringStore
+
+	// user is this manager's credential-manager username (keyringUser or
+	// keyringUser2) — the only per-slot difference in persistence. Set by
+	// the constructors; empty means keyringUser (pre-V4 constructors and
+	// tests that build AuthManager structs directly).
+	user string
+}
+
+// keyringUserName returns the slot's credential username, defaulting to the
+// slot-1 name so zero-value/test-constructed managers keep pre-V4 behavior.
+func (am *AuthManager) keyringUserName() string {
+	if am.user == "" {
+		return keyringUser
+	}
+	return am.user
 }
 
 // keyringStoreFactory is the seam for build-tag injection. Production code
@@ -147,10 +167,20 @@ type AuthManager struct {
 // boot the app pre-authenticated without touching the real credential store.
 var keyringStoreFactory func() KeyringStore = func() KeyringStore { return realKeyringStore{} }
 
-// NewAuthManager constructs a fresh, signed-out AuthManager backed by the
-// real Windows Credential Manager (via zalando/go-keyring).
+// NewAuthManager constructs a fresh, signed-out slot-1 AuthManager backed by
+// the real Windows Credential Manager (via zalando/go-keyring).
 func NewAuthManager() *AuthManager {
 	return NewAuthManagerWithStore(keyringStoreFactory())
+}
+
+// NewAuthManagerForSlot constructs the manager for account slot 0 or 1,
+// persisting to that slot's credential entry. V4 two-account support.
+func NewAuthManagerForSlot(slot int) *AuthManager {
+	am := NewAuthManagerWithStore(keyringStoreFactory())
+	if slot == 1 {
+		am.user = keyringUser2
+	}
+	return am
 }
 
 // NewAuthManagerWithStore constructs an AuthManager with a custom keyring
@@ -181,7 +211,7 @@ func (am *AuthManager) LoadFromKeyring() error {
 	am.refresh.Lock()
 	defer am.refresh.Unlock()
 
-	raw, err := am.keyring.Get(keyringService, keyringUser)
+	raw, err := am.keyring.Get(keyringService, am.keyringUserName())
 	if errors.Is(err, keyring.ErrNotFound) {
 		am.tokens = nil
 		return nil
@@ -209,7 +239,7 @@ func (am *AuthManager) saveToKeyringLocked() error {
 	if err != nil {
 		return fmt.Errorf("keyring encode: %w", err)
 	}
-	if err := am.keyring.Set(keyringService, keyringUser, string(data)); err != nil {
+	if err := am.keyring.Set(keyringService, am.keyringUserName(), string(data)); err != nil {
 		return fmt.Errorf("keyring save: %w", err)
 	}
 	return nil
@@ -232,7 +262,7 @@ func (am *AuthManager) clearTokensLocked() error {
 	am.tokens = nil
 	am.email = ""
 	am.name = ""
-	if err := am.keyring.Delete(keyringService, keyringUser); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+	if err := am.keyring.Delete(keyringService, am.keyringUserName()); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return fmt.Errorf("keyring delete: %w", err)
 	}
 	return nil
@@ -665,21 +695,24 @@ type GmailCall func(accessToken string) (statusCode int, err error)
 // Any other (status, err) combination where err != nil is returned as-is.
 // Any (status, nil) combination where status != 401 is treated as success.
 func (a *App) MakeAuthenticatedGmailCall(ctx context.Context, fn GmailCall) error {
-	if a.auth == nil {
+	// V4: pin the manager once — an account switch mid-call must not mix
+	// slot A's refresh with slot B's token. Everything below reads `am`.
+	am := a.auth
+	if am == nil {
 		return ErrNotAuthenticated
 	}
 	// Proactive refresh.
-	a.auth.refresh.Lock()
-	if err := a.auth.refreshIfNeededLocked(ctx); err != nil {
-		a.auth.refresh.Unlock()
+	am.refresh.Lock()
+	if err := am.refreshIfNeededLocked(ctx); err != nil {
+		am.refresh.Unlock()
 		if errors.Is(err, ErrInvalidGrant) {
 			a.emitAuthChanged()
 			a.SetTrayError("sign-in expired")
 		}
 		return err
 	}
-	token := a.auth.tokens.AccessToken
-	a.auth.refresh.Unlock()
+	token := am.tokens.AccessToken
+	am.refresh.Unlock()
 
 	status, err := fn(token)
 	if err == nil && status != 401 {
@@ -693,32 +726,32 @@ func (a *App) MakeAuthenticatedGmailCall(ctx context.Context, fn GmailCall) erro
 	// retry fn() call AND the classify-and-clear that follows, so no concurrent
 	// caller can observe the stale access token between the refresh result and
 	// the clear. The retry is bounded by fn's own HTTP timeout.
-	a.auth.refresh.Lock()
+	am.refresh.Lock()
 	// Force refresh by backdating expiry.
-	if a.auth.tokens != nil {
-		a.auth.tokens.Expiry = time.Now().Add(-time.Minute)
+	if am.tokens != nil {
+		am.tokens.Expiry = time.Now().Add(-time.Minute)
 	}
-	if err := a.auth.refreshIfNeededLocked(ctx); err != nil {
-		a.auth.refresh.Unlock()
+	if err := am.refreshIfNeededLocked(ctx); err != nil {
+		am.refresh.Unlock()
 		if errors.Is(err, ErrInvalidGrant) {
 			a.emitAuthChanged()
 			a.SetTrayError("sign-in expired")
 		}
 		return err
 	}
-	token = a.auth.tokens.AccessToken
+	token = am.tokens.AccessToken
 
 	status, err = fn(token)
 	if status == 401 {
 		// Second 401 after fresh token — classify as invalid_grant path.
 		// Clear while still holding the lock to close the race window.
-		_ = a.auth.clearTokensLocked()
-		a.auth.refresh.Unlock()
+		_ = am.clearTokensLocked()
+		am.refresh.Unlock()
 		a.emitAuthChanged()
 		a.SetTrayError("sign-in expired")
 		return ErrInvalidGrant
 	}
-	a.auth.refresh.Unlock()
+	am.refresh.Unlock()
 	return err
 }
 
@@ -755,7 +788,7 @@ func (a *App) SignOut() error {
 	a.auth.name = ""
 	// ARRICKS-24: the next sign-in may be a different account.
 	a.resetSignatureCache()
-	_ = a.auth.keyring.Delete(keyringService, keyringUser) // ignore ErrNotFound
+	_ = a.auth.keyring.Delete(keyringService, a.auth.keyringUserName()) // ignore ErrNotFound
 	a.auth.refresh.Unlock()
 
 	a.emitAuthChanged()
@@ -833,4 +866,140 @@ func (a *App) bootstrapAuth() <-chan struct{} {
 		a.signalTrayRefresh() // tray reads SignedIn from auth.Status() — refresh after auth settles
 	}()
 	return done
+}
+
+// ---------------------------------------------------------------------------
+// V4 two-account support (docs/V4-PLAN.md Phase 2)
+//
+// Model (Dave's decision, 2026-08-26): both accounts stay signed in; exactly
+// one is ACTIVE and every scan drafts to it. The chooser is a pair of radio
+// rows in the tray menu AND a switch in the main window — set before
+// scanning; no prompt ever enters the scan flow. a.auth remains the single
+// pointer the whole draft path reads: switching accounts just repoints it,
+// so automode, MakeAuthenticatedGmailCall, and the draft-open path needed no
+// per-call changes.
+//
+// Known benign race, accepted deliberately: a switch DURING a queue drain
+// can stamp one in-flight draft with the previous account's signature or
+// open its Drafts list in the previous profile. The token itself is pinned
+// per-call, so the draft always lands in the account whose token created it.
+// ---------------------------------------------------------------------------
+
+// AccountInfo is the Wails-bound per-slot view for the account switcher.
+type AccountInfo struct {
+	Slot          int    `json:"slot"`
+	Authenticated bool   `json:"authenticated"`
+	Email         string `json:"email,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Active        bool   `json:"active"`
+}
+
+// account returns the manager for slot (0 or 1), nil on out-of-range.
+func (a *App) account(slot int) *AuthManager {
+	if slot < 0 || slot >= len(a.accounts) {
+		return nil
+	}
+	return a.accounts[slot]
+}
+
+// activeSlot returns the index a.auth currently points at (0 when unset —
+// the pre-V4 single-account shape used by most tests).
+func (a *App) activeSlot() int {
+	for i, am := range a.accounts {
+		if am != nil && am == a.auth {
+			return i
+		}
+	}
+	return 0
+}
+
+// GetAccounts is the Wails binding behind the account switcher UI.
+func (a *App) GetAccounts() []AccountInfo {
+	out := make([]AccountInfo, 0, len(a.accounts))
+	for i, am := range a.accounts {
+		info := AccountInfo{Slot: i, Active: i == a.activeSlot()}
+		if am != nil {
+			st := am.Status()
+			info.Authenticated = st.Authenticated
+			info.Email = st.Email
+			info.Name = st.Name
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
+// SetActiveAccount repoints a.auth at the chosen slot and persists the
+// choice. Wails binding + tray click handler target. Choosing a signed-out
+// slot is allowed — the UI then shows the sign-in screen for it, which is
+// exactly the flow for adding the second account.
+func (a *App) SetActiveAccount(slot int) error {
+	am := a.account(slot)
+	if am == nil {
+		return fmt.Errorf("accounts: no slot %d", slot)
+	}
+	a.auth = am
+	a.settingsMu.Lock()
+	a.settings.ActiveAccount = slot
+	snapshot := a.settings
+	a.settingsMu.Unlock()
+	if err := saveSettings(snapshot); err != nil {
+		logError("accounts: persist active slot: %v", err)
+	}
+	logInfo("accounts: active slot -> %d", slot)
+	a.emitAuthChanged()
+	a.signalTrayRefresh()
+	return nil
+}
+
+// SignInAccount runs the OAuth flow for a specific slot (Wails binding for
+// "Add second account"). Signing in does NOT switch the active slot — the
+// user adds the account, then chooses when to draft to it.
+func (a *App) SignInAccount(slot int) error {
+	am := a.account(slot)
+	if am == nil {
+		return fmt.Errorf("accounts: no slot %d", slot)
+	}
+	am.refresh.Lock()
+	defer am.refresh.Unlock()
+	if err := am.signInLocked(a.ctx); err != nil {
+		logError("oauth sign-in (slot %d) failed: %v", slot, err)
+		return err
+	}
+	if am == a.auth {
+		a.SetTrayIdle("watching for emails")
+	}
+	a.emitAuthChanged()
+	a.signalTrayRefresh()
+	return nil
+}
+
+// SignOutAccount signs one slot out (revoke + clear), leaving the other
+// untouched. Mirrors SignOut's ordering; also drops that slot's signature
+// cache (ARRICKS-24/29 state is per-account).
+func (a *App) SignOutAccount(slot int) error {
+	am := a.account(slot)
+	if am == nil {
+		return fmt.Errorf("accounts: no slot %d", slot)
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	am.refresh.Lock()
+	am.revokeRefreshToken(ctx)
+	am.tokens = nil
+	am.email = ""
+	am.name = ""
+	a.resetSignatureCacheSlot(slot)
+	_ = am.keyring.Delete(keyringService, am.keyringUserName())
+	am.refresh.Unlock()
+
+	if am == a.auth {
+		a.SetTrayError("signed out")
+	}
+	a.emitAuthChanged()
+	a.signalTrayRefresh()
+	logInfo("oauth: sign-out complete (slot %d)", slot)
+	return nil
 }

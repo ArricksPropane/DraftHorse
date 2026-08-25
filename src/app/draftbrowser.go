@@ -28,20 +28,31 @@ import (
 // errNoChromiumBrowser signals "fall back to the default browser".
 var errNoChromiumBrowser = errors.New("no Edge or Chrome found via App Paths")
 
-// launchDraftInDedicatedBrowser is the seam draftlink.go calls; tests swap it.
+// launchDraftInDedicatedBrowser is the seam draftlink.go calls; tests swap
+// it. V4: takes the account slot so each account gets its OWN profile — the
+// drafts-list /u/0 URL (ARRICKS-22) is only correct because a profile holds
+// exactly one Google session; two accounts sharing a profile would silently
+// open the wrong mailbox.
 var launchDraftInDedicatedBrowser = launchDedicatedBrowser
 
-// dedicatedBrowserProfileDir is the per-user isolated profile. Lives beside
-// the queue under %LOCALAPPDATA%\DraftHorse; the uninstaller removes it (it
-// holds the location account's session cookies).
-func dedicatedBrowserProfileDir() string {
+// dedicatedBrowserProfileDir is the per-user isolated profile for one
+// account slot. Slot 0 keeps the pre-V4 path so the profile IT already
+// signed in survives the upgrade untouched; slot 1 appends a suffix and is
+// signed in once when the second account is added (same runbook step as
+// ARRICKS-21). Lives beside the queue under %LOCALAPPDATA%\DraftHorse; the
+// uninstaller removes both (they hold session cookies).
+func dedicatedBrowserProfileDir(slot int) string {
+	name := "browser-profile"
+	if slot == 1 {
+		name = "browser-profile-2"
+	}
 	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-		return filepath.Join(localAppData, "DraftHorse", "browser-profile")
+		return filepath.Join(localAppData, "DraftHorse", name)
 	}
 	if cacheDir, err := os.UserCacheDir(); err == nil {
-		return filepath.Join(cacheDir, "DraftHorse", "browser-profile")
+		return filepath.Join(cacheDir, "DraftHorse", name)
 	}
-	return filepath.Join(".", "DraftHorse", "browser-profile")
+	return filepath.Join(".", "DraftHorse", name)
 }
 
 // dedicatedBrowserArgs is the pure argument builder (tested). --no-first-run
@@ -98,12 +109,12 @@ func findChromiumBrowser() (string, bool) {
 // launchDedicatedBrowser starts the browser detached (no wait) in the
 // dedicated profile. Returns errNoChromiumBrowser when neither browser is
 // installed so the caller can fall back to the default browser.
-func launchDedicatedBrowser(url string) error {
+func launchDedicatedBrowser(url string, slot int) error {
 	exe, ok := findChromiumBrowser()
 	if !ok {
 		return errNoChromiumBrowser
 	}
-	profile := dedicatedBrowserProfileDir()
+	profile := dedicatedBrowserProfileDir(slot)
 	if err := os.MkdirAll(profile, 0o700); err != nil {
 		return err
 	}

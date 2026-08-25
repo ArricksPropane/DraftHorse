@@ -1,8 +1,38 @@
 import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { GetAuthStatus, SignIn, SignOut } from '../../wailsjs/go/main/App';
+import {
+  GetAuthStatus,
+  SignIn,
+  SignOut,
+  GetAccounts,
+  SetActiveAccount,
+  SignInAccount,
+  SignOutAccount,
+} from '../../wailsjs/go/main/App';
 import type { main } from '../../wailsjs/go/models';
 
 export type AuthStatus = main.AuthStatus;
+export type AccountInfo = main.AccountInfo;
+
+/** V4 two-account support: the roster behind the account switcher. */
+export async function fetchAccounts(): Promise<AccountInfo[]> {
+  return await GetAccounts();
+}
+
+/** Make `slot` the account scans draft to. Allowed for signed-out slots —
+ * the app then shows the sign-in screen for it (the add-account flow). */
+export async function setActiveAccount(slot: number): Promise<void> {
+  await SetActiveAccount(slot);
+}
+
+/** Run the OAuth flow for one slot without changing which is active. */
+export async function signInAccount(slot: number): Promise<void> {
+  await SignInAccount(slot);
+}
+
+/** Sign one slot out; the other account is untouched. */
+export async function signOutAccount(slot: number): Promise<void> {
+  await SignOutAccount(slot);
+}
 
 const PREAUTH_SEEN_KEY = 'DraftHorse.preauth-seen';
 

@@ -10,7 +10,12 @@
     signOut,
     hasSeenPreAuthExplainer,
     markPreAuthExplainerSeen,
+    fetchAccounts,
+    setActiveAccount,
+    signInAccount,
+    signOutAccount,
     type AuthStatus,
+    type AccountInfo,
   } from './lib/auth';
   import {
     fetchSettings,
@@ -32,6 +37,7 @@
   import PreAuthModal from './lib/components/PreAuthModal.svelte';
   import ReAuthBanner from './lib/components/ReAuthBanner.svelte';
   import SignedInHeader from './lib/components/SignedInHeader.svelte';
+  import AccountSwitcher from './lib/components/AccountSwitcher.svelte';
   import QueueRow from './lib/components/QueueRow.svelte';
   import UpdateBanner from './lib/components/UpdateBanner.svelte';
   import UpdatePanel from './lib/components/UpdatePanel.svelte';
@@ -42,6 +48,35 @@
   let queue = $state<EmailWithId[]>([]);
   let errorMsg = $state<string | null>(null);
   let auth = $state<AuthStatus>({ authenticated: false });
+  // V4 two-account roster. Refreshed on every auth-changed event — slot
+  // sign-in/out and active switches all funnel through that one event.
+  let accounts = $state<AccountInfo[]>([]);
+
+  async function refreshAccounts() {
+    try {
+      accounts = await fetchAccounts();
+    } catch {
+      // Non-fatal — the switcher just doesn't render until the next event.
+    }
+  }
+
+  async function handleActivateAccount(slot: number) {
+    await setActiveAccount(slot);
+    await refreshAccounts();
+  }
+
+  async function handleAddAccount(slot: number) {
+    try {
+      await signInAccount(slot);
+    } finally {
+      await refreshAccounts();
+    }
+  }
+
+  async function handleSignOutSlot(slot: number) {
+    await signOutAccount(slot);
+    await refreshAccounts();
+  }
   let showPreAuthModal = $state(false);
   let showReAuthBanner = $state(false);
   let wasAuthenticated = false;
@@ -88,6 +123,8 @@
 
     auth = initialAuth as AuthStatus;
     wasAuthenticated = auth.authenticated;
+    // V4: hydrate the account roster after the critical state (non-blocking).
+    void refreshAccounts();
     queue = initialQueue as EmailWithId[];
     mode = ((initialSettings as { mode: string }).mode === 'auto-draft' ? 'auto-draft' : 'manual');
     paused = initialPaused as boolean;
@@ -145,6 +182,9 @@
         showReAuthBanner = false;
       }
       wasAuthenticated = s.authenticated;
+      // V4: every slot sign-in/out and active switch emits auth-changed —
+      // one hook keeps the switcher current.
+      void refreshAccounts();
     }));
 
     // Auto-draft result (fires for both manual CreateDraftForID and automode).
@@ -315,6 +355,14 @@
     {mode}
     onModeChange={handleModeChange}
   />
+  {#if accounts.length > 0}
+    <AccountSwitcher
+      {accounts}
+      onActivate={handleActivateAccount}
+      onAddAccount={handleAddAccount}
+      onSignOutSlot={handleSignOutSlot}
+    />
+  {/if}
 {/if}
 
 <main>

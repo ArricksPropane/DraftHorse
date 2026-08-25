@@ -82,6 +82,22 @@ export function SetUpdateChecksEnabled(arg1) {
   return window['go']['main']['App']['SetUpdateChecksEnabled'](arg1);
 }
 
+export function GetAccounts() {
+  return window['go']['main']['App']['GetAccounts']();
+}
+
+export function SetActiveAccount(arg1) {
+  return window['go']['main']['App']['SetActiveAccount'](arg1);
+}
+
+export function SignInAccount(arg1) {
+  return window['go']['main']['App']['SignInAccount'](arg1);
+}
+
+export function SignOutAccount(arg1) {
+  return window['go']['main']['App']['SignOutAccount'](arg1);
+}
+
 export function SignIn() {
   return window['go']['main']['App']['SignIn']();
 }

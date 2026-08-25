@@ -39,8 +39,14 @@ func TestDedicatedBrowserArgs(t *testing.T) {
 
 func TestDedicatedBrowserProfileDirUnderLocalAppData(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", `C:\Users\x\AppData\Local`)
-	if got, want := dedicatedBrowserProfileDir(), filepath.Join(`C:\Users\x\AppData\Local`, "DraftHorse", "browser-profile"); got != want {
-		t.Errorf("dedicatedBrowserProfileDir() = %q, want %q", got, want)
+	if got, want := dedicatedBrowserProfileDir(0), filepath.Join(`C:\Users\x\AppData\Local`, "DraftHorse", "browser-profile"); got != want {
+		t.Errorf("dedicatedBrowserProfileDir(0) = %q, want %q", got, want)
+	}
+	// V4: slot 1 gets its OWN profile — one Google session per profile is
+	// what keeps the /u/0 drafts URL pointing at the right account. Slot 0
+	// keeps the pre-V4 path so IT's signed-in profile survives the upgrade.
+	if got, want := dedicatedBrowserProfileDir(1), filepath.Join(`C:\Users\x\AppData\Local`, "DraftHorse", "browser-profile-2"); got != want {
+		t.Errorf("dedicatedBrowserProfileDir(1) = %q, want %q", got, want)
 	}
 }
 
@@ -63,7 +69,7 @@ func TestOpenDraftInBrowserPrefersDedicatedProfile(t *testing.T) {
 	defaultOpens := make(chan string, 2)
 	dedicatedOpens := make(chan string, 2)
 	openDraftURL = func(u string) error { defaultOpens <- u; return nil }
-	launchDraftInDedicatedBrowser = func(u string) error { dedicatedOpens <- u; return nil }
+	launchDraftInDedicatedBrowser = func(u string, _ int) error { dedicatedOpens <- u; return nil }
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
@@ -90,7 +96,7 @@ func TestOpenDraftInBrowserFallsBackWhenNoChromium(t *testing.T) {
 
 	defaultOpens := make(chan string, 2)
 	openDraftURL = func(u string) error { defaultOpens <- u; return nil }
-	launchDraftInDedicatedBrowser = func(string) error { return errNoChromiumBrowser }
+	launchDraftInDedicatedBrowser = func(string, int) error { return errNoChromiumBrowser }
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
@@ -109,7 +115,7 @@ func TestOpenDraftInBrowserDedicatedOffUsesDefault(t *testing.T) {
 
 	defaultOpens := make(chan string, 2)
 	openDraftURL = func(u string) error { defaultOpens <- u; return nil }
-	launchDraftInDedicatedBrowser = func(string) error { return errors.New("must not be called") }
+	launchDraftInDedicatedBrowser = func(string, int) error { return errors.New("must not be called") }
 
 	app := &App{}
 	app.settings.OpenDraftInBrowser = true
