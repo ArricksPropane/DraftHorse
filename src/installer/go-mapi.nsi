@@ -143,6 +143,13 @@ Section "Install" SecInstall
   DeleteRegKey HKLM "SOFTWARE\Classes\go-mapi.mailto"
   DeleteRegValue HKLM "SOFTWARE\RegisteredApplications" "go-mapi"
 
+  ; Windows' browsed-app auto-registration for the old exe ("look for
+  ; another app on this PC" creates Classes\Applications\<exe>). Left in
+  ; place it keeps a dead "go-mapi" row in every Default Apps picker
+  ; (found on the first 4.0 migration retest). Machine hive here; each
+  ; user's HKCU twin is scrubbed by the app (migrate.go).
+  DeleteRegKey HKLM "SOFTWARE\Classes\Applications\go-mapi.exe"
+
   ; Old ARP entry (the new write below uses Uninstall\DraftHorse — without
   ; this, Add/Remove Programs shows two rows and the old uninstaller would
   ; scrub the NEW Clients\Mail resolver if ever run). Uninstall is a WOW64
