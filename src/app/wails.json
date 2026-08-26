@@ -1,6 +1,6 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "go-mapi",
+  "name": "DraftHorse",
   "outputfilename": "DraftHorse",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
@@ -11,6 +11,9 @@
     "email": "marc@marcfargas.com"
   },
   "info": {
-    "productVersion": "0.0.0-dev"
+    "companyName": "Arrick's Propane",
+    "productName": "DraftHorse",
+    "productVersion": "0.0.0-dev",
+    "comments": "Creates Gmail drafts from Simple MAPI calls. Nothing is ever sent."
   }
 }

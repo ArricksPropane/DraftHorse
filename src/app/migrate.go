@@ -48,6 +48,7 @@ func migrateLegacyState() {
 	}
 	notes = append(notes, migrateKeyringEntry()...)
 	notes = append(notes, removeLegacyHealMirror()...)
+	notes = append(notes, removeLegacyApplicationsKey()...)
 	for _, n := range notes {
 		logInfo("migrate: %s", n)
 	}
@@ -115,6 +116,34 @@ func migrateKeyringEntry() []string {
 	}
 	_ = keyring.Delete(legacyName, keyringUser)
 	return []string{"credentials moved to target " + keyringService}
+}
+
+// removeLegacyApplicationsKey deletes the per-user browsed-app registration
+// Windows auto-creates under Software\Classes\Applications when a user ever
+// picks the exe via "look for another app on this PC". Left behind, it keeps
+// a dead "go-mapi" row (old icon, old name) in every Default Apps picker
+// next to the real DraftHorse entry — found by Dave on the first 4.0
+// migration retest. The key can have subkeys (shell\open\command,
+// SupportedTypes), so delete depth-first.
+func removeLegacyApplicationsKey() []string {
+	base := `Software\Classes\Applications\go-mapi.exe`
+	for _, sub := range []string{
+		base + `\shell\open\command`,
+		base + `\shell\open`,
+		base + `\shell`,
+		base + `\SupportedTypes`,
+		base + `\DefaultIcon`,
+		base,
+	} {
+		_ = registry.DeleteKey(registry.CURRENT_USER, sub)
+	}
+	// Report only if the base key is actually gone vs was never there —
+	// DeleteKey's error can't distinguish, so probe.
+	if k, err := registry.OpenKey(registry.CURRENT_USER, base, registry.QUERY_VALUE); err == nil {
+		k.Close()
+		return []string{"stale HKCU Applications\go-mapi.exe survived (subkey layout unexpected)"}
+	}
+	return nil
 }
 
 // removeLegacyHealMirror deletes the pre-4.0 HKCU self-heal mirror. The
