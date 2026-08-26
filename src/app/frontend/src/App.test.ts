@@ -96,6 +96,11 @@ vi.mock('./lib/auth', () => ({
   markPreAuthExplainerSeen: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
+  // V4 two-account switcher
+  fetchAccounts: vi.fn().mockResolvedValue([]),
+  setActiveAccount: vi.fn(),
+  signInAccount: vi.fn(),
+  signOutAccount: vi.fn(),
 }));
 
 import { render, fireEvent } from '@testing-library/svelte';
