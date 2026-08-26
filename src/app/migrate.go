@@ -141,7 +141,7 @@ func removeLegacyApplicationsKey() []string {
 	// DeleteKey's error can't distinguish, so probe.
 	if k, err := registry.OpenKey(registry.CURRENT_USER, base, registry.QUERY_VALUE); err == nil {
 		k.Close()
-		return []string{"stale HKCU Applications\go-mapi.exe survived (subkey layout unexpected)"}
+		return []string{`stale HKCU Applications\go-mapi.exe survived (subkey layout unexpected)`}
 	}
 	return nil
 }
