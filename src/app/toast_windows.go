@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	toast "git.sr.ht/~jackmordaunt/go-toast/v2"
 	"github.com/marcfargas/go-mapi/internal/mapi"
@@ -82,9 +83,27 @@ func windowFocused(a *App) bool {
 	return a.isVisible()
 }
 
-// emitArrivalToast fires a toast for a newly-arrived email.
-// Suppressed when the main window is visible AND focused (D-11).
-// Privacy: Title = sender display name; Body = subject + optional attachment count.
+// emitArrivalToast fires a toast for a newly-arrived email. Suppressed when
+// the main window is visible AND focused (D-11), or paused (D-14).
+//
+// V4 retest feedback (Dave, 2026-08-27) reshaped it twice:
+//
+// 1. Title is the app name, "DraftHorse", like every other toast. It used
+//    to be the recipient or, for scans (which have no recipient yet), the
+//    ORIGINATING APP's name — an unclear title from software the user
+//    never thinks about. The recipient/origin line moved into the body.
+//
+// 2. Mode decides the SHAPE (Dave's explicit choice: informational in auto
+//    mode, not suppressed). Auto-draft mode gets a button-less status toast
+//    ("Creating Gmail draft…") — automode drafts within seconds of arrival,
+//    so "Create draft" / "Dismiss" buttons were promises the app had
+//    already broken: Dismiss removed the queue row while the draft existed
+//    anyway. The clear-on-processed plumbing (NOTIF-05) then removes the
+//    status toast when the draft lands and the success toast replaces it.
+//    Manual mode keeps the buttons — nothing drafts without a click there,
+//    so they are honest.
+//
+// Privacy: body = recipient display line + subject + attachment count.
 // NEVER includes attachment filenames, recipient list, or body text (QUAL-03).
 func emitArrivalToast(a *App, e mapi.EmailWithId) {
 	if a.isVisible() && windowFocused(a) {
@@ -96,35 +115,45 @@ func emitArrivalToast(a *App, e mapi.EmailWithId) {
 	if e.Message == nil {
 		return
 	}
-	title := displayFrom(e.Message)
-	body := e.Message.Subject
-	if c := len(e.Message.Attachments); c > 0 {
-		body += fmt.Sprintf("\n📎 %d attachment(s)", c)
-	}
-	n := toast.Notification{
-		AppID:               activeAUMID(),
-		Title:               title,
-		Body:                body,
-		Icon:                toastIconPath(mustExePath()),
-		ActivationType:      toast.Foreground,
-		ActivationArguments: fmt.Sprintf("action=open&emailId=%s", url.QueryEscape(e.Id)),
-		Actions: []toast.Action{
-			{
-				Type:      toast.Foreground,
-				Content:   "Create draft",
-				Arguments: fmt.Sprintf("action=create-draft&emailId=%s", url.QueryEscape(e.Id)),
-			},
-			{
-				Type:      toast.Foreground,
-				Content:   "Dismiss",
-				Arguments: fmt.Sprintf("action=dismiss&emailId=%s", url.QueryEscape(e.Id)),
-			},
-		},
-	}
+	n := arrivalToastNotification(a.getMode(), e)
 	if err := shimPushWithTagGroup(activeAUMID(), n, e.Id, toastGroup); err != nil {
 		// Privacy-safe log: id prefix + error class only.
 		logError("toast: arrival push failed for %s: %v", safeIDPrefix(e.Id), err)
 	}
+}
+
+// arrivalToastNotification builds the arrival toast for the given mode —
+// pure with respect to App state, so tests can assert the mode split
+// (buttons vs informational) without touching COM.
+func arrivalToastNotification(mode string, e mapi.EmailWithId) toast.Notification {
+	body := arrivalToastBody(e.Message)
+	n := toast.Notification{
+		AppID:               activeAUMID(),
+		Title:               "DraftHorse",
+		Body:                body,
+		Icon:                toastIconPath(mustExePath()),
+		ActivationType:      toast.Foreground,
+		ActivationArguments: fmt.Sprintf("action=open&emailId=%s", url.QueryEscape(e.Id)),
+	}
+	if mode == "auto-draft" {
+		// Status line first, details under it. No buttons: the draft is
+		// already being created; clicking the toast opens the window.
+		n.Body = "Creating Gmail draft…\n" + body
+		return n
+	}
+	n.Actions = []toast.Action{
+		{
+			Type:      toast.Foreground,
+			Content:   "Create draft",
+			Arguments: fmt.Sprintf("action=create-draft&emailId=%s", url.QueryEscape(e.Id)),
+		},
+		{
+			Type:      toast.Foreground,
+			Content:   "Dismiss",
+			Arguments: fmt.Sprintf("action=dismiss&emailId=%s", url.QueryEscape(e.Id)),
+		},
+	}
+	return n
 }
 
 // emitDraftSuccessToast fires only when the window is hidden (D-04 + D-11).
@@ -225,22 +254,28 @@ func clearToastForEmail(emailID string) {
 	}
 }
 
-// displayFrom returns a privacy-safe display string for the toast title.
-// Since MAPI emails are outgoing, we show the first To recipient (name preferred
-// over address) as the "To:" label, or the origin app as a fallback.
-// Never logs or exposes this string beyond the toast UI (QUAL-03).
-func displayFrom(msg *mapi.MailMessage) string {
+// arrivalToastBody builds the toast body: an optional recipient line (name
+// preferred over address — QUAL-03), the subject, and the attachment count.
+// Scans typically have no recipient and a scanner-generated subject, so any
+// of the three lines may be absent. Never logged (QUAL-03).
+func arrivalToastBody(msg *mapi.MailMessage) string {
+	lines := []string{}
 	if len(msg.Recipients.To) > 0 {
 		r := msg.Recipients.To[0]
 		if r.Name != "" {
-			return "To: " + r.Name
-		}
-		if r.Address != "" {
-			return "To: " + r.Address
+			lines = append(lines, "To: "+r.Name)
+		} else if r.Address != "" {
+			lines = append(lines, "To: "+r.Address)
 		}
 	}
-	if msg.OriginApp != "" {
-		return msg.OriginApp
+	if msg.Subject != "" {
+		lines = append(lines, msg.Subject)
 	}
-	return "DraftHorse"
+	if c := len(msg.Attachments); c > 0 {
+		lines = append(lines, fmt.Sprintf("📎 %d attachment(s)", c))
+	}
+	if len(lines) == 0 {
+		return "New email ready to draft"
+	}
+	return strings.Join(lines, "\n")
 }
