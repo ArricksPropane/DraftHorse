@@ -213,7 +213,9 @@ foreach ($stale in @(
     'HKLM:\SOFTWARE\Clients\Mail\go-mapi',
     'HKCU:\Software\Clients\Mail\go-mapi',
     'HKLM:\SOFTWARE\Classes\go-mapi.mailto',
-    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi'
+    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi',
+    'HKLM:\SOFTWARE\Classes\Applications\go-mapi.exe',
+    'HKCU:\Software\Classes\Applications\go-mapi.exe'
 )) {
     if (Test-Path -LiteralPath $stale) {
         Append-Line "PRESENT (stale — migration missed it): $stale"

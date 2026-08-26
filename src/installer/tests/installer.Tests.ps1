@@ -81,6 +81,8 @@ Describe "DraftHorse installer round-trip" {
             New-Item -Path (Join-Path $env:ProgramFiles 'go-mapi') -ItemType Directory -Force | Out-Null
             Set-Content -Path (Join-Path $env:ProgramFiles 'go-mapi\go-mapi.exe') -Value 'stale'
             netsh advfirewall firewall add rule name="go-mapi OAuth loopback" dir=in action=allow program="C:\Program Files\go-mapi\go-mapi.exe" | Out-Null
+            # Browsed-app auto-registration (with subkeys, as Windows creates it)
+            New-Item -Path 'HKLM:\SOFTWARE\Classes\Applications\go-mapi.exe\shell\open\command' -Force | Out-Null
             $true | Should -BeTrue
         }
 
@@ -100,6 +102,7 @@ Describe "DraftHorse installer round-trip" {
             (Get-ItemProperty -Path 'HKLM:\SOFTWARE\RegisteredApplications' -ErrorAction SilentlyContinue).'go-mapi' | Should -BeNullOrEmpty
             Test-Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-mapi' | Should -BeFalse -Because 'two ARP rows across the upgrade, and the old uninstaller would scrub the new resolver'
             (Get-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).'go-mapi' | Should -BeNullOrEmpty
+            Test-Path 'HKLM:\SOFTWARE\Classes\Applications\go-mapi.exe' | Should -BeFalse -Because 'the stale browsed-app row would keep a dead go-mapi entry in every Default Apps picker'
         }
 
         It "37. legacy go-mapi install tree and firewall rule are scrubbed" {
