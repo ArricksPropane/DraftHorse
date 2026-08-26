@@ -107,7 +107,18 @@ drafts to the active account. Zero prompts in the scan flow.
 
 ---
 
-## Phase 3 — ScanSnap Home "Scan to E-mail"
+## Phase 3 — ScanSnap Home "Scan to E-mail" — RESOLVED WITHOUT A FIX
+
+**Outcome (2026-08-27, Dave's testing on v4.0.0-arricks.3):** Scan to E-mail
+works. No Procmon trace was ever run and no registry fix shipped — the Phase 1
+rename + stale-state scrub incidentally cleared whatever ScanSnap's detection
+was rejecting (most plausibly the dead Applications keys / dangling old
+client-key DLL path, not the win.ini MAPI markers hypothesized below). Root
+cause therefore UNCONFIRMED: if "no email client installed" ever returns, the
+investigation protocol below is still the play. The hypotheses are kept as
+written for that eventuality.
+
+### Original plan (kept for the record)
 
 Observed: ScanSnap Home reports "no email client installed" even though
 mailto, .mapimail, and .ml associations point at DraftHorse. So its detection
