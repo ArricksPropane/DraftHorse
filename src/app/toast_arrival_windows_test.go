@@ -44,11 +44,36 @@ func TestArrivalToastBodyNeverEmpty(t *testing.T) {
 	}
 }
 
-func TestEmitArrivalToastSuppressedInAutoDraftMode(t *testing.T) {
-	// In auto-draft mode the function must return BEFORE any COM work —
-	// reaching the push in this headless test environment would fail loudly,
-	// so surviving the call with mode=auto-draft is itself the assertion.
-	app := &App{}
-	app.settings.Mode = "auto-draft"
-	emitArrivalToast(app, mapi.EmailWithId{Id: "x", Message: &mapi.MailMessage{Subject: "s"}})
+func TestArrivalToastAutoModeIsInformational(t *testing.T) {
+	// Dave's choice: auto mode keeps an arrival pop-up, but button-less —
+	// automode has already claimed the email, so "Create draft" / "Dismiss"
+	// would promise choices already made.
+	e := mapi.EmailWithId{Id: "x", Message: &mapi.MailMessage{Subject: "Scan"}}
+	n := arrivalToastNotification("auto-draft", e)
+	if len(n.Actions) != 0 {
+		t.Errorf("auto-draft arrival toast must have no buttons, got %d", len(n.Actions))
+	}
+	if !strings.Contains(n.Body, "Creating Gmail draft") {
+		t.Errorf("auto-draft body = %q, want the status line", n.Body)
+	}
+	if n.Title != "DraftHorse" {
+		t.Errorf("title = %q, want DraftHorse", n.Title)
+	}
+}
+
+func TestArrivalToastManualModeKeepsButtons(t *testing.T) {
+	e := mapi.EmailWithId{Id: "x", Message: &mapi.MailMessage{Subject: "Scan"}}
+	n := arrivalToastNotification("manual", e)
+	if len(n.Actions) != 2 {
+		t.Fatalf("manual arrival toast must keep Create draft + Dismiss, got %d actions", len(n.Actions))
+	}
+	if n.Actions[0].Content != "Create draft" || n.Actions[1].Content != "Dismiss" {
+		t.Errorf("actions = %q, %q", n.Actions[0].Content, n.Actions[1].Content)
+	}
+	if strings.Contains(n.Body, "Creating Gmail draft") {
+		t.Errorf("manual body must not claim a draft is being created: %q", n.Body)
+	}
+	if n.Title != "DraftHorse" {
+		t.Errorf("title = %q, want DraftHorse", n.Title)
+	}
 }

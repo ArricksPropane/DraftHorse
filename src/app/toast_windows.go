@@ -83,30 +83,29 @@ func windowFocused(a *App) bool {
 	return a.isVisible()
 }
 
-// emitArrivalToast fires a toast for a newly-arrived email — MANUAL MODE
-// ONLY. Suppressed when the main window is visible AND focused (D-11).
+// emitArrivalToast fires a toast for a newly-arrived email. Suppressed when
+// the main window is visible AND focused (D-11), or paused (D-14).
 //
-// V4 retest feedback (Dave, 2026-08-27), two fixes:
+// V4 retest feedback (Dave, 2026-08-27) reshaped it twice:
 //
-// 1. Auto-draft mode gets NO arrival toast. Automode drafts the email
-//    within seconds of arrival, so the "Create draft" / "Dismiss" buttons
-//    were promises the app had already broken — Dismiss removed the queue
-//    row but the draft existed anyway. The draft-success toast (and the
-//    error toasts) are auto mode's real feedback; this also halves the
-//    per-scan toast noise. In manual mode nothing drafts without a click,
-//    so the buttons remain honest and the toast stays.
-//
-// 2. Title is the app name, "DraftHorse", like every other toast. It used
+// 1. Title is the app name, "DraftHorse", like every other toast. It used
 //    to be the recipient or, for scans (which have no recipient yet), the
 //    ORIGINATING APP's name — an unclear title from software the user
 //    never thinks about. The recipient/origin line moved into the body.
 //
+// 2. Mode decides the SHAPE (Dave's explicit choice: informational in auto
+//    mode, not suppressed). Auto-draft mode gets a button-less status toast
+//    ("Creating Gmail draft…") — automode drafts within seconds of arrival,
+//    so "Create draft" / "Dismiss" buttons were promises the app had
+//    already broken: Dismiss removed the queue row while the draft existed
+//    anyway. The clear-on-processed plumbing (NOTIF-05) then removes the
+//    status toast when the draft lands and the success toast replaces it.
+//    Manual mode keeps the buttons — nothing drafts without a click there,
+//    so they are honest.
+//
 // Privacy: body = recipient display line + subject + attachment count.
 // NEVER includes attachment filenames, recipient list, or body text (QUAL-03).
 func emitArrivalToast(a *App, e mapi.EmailWithId) {
-	if a.getMode() == "auto-draft" {
-		return
-	}
 	if a.isVisible() && windowFocused(a) {
 		return
 	}
@@ -116,6 +115,17 @@ func emitArrivalToast(a *App, e mapi.EmailWithId) {
 	if e.Message == nil {
 		return
 	}
+	n := arrivalToastNotification(a.getMode(), e)
+	if err := shimPushWithTagGroup(activeAUMID(), n, e.Id, toastGroup); err != nil {
+		// Privacy-safe log: id prefix + error class only.
+		logError("toast: arrival push failed for %s: %v", safeIDPrefix(e.Id), err)
+	}
+}
+
+// arrivalToastNotification builds the arrival toast for the given mode —
+// pure with respect to App state, so tests can assert the mode split
+// (buttons vs informational) without touching COM.
+func arrivalToastNotification(mode string, e mapi.EmailWithId) toast.Notification {
 	body := arrivalToastBody(e.Message)
 	n := toast.Notification{
 		AppID:               activeAUMID(),
@@ -124,23 +134,26 @@ func emitArrivalToast(a *App, e mapi.EmailWithId) {
 		Icon:                toastIconPath(mustExePath()),
 		ActivationType:      toast.Foreground,
 		ActivationArguments: fmt.Sprintf("action=open&emailId=%s", url.QueryEscape(e.Id)),
-		Actions: []toast.Action{
-			{
-				Type:      toast.Foreground,
-				Content:   "Create draft",
-				Arguments: fmt.Sprintf("action=create-draft&emailId=%s", url.QueryEscape(e.Id)),
-			},
-			{
-				Type:      toast.Foreground,
-				Content:   "Dismiss",
-				Arguments: fmt.Sprintf("action=dismiss&emailId=%s", url.QueryEscape(e.Id)),
-			},
+	}
+	if mode == "auto-draft" {
+		// Status line first, details under it. No buttons: the draft is
+		// already being created; clicking the toast opens the window.
+		n.Body = "Creating Gmail draft…\n" + body
+		return n
+	}
+	n.Actions = []toast.Action{
+		{
+			Type:      toast.Foreground,
+			Content:   "Create draft",
+			Arguments: fmt.Sprintf("action=create-draft&emailId=%s", url.QueryEscape(e.Id)),
+		},
+		{
+			Type:      toast.Foreground,
+			Content:   "Dismiss",
+			Arguments: fmt.Sprintf("action=dismiss&emailId=%s", url.QueryEscape(e.Id)),
 		},
 	}
-	if err := shimPushWithTagGroup(activeAUMID(), n, e.Id, toastGroup); err != nil {
-		// Privacy-safe log: id prefix + error class only.
-		logError("toast: arrival push failed for %s: %v", safeIDPrefix(e.Id), err)
-	}
+	return n
 }
 
 // emitDraftSuccessToast fires only when the window is hidden (D-04 + D-11).
