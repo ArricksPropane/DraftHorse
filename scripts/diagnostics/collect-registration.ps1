@@ -208,6 +208,14 @@ foreach ($root in @('HKLM:\SOFTWARE\Clients\Mail\DraftHorse',
 # Section 4a (v2.0 / V4): stale pre-4.0 go-mapi leftovers. All four locations
 # are scrubbed by the 4.0 installer (machine scope) or migrate.go (per-user);
 # anything listed here survived migration and explains "worked before upgrade".
+Append-Banner 'SCANSNAP REQUIREMENT — shell\open\command on the client key'
+foreach ($ck in @('HKLM:\SOFTWARE\Clients\Mail\DraftHorse\shell\open\command',
+                  'HKCU:\Software\Clients\Mail\DraftHorse\shell\open\command')) {
+    $v = (Get-ItemProperty -LiteralPath $ck -ErrorAction SilentlyContinue).'(default)'
+    if ($v) { Append-Line "present: $ck = $v" }
+    else    { Append-Line "MISSING: $ck  (ScanSnap ScanToMail.exe will report 'no email client installed')" }
+}
+
 Append-Banner 'STALE PRE-4.0 (go-mapi) LEFTOVERS — all should say ABSENT'
 foreach ($stale in @(
     'HKLM:\SOFTWARE\Clients\Mail\go-mapi',

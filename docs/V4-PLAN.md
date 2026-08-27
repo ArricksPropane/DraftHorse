@@ -107,16 +107,25 @@ drafts to the active account. Zero prompts in the scan flow.
 
 ---
 
-## Phase 3 — ScanSnap Home "Scan to E-mail" — REGRESSED; trace required
+## Phase 3 — ScanSnap Home "Scan to E-mail" — ROOT CAUSE CONFIRMED, FIXED
 
-**Update 2026-08-28:** the error is back on the same machine that passed the
-day before, with no known change in between. The 08-27 "resolved" call below
-was premature — one day's pass on an unconfirmed root cause proved nothing.
-New suspect worth checking before the trace: ScanSnap Home may cache its
-email-client selection in its own configuration and re-resolve it at app
-launch, so a stored reference to the old go-mapi registration would only
-dangle once ScanSnap Home restarted. The Procmon protocol below is now the
-required next step; production v4.0.0 waits on understanding this.
+**2026-08-28, Procmon trace (Dave):** hypothesis 2 exactly. ScanSnap's
+ScanToMail.exe resolves the default client name from Clients\Mail (Default)
+— HKCU layer first, honoring the ARRICKS-13 mirror — then REQUIRES
+`Clients\Mail\<client>\shell\open\command`, retrying it four times before
+declaring "no email client installed". It never reads DLLPath. DraftHorse
+wrote only DLLPath, so detection failed while Simple MAPI itself (Send To →
+Mail recipient) worked — which is also why the 08-27 "pass" was a false
+positive: it exercised the MAPI path, not ScanSnap's own button.
+
+Fix: the installer writes `shell\open\command = "$INSTDIR\DraftHorse.exe"`
+on the client key; the ARRICKS-13 heal mirror writes the same (resolved from
+the running exe), and the mirror-intact check requires it so pre-fix mirrors
+self-upgrade via the hourly guard without a reinstall. Smoke test 3 and the
+diagnostics script assert it.
+
+**Update 2026-08-28 (earlier):** the error returned on the machine that
+passed the day before — the 08-27 "resolved" call below was premature.
 
 ### Superseded 08-27 note (kept for the record)
 

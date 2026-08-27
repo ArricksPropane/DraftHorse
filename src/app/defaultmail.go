@@ -28,6 +28,7 @@ package main
 //     zero-touch path (docs/mailto-default-associations.xml).
 
 import (
+	"os"
 	"time"
 
 	"github.com/pkg/browser"
@@ -98,7 +99,19 @@ func hkcuMirrorIntact() bool {
 	}
 	defer k.Close()
 	v, _, err := k.GetStringValue("DLLPath")
-	return err == nil && v != ""
+	if err != nil || v == "" {
+		return false
+	}
+	// V4/ScanSnap: a mirror written before the shell\open\command fix is
+	// incomplete — reporting it broken makes the hourly guard rewrite it,
+	// so existing test machines self-upgrade without a reinstall.
+	cmd, err := registry.OpenKey(registry.CURRENT_USER, mapiClientsMailPath+`\`+mapiClientName+`\shell\open\command`, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	defer cmd.Close()
+	c, _, err := cmd.GetStringValue("")
+	return err == nil && c != ""
 }
 
 // mailClientNeedsRepair is the pure decision: repair when the effective
@@ -127,6 +140,17 @@ func readHKCUMailPointer() string {
 	return v
 }
 
+// mapiExeCommand is the shell\open\command value ScanSnap's ScanToMail.exe
+// requires of the default mail client (V4/ScanSnap fix, Procmon-proven
+// 2026-08-28). Resolved from the running exe so a non-default install dir
+// mirrors correctly; the fallback is the stock install path.
+func mapiExeCommand() string {
+	if exe, err := os.Executable(); err == nil && exe != "" {
+		return `"` + exe + `"`
+	}
+	return `"C:\Program Files\DraftHorse\DraftHorse.exe"`
+}
+
 // repairMailClientDefault writes the per-user mirror + pointer. Unelevated
 // by design. Values mirror the installer's HKLM registration (ARRICKS-10).
 func repairMailClientDefault() error {
@@ -139,6 +163,19 @@ func repairMailClientDefault() error {
 		return err
 	}
 	if err := sub.SetExpandStringValue("DLLPath", mapiDLLPathExpand); err != nil {
+		return err
+	}
+	// V4/ScanSnap: mirror the shell\open\command the installer writes in
+	// HKLM. ScanToMail.exe reads the HKCU Clients\Mail layer FIRST (Procmon
+	// trace 2026-08-28) and requires an openable client — a mirror without
+	// this value would re-break ScanSnap for exactly the users the heal
+	// exists to protect.
+	cmd, _, err := registry.CreateKey(registry.CURRENT_USER, mapiClientsMailPath+`\`+mapiClientName+`\shell\open\command`, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer cmd.Close()
+	if err := cmd.SetStringValue("", mapiExeCommand()); err != nil {
 		return err
 	}
 	parent, _, err := registry.CreateKey(registry.CURRENT_USER, mapiClientsMailPath, registry.SET_VALUE)
