@@ -107,7 +107,18 @@ drafts to the active account. Zero prompts in the scan flow.
 
 ---
 
-## Phase 3 — ScanSnap Home "Scan to E-mail" — RESOLVED WITHOUT A FIX
+## Phase 3 — ScanSnap Home "Scan to E-mail" — REGRESSED; trace required
+
+**Update 2026-08-28:** the error is back on the same machine that passed the
+day before, with no known change in between. The 08-27 "resolved" call below
+was premature — one day's pass on an unconfirmed root cause proved nothing.
+New suspect worth checking before the trace: ScanSnap Home may cache its
+email-client selection in its own configuration and re-resolve it at app
+launch, so a stored reference to the old go-mapi registration would only
+dangle once ScanSnap Home restarted. The Procmon protocol below is now the
+required next step; production v4.0.0 waits on understanding this.
+
+### Superseded 08-27 note (kept for the record)
 
 **Outcome (2026-08-27, Dave's testing on v4.0.0-arricks.3):** Scan to E-mail
 works. No Procmon trace was ever run and no registry fix shipped — the Phase 1
