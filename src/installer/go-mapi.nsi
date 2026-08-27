@@ -281,6 +281,13 @@ MapiDllPinned:
   SetRegView 64
   WriteRegStr HKLM "SOFTWARE\Clients\Mail\DraftHorse" "" "${PRODUCT_DISPLAY}"
   WriteRegExpandStr HKLM "SOFTWARE\Clients\Mail\DraftHorse" "DLLPath" "%ProgramFiles%\DraftHorse\DraftHorse.dll"
+  ; V4/ScanSnap (Procmon-proven 2026-08-28): ScanSnap's ScanToMail.exe
+  ; resolves the default client name, then REQUIRES the client key to carry
+  ; shell\open\command — it never reads DLLPath at all. Without this value
+  ; it declares "no email client installed". This is also the documented
+  ; Clients\Mail convention (Outlook ships one). Launching the exe bare just
+  ; opens/focuses the app window (single-instance), which is harmless.
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail\DraftHorse\shell\open\command" "" '"$INSTDIR\DraftHorse.exe"'
   WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "DraftHorse"
   SetRegView default
 

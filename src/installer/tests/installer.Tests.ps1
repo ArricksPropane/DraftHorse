@@ -137,6 +137,11 @@ Describe "DraftHorse installer round-trip" {
             # name 'DraftHorse' — both asserted so a future edit can't swap them.
             (Get-ItemProperty -Path $script:MapiKey -Name '(default)').'(default)' | Should -Be 'DraftHorse'
             (Get-ItemProperty -Path $script:MailKey -Name '(default)').'(default)' | Should -Be 'DraftHorse'
+            # V4/ScanSnap (Procmon-proven): ScanToMail.exe requires the default
+            # client to carry shell\open\command; without it it reports
+            # "no email client installed" while never reading DLLPath.
+            $cmd = (Get-ItemProperty -Path "$script:MapiKey\shell\open\command" -ErrorAction Stop).'(default)'
+            $cmd | Should -Match 'DraftHorse\.exe' -Because 'ScanSnap Scan-to-Email resolves the client then demands an openable command'
         }
 
         # ARRICKS-09: mailto handler + Default Apps (Capabilities/RegisteredApplications)

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/windows/registry"
@@ -48,6 +49,9 @@ func TestRepairMailClientDefault_WriteShape(t *testing.T) {
 	mapiClientsMailPath = sandbox
 	t.Cleanup(func() {
 		mapiClientsMailPath = orig
+		_ = registry.DeleteKey(registry.CURRENT_USER, sandbox+`\DraftHorse\shell\open\command`)
+		_ = registry.DeleteKey(registry.CURRENT_USER, sandbox+`\DraftHorse\shell\open`)
+		_ = registry.DeleteKey(registry.CURRENT_USER, sandbox+`\DraftHorse\shell`)
 		_ = registry.DeleteKey(registry.CURRENT_USER, sandbox+`\DraftHorse`)
 		_ = registry.DeleteKey(registry.CURRENT_USER, sandbox)
 		_ = registry.DeleteKey(registry.CURRENT_USER, `Software\DraftHorse-test\ARRICKS13\Clients`)
@@ -89,6 +93,18 @@ func TestRepairMailClientDefault_WriteShape(t *testing.T) {
 	}
 	if dll != `%ProgramFiles%\DraftHorse\DraftHorse.dll` {
 		t.Errorf("DLLPath = %q, want unexpanded %%ProgramFiles%% form", dll)
+	}
+
+	// V4/ScanSnap: the mirror must carry shell\open\command — ScanToMail.exe
+	// requires an openable client and reads the HKCU layer first.
+	cmdKey, err := registry.OpenKey(registry.CURRENT_USER, sandbox+`\DraftHorse\shell\open\command`, registry.QUERY_VALUE)
+	if err != nil {
+		t.Fatalf("mirror missing shell\\open\\command (ScanSnap regression): %v", err)
+	}
+	defer cmdKey.Close()
+	cmdVal, _, err := cmdKey.GetStringValue("")
+	if err != nil || !strings.Contains(cmdVal, "DraftHorse") {
+		t.Errorf("shell\\open\\command = %q, %v; want a quoted DraftHorse exe path", cmdVal, err)
 	}
 
 	// Round-trip: with the sandbox populated, the effective reader sees us
