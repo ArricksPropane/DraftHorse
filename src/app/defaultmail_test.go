@@ -103,8 +103,11 @@ func TestRepairMailClientDefault_WriteShape(t *testing.T) {
 	}
 	defer cmdKey.Close()
 	cmdVal, _, err := cmdKey.GetStringValue("")
-	if err != nil || !strings.Contains(cmdVal, "DraftHorse") {
-		t.Errorf("shell\\open\\command = %q, %v; want a quoted DraftHorse exe path", cmdVal, err)
+	// The value is the RUNNING exe (by design — non-default install dirs
+	// mirror correctly), which under `go test` is the test binary. Assert
+	// the shape, not the name: a quoted absolute .exe path.
+	if err != nil || !strings.HasPrefix(cmdVal, `"`) || !strings.HasSuffix(cmdVal, `.exe"`) {
+		t.Errorf("shell\\open\\command = %q, %v; want a quoted .exe path", cmdVal, err)
 	}
 
 	// Round-trip: with the sandbox populated, the effective reader sees us
