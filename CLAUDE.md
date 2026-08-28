@@ -18,7 +18,7 @@ as a `mailto:` handler through the Windows Default Apps model (ARRICKS-09,
 `DraftHorse.mailto` ProgID + Capabilities/RegisteredApplications in the
 installer). A mailto click runs `DraftHorse.exe --mailto "%1"`, which opens
 Gmail web compose prefilled from the URL and exits — no draft API call, no
-auth, still nothing ever sent. Fleet-wide default via Intune:
+auth, still nothing ever sent. Fleet-wide default via GPO (no Intune):
 `docs/mailto-default-associations.xml`.
 
 Drafts open in a dedicated isolated Edge/Chrome profile (ARRICKS-21,
@@ -78,7 +78,7 @@ deliberately ended that split** while the installed base was 4 test machines
 now: `Clients\Mail\DraftHorse` key + resolver value, `DraftHorse.exe` /
 `DraftHorse.dll`, AUMID `com.arrickspropane.drafthorse`, `DraftHorse.mailto`
 ProgID, credential target `DraftHorse`, `%LOCALAPPDATA%\DraftHorse` +
-`%APPDATA%\DraftHorse`, firewall rule, uninstall key, Intune detection.
+`%APPDATA%\DraftHorse`, firewall rule, uninstall key, RMM detection.
 
 Three things deliberately did NOT rename — do not "finish the job":
 the **toastActivatorGUID** (identity, not branding — changing it recreates
@@ -101,7 +101,8 @@ makes us independent of a single upstream maintainer.
 
 **Primary use case: scanner "Scan to Email."** ScanSnap and Epson document
 scanners, Google Workspace tenant `arrickspropane.com`. Currently **4 instances
-deployed for testing**; the Intune rollout target is **~40 Windows 11 PCs**.
+deployed for testing**; the rollout target is **~40 Windows 11 PCs**, deployed
+via ScreenConnect (no Intune/MDM — decided 2026-08-28).
 When judging any change, ask what it does to a scan-to-email workflow first —
 and remember that a defect ships to ~40 machines, but only 4 can catch it now.
 
@@ -131,7 +132,10 @@ These encode decisions that cost real analysis. Do not undo them casually.
    no-op on purpose, so a task left behind by a prior upstream install cannot
    do anything. **Keep `un.RemoveScheduledTask`** in the uninstaller for the
    same reason.
-2. **`gitHubOwner` stays `egkrateia247`** (`src/app/updates.go`). Upstream
+2. **`gitHubOwner` stays `ArricksPropane`** (`src/app/updates.go`), updated
+   from `egkrateia247` when the repo moved to the company account 2026-08-28
+   — the constant must always track OUR real slug, never a redirecting old
+   one (redirect squatting is the exact threat it guards). Upstream
    treats that constant as a security control; for a fork, leaving it unchanged
    means any surviving update path pulls a third party's binaries over our
    signed builds.
@@ -266,7 +270,10 @@ The follow-up items originally listed here landed as one series:
 
 ## Deployment
 
-All-users install, `DraftHorse-setup.exe /S`, deployed via Intune. Detection rule:
+All-users install, `DraftHorse-setup.exe /S`, deployed via ScreenConnect
+(per-machine runbook in ENTERPRISE.md; releases are self-signed — see
+scripts/signing/ and the SELFSIGN_* secrets in installer-release.yml;
+fleet machines trust the cert via trust-signing-cert.ps1). Detection rule:
 `HKLM\SOFTWARE\Clients\Mail\DraftHorse` → `DLLPath`. Sign the binaries first, then
 the installer that wraps them, always timestamped (`signtool /tr`).
 

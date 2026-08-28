@@ -157,7 +157,7 @@ func TestUpdateServiceStaleCheckTriggersFetch(t *testing.T) {
 	stub := &stubReleaseFetcher{
 		release: &latestRelease{
 			Version:    "3.0.0",
-			ReleaseURL: "https://github.com/egkrateia247/DraftHorse/releases/tag/v3.0.0",
+			ReleaseURL: "https://github.com/ArricksPropane/DraftHorse/releases/tag/v3.0.0",
 		},
 	}
 	svc := newUpdateService("0.0.0-dev", stub, nopLogger)
@@ -188,7 +188,7 @@ func TestUpdateServiceDetectsAvailableUpdate(t *testing.T) {
 	stub := &stubReleaseFetcher{
 		release: &latestRelease{
 			Version:    "3.0.0",
-			ReleaseURL: "https://github.com/egkrateia247/DraftHorse/releases/tag/v3.0.0",
+			ReleaseURL: "https://github.com/ArricksPropane/DraftHorse/releases/tag/v3.0.0",
 		},
 	}
 	svc := newUpdateService("2.1.0", stub, nopLogger)
@@ -203,10 +203,10 @@ func TestUpdateServiceDetectsAvailableUpdate(t *testing.T) {
 	if state.LatestVersion != "3.0.0" {
 		t.Errorf("expected LatestVersion=3.0.0, got %q", state.LatestVersion)
 	}
-	if state.LatestReleaseURL != "https://github.com/egkrateia247/DraftHorse/releases/tag/v3.0.0" {
+	if state.LatestReleaseURL != "https://github.com/ArricksPropane/DraftHorse/releases/tag/v3.0.0" {
 		t.Errorf("unexpected LatestReleaseURL: %q", state.LatestReleaseURL)
 	}
-	if state.InstallerURL != "https://github.com/egkrateia247/DraftHorse/releases/latest/download/DraftHorse-setup.exe" {
+	if state.InstallerURL != "https://github.com/ArricksPropane/DraftHorse/releases/latest/download/DraftHorse-setup.exe" {
 		t.Errorf("InstallerURL must be the stable installer URL (D-02), got %q", state.InstallerURL)
 	}
 	if state.CurrentVersion != "2.1.0" {
@@ -226,7 +226,7 @@ func TestUpdateServiceNoUpdateWhenCurrentIsLatest(t *testing.T) {
 	stub := &stubReleaseFetcher{
 		release: &latestRelease{
 			Version:    "3.0.0",
-			ReleaseURL: "https://github.com/egkrateia247/DraftHorse/releases/tag/v3.0.0",
+			ReleaseURL: "https://github.com/ArricksPropane/DraftHorse/releases/tag/v3.0.0",
 		},
 	}
 	svc := newUpdateService("3.0.0", stub, nopLogger)

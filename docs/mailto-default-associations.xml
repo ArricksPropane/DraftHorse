@@ -8,7 +8,7 @@
     - Per machine, by hand: Settings > Apps > Default apps > DraftHorse >
       mailto. One click, sticks until changed.
 
-    - Fleet-wide via Intune: deploy this file with the
+    - Fleet-wide via domain GPO (this fleet has no Intune): deploy with the
       "Default Associations Configuration" policy
       (Settings Catalog: Administrative Templates > Windows Components >
       File Explorer > Set a default associations configuration file),

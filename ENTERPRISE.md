@@ -1,7 +1,8 @@
 # DraftHorse for IT Administrators
 
-Audience: Windows / IT admins deploying DraftHorse at scale — Intune,
-managed desktops, RDS/Citrix, group policy.
+Audience: Windows / IT admins deploying DraftHorse at scale. This fleet
+deploys via **ScreenConnect** (decided 2026-08-28 — no Intune/MDM); Intune
+and GPO notes are kept where the mechanism is generic.
 
 > DraftHorse is a hardened fork of upstream go-mapi. **As of 4.0, every
 > installed identifier is `DraftHorse`** — binaries, registry keys, data
@@ -126,13 +127,52 @@ allow apps to set themselves as the mailto default programmatically
   Settings > Default apps (the app shows a one-click deep link when it
   detects it isn't the default).
 - **Fleet-wide, zero-touch:** deploy the default-associations profile —
-  see `docs/mailto-default-associations.xml` — via Intune Device
+  see `docs/mailto-default-associations.xml` — via domain GPO Device
   Configuration (or DISM `/Import-DefaultAppAssociations` for imaged
   hosts).
 
 A mailto click runs `DraftHorse.exe --mailto "%1"`, which opens Gmail web
 compose prefilled from the link and exits. No draft API call, no stored
 credentials involved.
+
+## Release signing (admin machine — the key never leaves it)
+
+Releases are signed OFF-CI: CI builds, tests, and publishes unsigned assets
+for a tag; the admin machine holding the Arrick's Propane certificate then
+runs
+
+    scripts\signing\sign-release.ps1 -Tag vX.Y.Z
+
+which downloads the assets, verifies them against CI's SHA256SUMS.txt (you
+sign exactly what CI tested), signs the binaries, repacks and signs the
+installer, regenerates the manifest, and replaces the release assets (with a
+confirmation prompt). One-time machine setup is in the script header: NSIS +
+Windows SDK + repo clone + the PFX imported NON-exportable. If CI is ever
+compromised, the worst case is an unsigned build that fails validation on
+fleet machines — nothing fleet-trusted can be produced outside that one
+machine. Archive the signed installer + SHA256SUMS with each release record.
+
+## Per-machine install runbook (ScreenConnect)
+
+Run in an elevated session on each machine, in this order:
+
+1. **Pre-4.0 machines only**: `scripts\cleanup-legacy-gomapi.ps1` (sweeps
+   go-mapi leftovers; `-ReportOnly` first if unsure).
+2. **Trust the signing certificate** (once per machine):
+   `scripts\signing\trust-signing-cert.ps1 -CertPath DraftHorse-signing.cer`
+   — installs the Arrick's Propane self-signed cert into LocalMachine Root +
+   TrustedPublisher so the signed binaries validate and UAC names the
+   publisher. Self-signed = no SmartScreen reputation; if the installer was
+   downloaded with mark-of-the-web, expect one "More info → Run anyway".
+3. **Install**: `DraftHorse-setup.exe /S`.
+4. **Sign in** (per the account model): app OAuth + dedicated browser
+   profile(s) into the location account; on machines upgraded from pre-3.8,
+   one sign-out/in grants the signature scope.
+5. **mailto default**: no MDM policy push — set once via Settings > Default
+   apps (the app deep-links there when it detects it is not the default),
+   or domain GPO with `docs/mailto-default-associations.xml` if AD applies.
+6. **Outlook check**: see the next section — exclude or policy-disable
+   Outlook where present, or defaults revert at logon.
 
 ## Outlook coexistence — known conflict
 
@@ -145,7 +185,7 @@ mailto UserChoice is hash-protected and cannot be healed programmatically.
 
 Fleet guidance, pick one per machine:
 - **Preferred**: exclude Outlook from the Microsoft 365 Apps deployment
-  where it is unused (Office Deployment Tool / Intune app config:
+  where it is unused (Office Deployment Tool configuration:
   `<ExcludeApp ID="Outlook" />`).
 - Where Outlook must remain: disable its default-client check via the
   Office ADMX policy "Make Outlook the default program for E-mail,
@@ -221,7 +261,7 @@ failure (including `DraftHorse.exe` still running after the 10-second
 graceful-close poll on silent installs). Treat any non-zero exit as
 failure.
 
-### Detection rule (Intune / SCCM)
+### Detection rule (any RMM / inventory tooling)
 
 Key: `HKLM\SOFTWARE\Clients\Mail\DraftHorse`, value `DLLPath` exists.
 (The Uninstall key also works; the Clients\Mail key is the one that
@@ -234,7 +274,8 @@ version exists. Nothing is downloaded or installed automatically — the
 user (or your deployment pipeline) runs the new `DraftHorse-setup.exe`.
 
 For managed fleets, the recommended pattern is to treat updates like any
-other Win32 app revision: push the new installer via Intune with `/S`.
+other Win32 app revision: run the new installer with `/S` (ScreenConnect
+command or session).
 In-place upgrade over a running app is supported (the installer closes
 the tray app gracefully, with a silent-mode retry window).
 
@@ -246,11 +287,11 @@ in the tray menu (persisted per user in `%APPDATA%\DraftHorse\settings.json`).
 Every release publishes `SHA256SUMS.txt`:
 
 ```
-https://github.com/egkrateia247/DraftHorse/releases/latest/download/SHA256SUMS.txt
+https://github.com/ArricksPropane/DraftHorse/releases/latest/download/SHA256SUMS.txt
 ```
 
 ```powershell
-$base = "https://github.com/egkrateia247/DraftHorse/releases/download/vX.Y.Z"
+$base = "https://github.com/ArricksPropane/DraftHorse/releases/download/vX.Y.Z"
 $sums = (Invoke-WebRequest "$base/SHA256SUMS.txt").Content
 $expected = ($sums -split "`n" |
     Where-Object { $_ -match 'DraftHorse-setup\.exe' } |
@@ -350,12 +391,12 @@ if ($LASTEXITCODE -eq 0) { cmdkey /delete:DraftHorse:oauth-tokens | Out-Null }
 
 ### No MSI
 
-The installer is an NSIS EXE. There is no MSI wrapper. Use Intune Win32
+The installer is an NSIS EXE. There is no MSI wrapper. Use Win32
 app deployment, or a GP startup script for GPO-only environments.
 
 ## Support
 
-[GitHub Issues](https://github.com/egkrateia247/DraftHorse/issues)
+[GitHub Issues](https://github.com/ArricksPropane/DraftHorse/issues)
 
 ---
 

@@ -8,7 +8,7 @@ both bitnesses.
 ### Install
 
 1. Download `DraftHorse-setup.exe` from the assets below, or use the stable URL:
-   `https://github.com/egkrateia247/DraftHorse/releases/latest/download/DraftHorse-setup.exe`
+   `https://github.com/ArricksPropane/DraftHorse/releases/latest/download/DraftHorse-setup.exe`
 2. Run the installer as administrator. Elevation is required because it
    registers the machine-wide MAPI handler under `HKLM\SOFTWARE\Clients\Mail`.
 3. First launch: sign in with your Google account — the app opens your
@@ -38,11 +38,11 @@ silent auto-updater was removed in this fork.
 
 ### License
 
-LGPL-3.0 — see [LICENSE](https://github.com/egkrateia247/DraftHorse/blob/main/LICENSE).
+LGPL-3.0 — see [LICENSE](https://github.com/ArricksPropane/DraftHorse/blob/main/LICENSE).
 Fork of [marcfargas/go-mapi](https://github.com/marcfargas/go-mapi).
 
 ---
 
-Full docs: [README](https://github.com/egkrateia247/DraftHorse#readme) ·
-[IT/Enterprise deployment](https://github.com/egkrateia247/DraftHorse/blob/main/ENTERPRISE.md) ·
-[fork rationale](https://github.com/egkrateia247/DraftHorse/blob/main/PATCHES.md)
+Full docs: [README](https://github.com/ArricksPropane/DraftHorse#readme) ·
+[IT/Enterprise deployment](https://github.com/ArricksPropane/DraftHorse/blob/main/ENTERPRISE.md) ·
+[fork rationale](https://github.com/ArricksPropane/DraftHorse/blob/main/PATCHES.md)
