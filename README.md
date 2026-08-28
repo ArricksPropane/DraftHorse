@@ -47,7 +47,7 @@ read your mail.
 ## Install
 
 1. Download `DraftHorse-setup.exe` from the
-   [latest release](https://github.com/egkrateia247/DraftHorse/releases/latest)
+   [latest release](https://github.com/ArricksPropane/DraftHorse/releases/latest)
 2. Run it. Windows will ask for permission (UAC dialog) — click **Yes**.
    DraftHorse needs this to register itself as the Windows mail handler.
 3. Sign in with your Gmail or Google Workspace account when prompted

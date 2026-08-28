@@ -44,7 +44,7 @@ Unicode True
 !define PRODUCT_DISPLAY   "DraftHorse"
 !define PRODUCT_VERSION   "${GOMAPI_VERSION}"
 !define PRODUCT_PUBLISHER "Arrick's Propane"
-!define PRODUCT_WEB_SITE  "https://github.com/egkrateia247/DraftHorse"
+!define PRODUCT_WEB_SITE  "https://github.com/ArricksPropane/DraftHorse"
 !define AUMID             "com.arrickspropane.drafthorse"
 
 ;------------------------------------------------------------------------------

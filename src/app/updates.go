@@ -45,13 +45,17 @@ const (
 	// input or settings file can redirect update checks to a different
 	// origin (threat T-11-01-01 partial mitigation + Pitfall-4 guard).
 	//
-	// ARRICKS-06: repointed from marcfargas/go-mapi to our own fork. Upstream
+	// ARRICKS-06: repointed from marcfargas/go-mapi to our own fork;
+	// 2026-08-28: owner updated egkrateia247 -> ArricksPropane when the repo
+	// moved to the company account. GitHub redirects the old slug, but a
+	// hardcoded stale owner is exactly the redirect-squatting risk this
+	// constant exists to prevent, so it MUST track the real slug. Upstream
 	// treats these constants as a security control, and for a fork they cut
 	// the other way: left unchanged, any surviving update path would pull a
 	// third party's binaries over our signed builds. Changed even though the
 	// silent updater has been removed, so that no code path can resolve to
 	// upstream.
-	gitHubOwner = "egkrateia247"
+	gitHubOwner = "ArricksPropane"
 	gitHubRepo  = "DraftHorse"
 
 	// installerDownloadURL is the stable installer URL shown to users

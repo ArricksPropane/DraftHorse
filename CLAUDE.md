@@ -132,7 +132,10 @@ These encode decisions that cost real analysis. Do not undo them casually.
    no-op on purpose, so a task left behind by a prior upstream install cannot
    do anything. **Keep `un.RemoveScheduledTask`** in the uninstaller for the
    same reason.
-2. **`gitHubOwner` stays `egkrateia247`** (`src/app/updates.go`). Upstream
+2. **`gitHubOwner` stays `ArricksPropane`** (`src/app/updates.go`), updated
+   from `egkrateia247` when the repo moved to the company account 2026-08-28
+   — the constant must always track OUR real slug, never a redirecting old
+   one (redirect squatting is the exact threat it guards). Upstream
    treats that constant as a security control; for a fork, leaving it unchanged
    means any surviving update path pulls a third party's binaries over our
    signed builds.

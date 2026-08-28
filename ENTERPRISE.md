@@ -287,11 +287,11 @@ in the tray menu (persisted per user in `%APPDATA%\DraftHorse\settings.json`).
 Every release publishes `SHA256SUMS.txt`:
 
 ```
-https://github.com/egkrateia247/DraftHorse/releases/latest/download/SHA256SUMS.txt
+https://github.com/ArricksPropane/DraftHorse/releases/latest/download/SHA256SUMS.txt
 ```
 
 ```powershell
-$base = "https://github.com/egkrateia247/DraftHorse/releases/download/vX.Y.Z"
+$base = "https://github.com/ArricksPropane/DraftHorse/releases/download/vX.Y.Z"
 $sums = (Invoke-WebRequest "$base/SHA256SUMS.txt").Content
 $expected = ($sums -split "`n" |
     Where-Object { $_ -match 'DraftHorse-setup\.exe' } |
@@ -396,7 +396,7 @@ app deployment, or a GP startup script for GPO-only environments.
 
 ## Support
 
-[GitHub Issues](https://github.com/egkrateia247/DraftHorse/issues)
+[GitHub Issues](https://github.com/ArricksPropane/DraftHorse/issues)
 
 ---
 

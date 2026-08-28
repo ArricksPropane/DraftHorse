@@ -39,7 +39,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Tag,
-    [string]$Repo = 'egkrateia247/DraftHorse',
+    [string]$Repo = 'ArricksPropane/DraftHorse',
     [string]$Subject = "CN=Arrick's Propane",
     [string]$Token,
     [switch]$Force
