@@ -134,6 +134,28 @@ A mailto click runs `DraftHorse.exe --mailto "%1"`, which opens Gmail web
 compose prefilled from the link and exits. No draft API call, no stored
 credentials involved.
 
+## Outlook coexistence — known conflict
+
+Observed 2026-08-28 on a test machine: with Outlook installed (even unused),
+a restart reverted mail defaults — mailto: switched back to Outlook and
+ScanSnap stopped listing DraftHorse as an available client. Uninstalling
+Outlook resolved both. Outlook re-asserts default-mail ownership at logon;
+DraftHorse's guard re-heals the Simple MAPI default while running, but the
+mailto UserChoice is hash-protected and cannot be healed programmatically.
+
+Fleet guidance, pick one per machine:
+- **Preferred**: exclude Outlook from the Microsoft 365 Apps deployment
+  where it is unused (Office Deployment Tool / Intune app config:
+  `<ExcludeApp ID="Outlook" />`).
+- Where Outlook must remain: disable its default-client check via the
+  Office ADMX policy "Make Outlook the default program for E-mail,
+  Contacts, and Calendar" (set Disabled), and re-apply the mailto
+  associations XML.
+
+If defaults still flip, Event Viewer > Applications and Services Logs >
+Microsoft > Windows > Shell-Core > AppDefaults names which default was
+reset and why; run the diagnostics script for the registry side.
+
 ## Two accounts per machine (4.0)
 
 DraftHorse holds up to **two** signed-in Gmail accounts. Exactly one is
