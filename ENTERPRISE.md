@@ -135,6 +135,23 @@ A mailto click runs `DraftHorse.exe --mailto "%1"`, which opens Gmail web
 compose prefilled from the link and exits. No draft API call, no stored
 credentials involved.
 
+## Release signing (admin machine — the key never leaves it)
+
+Releases are signed OFF-CI: CI builds, tests, and publishes unsigned assets
+for a tag; the admin machine holding the Arrick's Propane certificate then
+runs
+
+    scripts\signing\sign-release.ps1 -Tag vX.Y.Z
+
+which downloads the assets, verifies them against CI's SHA256SUMS.txt (you
+sign exactly what CI tested), signs the binaries, repacks and signs the
+installer, regenerates the manifest, and replaces the release assets (with a
+confirmation prompt). One-time machine setup is in the script header: NSIS +
+Windows SDK + repo clone + the PFX imported NON-exportable. If CI is ever
+compromised, the worst case is an unsigned build that fails validation on
+fleet machines — nothing fleet-trusted can be produced outside that one
+machine. Archive the signed installer + SHA256SUMS with each release record.
+
 ## Per-machine install runbook (ScreenConnect)
 
 Run in an elevated session on each machine, in this order:

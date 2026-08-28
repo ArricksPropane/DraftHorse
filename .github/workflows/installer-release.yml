@@ -21,10 +21,13 @@ on:
 # publishes unsigned. Required SignPath secrets: SIGNPATH_API_TOKEN, SIGNPATH_ORG_ID,
 # SIGNPATH_PROJECT_SLUG, SIGNPATH_SIGNING_POLICY_SLUG.
 #
-# Self-signed alternative (the active path for the ScreenConnect fleet):
-# secrets SELFSIGN_PFX_B64 + SELFSIGN_PFX_PASSWORD (scripts/signing/
-# new-signing-cert.ps1 produces both). Signs binaries + installer in place
-# with signtool. SignPath, if ever configured, takes precedence.
+# Signing model (2026-08-28): CI publishes UNSIGNED assets; the release is
+# then signed ON DAVE'S ADMIN MACHINE by scripts/signing/sign-release.ps1
+# (downloads, hash-verifies, signs, repacks the installer, replaces the
+# release assets). The key never enters GitHub. The HAS_SELFSIGN path below
+# is a DORMANT fallback — setting SELFSIGN_PFX_B64/SELFSIGN_PFX_PASSWORD
+# secrets would sign in CI instead; SignPath, if ever configured, outranks
+# both. Leave both secret sets unset for the local-signing model.
 #
 # OAuth secrets (GOMAPI_OAUTH_CLIENT_ID, GOMAPI_OAUTH_CLIENT_SECRET) come from repo
 # secrets set during Phase 8 (D-09) and injected via ldflags.
