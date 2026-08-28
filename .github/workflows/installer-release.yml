@@ -21,6 +21,11 @@ on:
 # publishes unsigned. Required SignPath secrets: SIGNPATH_API_TOKEN, SIGNPATH_ORG_ID,
 # SIGNPATH_PROJECT_SLUG, SIGNPATH_SIGNING_POLICY_SLUG.
 #
+# Self-signed alternative (the active path for the ScreenConnect fleet):
+# secrets SELFSIGN_PFX_B64 + SELFSIGN_PFX_PASSWORD (scripts/signing/
+# new-signing-cert.ps1 produces both). Signs binaries + installer in place
+# with signtool. SignPath, if ever configured, takes precedence.
+#
 # OAuth secrets (GOMAPI_OAUTH_CLIENT_ID, GOMAPI_OAUTH_CLIENT_SECRET) come from repo
 # secrets set during Phase 8 (D-09) and injected via ldflags.
 
@@ -37,6 +42,11 @@ jobs:
       GOMAPI_OAUTH_CLIENT_ID:     ${{ secrets.GOMAPI_OAUTH_CLIENT_ID }}
       GOMAPI_OAUTH_CLIENT_SECRET: ${{ secrets.GOMAPI_OAUTH_CLIENT_SECRET }}
       HAS_SIGNPATH:               ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+      # Self-signed signing (2026-08-28, docs/V4-PLAN + ENTERPRISE.md): the
+      # fleet is ScreenConnect-deployed and trusts the Arrick's Propane
+      # self-signed cert (scripts/signing/). Gated on the PFX secret; if
+      # SignPath secrets are ALSO set, SignPath wins and this path is skipped.
+      HAS_SELFSIGN:               ${{ secrets.SELFSIGN_PFX_B64 != '' && secrets.SIGNPATH_API_TOKEN == '' }}
 
     steps:
       - name: Checkout
@@ -178,6 +188,32 @@ jobs:
           Copy-Item staged-signed/DraftHorse-x64.dll src/interceptor/build-x64/bin/DraftHorse.dll -Force
           Copy-Item staged-signed/DraftHorse-x86.dll src/interceptor/build-x86/bin/DraftHorse.dll -Force
 
+      - name: Self-sign binaries in place (pass 1 of 2)
+        if: ${{ env.HAS_SELFSIGN == 'true' }}
+        shell: pwsh
+        env:
+          SELFSIGN_PFX_B64:      ${{ secrets.SELFSIGN_PFX_B64 }}
+          SELFSIGN_PFX_PASSWORD: ${{ secrets.SELFSIGN_PFX_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'selfsign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SELFSIGN_PFX_B64))
+          $st = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName | Select-Object -Last 1
+          if (-not $st) { throw 'signtool.exe not found in Windows Kits' }
+          # Sign at the SOURCE paths — the installer packs from these, and the
+          # release step uploads them, so one signing covers both. /tr keeps
+          # signatures valid past cert expiry. NOTE: no `signtool verify` —
+          # the runner does not trust the self-signed cert (only the fleet
+          # does, via trust-signing-cert.ps1), so verify would always fail.
+          $files = @(
+            'src/app/build/bin/DraftHorse.exe',
+            'src/interceptor/build-x64/bin/DraftHorse.dll',
+            'src/interceptor/build-x86/bin/DraftHorse.dll'
+          )
+          & $st.FullName sign /f $pfx /p $env:SELFSIGN_PFX_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 @files
+          if ($LASTEXITCODE -ne 0) { throw "signtool sign (binaries) failed (exit $LASTEXITCODE)" }
+          Remove-Item $pfx -Force
+
       - name: Install NSIS via scoop (extras bucket)
         shell: pwsh
         run: |
@@ -200,6 +236,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Pop-Location; throw "makensis failed (exit $LASTEXITCODE)" }
           Pop-Location
           Move-Item src/installer/DraftHorse-setup.exe DraftHorse-setup.exe -Force
+
+      - name: Self-sign installer (pass 2 of 2)
+        if: ${{ env.HAS_SELFSIGN == 'true' }}
+        shell: pwsh
+        env:
+          SELFSIGN_PFX_B64:      ${{ secrets.SELFSIGN_PFX_B64 }}
+          SELFSIGN_PFX_PASSWORD: ${{ secrets.SELFSIGN_PFX_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'selfsign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SELFSIGN_PFX_B64))
+          $st = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName | Select-Object -Last 1
+          & $st.FullName sign /f $pfx /p $env:SELFSIGN_PFX_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 DraftHorse-setup.exe
+          if ($LASTEXITCODE -ne 0) { throw "signtool sign (installer) failed (exit $LASTEXITCODE)" }
+          Remove-Item $pfx -Force
+          Write-Host 'Installer self-signed in place; the resolve step below picks it up as the repo-root path.'
 
       - name: Upload installer for SignPath (pass 2)
         if: ${{ env.HAS_SIGNPATH == 'true' }}
@@ -232,7 +284,11 @@ jobs:
             Write-Host "Using SIGNED installer: $signed"
           } else {
             "path=$unsigned" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
-            Write-Host "Using UNSIGNED installer: $unsigned (SIGNPATH_API_TOKEN absent or signing skipped)"
+            if ($env:HAS_SELFSIGN -eq 'true') {
+              Write-Host "Using SELF-SIGNED installer: $unsigned (signed in place)"
+            } else {
+              Write-Host "Using UNSIGNED installer: $unsigned (no signing secrets set)"
+            }
           }
 
       - name: Generate SHA256SUMS.txt
