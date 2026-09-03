@@ -342,7 +342,7 @@ func (a *App) refreshTrayVisual() {
 	state := trayState{
 		Mode:            a.getMode(),
 		Paused:          a.isPaused(),
-		SignedIn:        a.auth != nil && a.auth.Status().Authenticated,
+		SignedIn:        a.activeAuth() != nil && a.activeAuth().Status().Authenticated,
 		ErrorMsg:        a.getLastError(),
 		Count:           0,
 		UpdateAvailable: a.snapshotUpdateAvailable(),

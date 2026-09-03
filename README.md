@@ -59,10 +59,10 @@ it your `mailto:` link handler, pick DraftHorse in **Settings > Default
 apps** — the app shows a one-click shortcut to that page when needed
 (Windows does not allow apps to set this themselves).
 
-> The installer file is named `DraftHorse-setup.exe`; the binaries it
-> installs and every registry identifier intentionally remain `DraftHorse*`
-> for upgrade compatibility — installs of earlier DraftHorse 3.x versions
-> upgrade in place.
+> The installer file is named `DraftHorse-setup.exe`. As of 4.0 every
+> installed identifier (binaries, registry keys, data paths) is `DraftHorse`;
+> 3.x installs used `go-mapi` identifiers and are migrated automatically on
+> upgrade (installer + first app launch).
 
 ## How to use it
 

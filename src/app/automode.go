@@ -127,6 +127,12 @@ func (m *automode) drain() {
 		}
 		err := m.draftOne(e)
 		m.release(e.Id)
+		if err != nil && errors.Is(err, ErrNotAuthenticated) {
+			// Active slot has no token (empty slot activated to add an
+			// account): stop the drain quietly; the next queue-update after
+			// sign-in re-triggers it. No toast, no backlog skip.
+			return
+		}
 		if err != nil && errors.Is(err, ErrInvalidGrant) {
 			// Terminal — halt drain. markBacklogSkipped was already called
 			// inside draftOne; ReAuthBanner surfaces via MakeAuthenticatedGmailCall
@@ -216,8 +222,13 @@ func (m *automode) draftOne(e mapi.EmailWithId) error {
 		// it comes from GmailClient / os.Stat which handle local paths only.
 		logError("automode: draft %s failed: category=%s err=%v",
 			safeIDPrefix(e.Id), category, callErr)
-		if category == "signed-out" {
+		if category == "signed-out" && !errors.Is(callErr, ErrNotAuthenticated) {
 			// D-10: mark so post-re-auth drains skip this backlog row.
+			// ErrNotAuthenticated is exempt (review 2026-08-28): V4 lets the
+			// user activate an EMPTY slot to add an account, so "no token
+			// yet" is a wait, not a token failure — the row stays pending and
+			// drafts normally once the slot signs in. invalid_grant (a real
+			// dead token) still skips.
 			m.app.markBacklogSkipped(e.Id)
 		}
 		// ARRICKS-12 (R10): cap consecutive permanent failures. See the

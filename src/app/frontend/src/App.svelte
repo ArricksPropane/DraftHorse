@@ -60,22 +60,23 @@
     }
   }
 
+  // Each binding emits auth-changed, whose handler refreshes the roster —
+  // no second round-trip here.
   async function handleActivateAccount(slot: number) {
     await setActiveAccount(slot);
-    await refreshAccounts();
   }
 
   async function handleAddAccount(slot: number) {
     try {
       await signInAccount(slot);
-    } finally {
+    } catch {
+      // Cancelled/failed flow: auth-changed did not fire; re-sync the roster.
       await refreshAccounts();
     }
   }
 
   async function handleSignOutSlot(slot: number) {
     await signOutAccount(slot);
-    await refreshAccounts();
   }
   let showPreAuthModal = $state(false);
   let showReAuthBanner = $state(false);
@@ -173,18 +174,21 @@
     unsubs.push(EventsOn('queue-error', (msg: string) => { errorMsg = msg; }));
 
     // Auth state changes — trigger re-auth banner on sign-out.
-    unsubs.push(subscribeAuth((s) => {
+    unsubs.push(subscribeAuth(async (s) => {
       const becameSignedOut = wasAuthenticated && !s.authenticated;
       auth = s;
-      if (becameSignedOut) {
+      // V4: every slot sign-in/out and active switch emits auth-changed —
+      // one hook keeps the switcher current. Refresh BEFORE deciding on the
+      // banner: switching to an empty slot while another slot is signed in
+      // is an account switch, not an expired session (review 2026-08-28).
+      await refreshAccounts();
+      const otherSlotSignedIn = accounts.some((a) => a.authenticated);
+      if (becameSignedOut && !otherSlotSignedIn) {
         showReAuthBanner = true;
-      } else if (s.authenticated) {
+      } else if (s.authenticated || otherSlotSignedIn) {
         showReAuthBanner = false;
       }
       wasAuthenticated = s.authenticated;
-      // V4: every slot sign-in/out and active switch emits auth-changed —
-      // one hook keeps the switcher current.
-      void refreshAccounts();
     }));
 
     // Auto-draft result (fires for both manual CreateDraftForID and automode).
@@ -355,14 +359,17 @@
     {mode}
     onModeChange={handleModeChange}
   />
-  {#if accounts.length > 0}
-    <AccountSwitcher
-      {accounts}
-      onActivate={handleActivateAccount}
-      onAddAccount={handleAddAccount}
-      onSignOutSlot={handleSignOutSlot}
-    />
-  {/if}
+{/if}
+{#if accounts.some((a) => a.authenticated)}
+  <!-- Shown whenever ANY slot is signed in — including while the ACTIVE
+       slot is empty (adding an account), so the window can always switch
+       back without the tray. -->
+  <AccountSwitcher
+    {accounts}
+    onActivate={handleActivateAccount}
+    onAddAccount={handleAddAccount}
+    onSignOutSlot={handleSignOutSlot}
+  />
 {/if}
 
 <main>

@@ -100,7 +100,8 @@ Registry footprint (per user, written by the app at runtime):
 The installer backs up the previous default mail client name to
 `%ProgramData%\DraftHorse\uninst\previous-mail-client.json` and restores it on
 uninstall. The uninstaller also removes the legacy upstream
-`DraftHorse Auto Update` Scheduled Task if a pre-fork install left one behind.
+`go-mapi Auto Update` Scheduled Task (upstream's name, deliberately never
+renamed) if a pre-fork install left one behind.
 
 ## Default-mail self-healing (fleet-relevant behavior)
 
@@ -371,7 +372,8 @@ Per-user residue after uninstall (harmless — see below):
 - `%LOCALAPPDATA%\DraftHorse\browser-profile\` (dedicated browser profile —
   holds the location account's Google session; clear it for non-uninstalling
   users if policy requires)
-- Credential Manager target `DraftHorse:oauth-tokens` (DPAPI-scoped)
+- Credential Manager targets `DraftHorse:oauth-tokens` and
+  `DraftHorse:oauth-tokens-2` (one per account slot, DPAPI-scoped)
 - `HKCU\Software\Clients\Mail\DraftHorse` for users other than the
   uninstalling one, if the default-mail guard ever self-healed in their
   session
@@ -385,8 +387,10 @@ per user at logon:
 Remove-Item -Recurse -Force "$env:APPDATA\DraftHorse" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "$env:LOCALAPPDATA\DraftHorse\browser-profile" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "HKCU:\Software\Clients\Mail\DraftHorse" -ErrorAction SilentlyContinue
-cmdkey /list:DraftHorse:oauth-tokens 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) { cmdkey /delete:DraftHorse:oauth-tokens | Out-Null }
+foreach ($t in 'DraftHorse:oauth-tokens', 'DraftHorse:oauth-tokens-2') {
+  cmdkey /list:$t 2>$null | Out-Null
+  if ($LASTEXITCODE -eq 0) { cmdkey /delete:$t | Out-Null }
+}
 ```
 
 ### No MSI

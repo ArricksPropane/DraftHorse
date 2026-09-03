@@ -19,7 +19,8 @@ type App struct {
 	trayEnd          func()
 	watcher          *mapi.EmailWatcher // initialized in startup
 	bridge           *watcherBridge     // initialized in startup
-	auth             *AuthManager       // the ACTIVE account (V4: points into accounts)
+	auth             *AuthManager       // the ACTIVE account (V4: points into accounts) — read via activeAuth(), written via setActiveAuth()
+	authMu           sync.RWMutex       // guards auth: switched on the tray/binding goroutines, read by automode/draft/tray
 	accounts         [2]*AuthManager    // V4 two-account roster; auth == accounts[activeSlot]
 	sessionEndCancel func()             // cancels the session-end message pump
 	shutdownCtx      context.Context
@@ -202,7 +203,7 @@ func (a *App) startup(ctx context.Context) {
 	a.settingsMu.Unlock()
 	logInfo("settings loaded: mode=%s", a.settings.Mode)
 	if am := a.account(activeSlot); am != nil {
-		a.auth = am
+		a.setActiveAuth(am)
 	}
 
 	// Phase 8: load persisted OAuth tokens and emit initial auth-changed.
@@ -212,11 +213,17 @@ func (a *App) startup(ctx context.Context) {
 	// userinfo — that happens if/when it becomes active), so the switcher
 	// can show it as signed-in immediately.
 	a.bootstrapAuth()
+	active := a.activeAuth()
 	for i, am := range a.accounts {
-		if am != nil && am != a.auth {
+		if am != nil && am != active {
 			if err := am.LoadFromKeyring(); err != nil {
 				logError("accounts: slot %d keyring load: %v", i, err)
+				continue
 			}
+			// Identity too (async), so the tray row and switcher name the
+			// account instead of showing it as "(not signed in)" until it
+			// is next activated (review 2026-08-28).
+			a.hydrateAccount(am)
 		}
 	}
 

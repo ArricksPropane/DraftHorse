@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -30,7 +31,7 @@ const (
 	// keyringUser2; the value for slot 1 is unchanged so a 3.x/4.0-single
 	// token (and migrate.go's moved token) lands in slot 1 automatically.
 	keyringUser  = "oauth-tokens"
-	keyringUser2 = "oauth-tokens-2"
+	keyringUser2 = keyringUser + "-2" // == keyringUser + slotSuffix(1); kept as a named constant for the installer/tests
 )
 
 // KeyringStore abstracts the OS credential store so tests can inject a fake.
@@ -173,13 +174,25 @@ func NewAuthManager() *AuthManager {
 	return NewAuthManagerWithStore(keyringStoreFactory())
 }
 
-// NewAuthManagerForSlot constructs the manager for account slot 0 or 1,
+// slotSuffix is THE per-slot naming rule, shared by the credential entry and
+// the dedicated browser profile: slot 0 keeps the pre-V4 names ("" suffix)
+// so migration and IT's signed-in profile carry over; every other slot gets
+// "-<n+1>". One function so a slot can never fail OPEN onto slot 0's names
+// (review 2026-08-28: two independent `if slot == 1` checks defaulted any
+// other value to slot 0's profile and credential — the one collision the
+// /u/0 drafts URL cannot survive).
+func slotSuffix(slot int) string {
+	if slot <= 0 {
+		return ""
+	}
+	return "-" + strconv.Itoa(slot+1)
+}
+
+// NewAuthManagerForSlot constructs the manager for an account slot,
 // persisting to that slot's credential entry. V4 two-account support.
 func NewAuthManagerForSlot(slot int) *AuthManager {
 	am := NewAuthManagerWithStore(keyringStoreFactory())
-	if slot == 1 {
-		am.user = keyringUser2
-	}
+	am.user = keyringUser + slotSuffix(slot)
 	return am
 }
 
@@ -504,35 +517,21 @@ func (am *AuthManager) signInLocked(parent context.Context) error {
 // GetAuthStatus is called by the frontend on mount to render the
 // welcome/sign-in screen vs the queue view. Never returns an error.
 func (a *App) GetAuthStatus() AuthStatus {
-	if a.auth == nil {
+	am := a.activeAuth()
+	if am == nil {
 		return AuthStatus{Authenticated: false}
 	}
-	return a.auth.Status()
+	return am.Status()
 }
 
-// SignIn runs the full desktop OAuth flow. Emits "auth-changed" on success.
-// Plan 04 adds the event emission in the OnStartup path and refresh failures;
-// the SignIn success emission is added here so the frontend refreshes.
+// SignIn runs the full desktop OAuth flow for the ACTIVE slot. Kept as the
+// frontend's binding; the body lives in SignInAccount (review 2026-08-28:
+// the two had drifted — one refreshed the tray rows, the other did not).
 func (a *App) SignIn() error {
-	if a.auth == nil {
+	if a.activeAuth() == nil {
 		return errors.New("auth manager not initialized")
 	}
-	a.auth.refresh.Lock()
-	defer a.auth.refresh.Unlock()
-	if err := a.auth.signInLocked(a.ctx); err != nil {
-		logError("oauth sign-in failed: %v", err)
-		return err
-	}
-	// Flip tray to idle — sign-in clears the "sign in required" / expired state
-	// the tray has been carrying since bootstrap or a previous sign-out.
-	a.SetTrayIdle("watching for emails")
-	// Emit auth-changed so the Svelte frontend drops the welcome screen.
-	wruntime.EventsEmit(a.ctx, "auth-changed", AuthStatus{
-		Authenticated: true,
-		Email:         a.auth.email,
-		Name:          a.auth.name,
-	})
-	return nil
+	return a.SignInAccount(a.activeSlot())
 }
 
 // tokenEndpointOverride / revokeEndpointOverride are empty in production
@@ -602,7 +601,7 @@ func (am *AuthManager) refreshIfNeededLocked(ctx context.Context) error {
 			am.tokens = nil
 			am.email = ""
 			am.name = ""
-			_ = am.keyring.Delete(keyringService, keyringUser)
+			_ = am.keyring.Delete(keyringService, am.keyringUserName())
 			return ErrInvalidGrant
 		}
 		return fmt.Errorf("refresh: 400 %s", e.Error)
@@ -697,7 +696,7 @@ type GmailCall func(accessToken string) (statusCode int, err error)
 func (a *App) MakeAuthenticatedGmailCall(ctx context.Context, fn GmailCall) error {
 	// V4: pin the manager once — an account switch mid-call must not mix
 	// slot A's refresh with slot B's token. Everything below reads `am`.
-	am := a.auth
+	am := a.activeAuth()
 	if am == nil {
 		return ErrNotAuthenticated
 	}
@@ -757,44 +756,20 @@ func (a *App) MakeAuthenticatedGmailCall(ctx context.Context, fn GmailCall) erro
 
 // emitAuthChanged pushes the current Status() to the frontend.
 func (a *App) emitAuthChanged() {
-	if a.ctx == nil || a.auth == nil {
+	am := a.activeAuth()
+	if a.ctx == nil || am == nil {
 		return
 	}
-	wruntime.EventsEmit(a.ctx, "auth-changed", a.auth.Status())
+	wruntime.EventsEmit(a.ctx, "auth-changed", am.Status())
 }
 
-// SignOut revokes the refresh token (best-effort, 5s), clears the keyring
-// entry unconditionally, clears in-memory userinfo, and emits auth-changed.
+// SignOut signs the ACTIVE slot out. Body lives in SignOutAccount.
 // Does NOT quit the app (D-16) — watcher keeps running, tray stays.
-//
-// The revoke HTTP call is made under a.auth.refresh with a 5s bound
-// (see revokeRefreshToken). Intentional: per D-07 UI disables draft-
-// creating buttons while signing out, so no other caller can contend for
-// this mutex; holding it across revoke prevents any partial-state window.
 func (a *App) SignOut() error {
-	if a.auth == nil {
+	if a.activeAuth() == nil {
 		return errors.New("auth manager not initialized")
 	}
-	// Use a background context as fallback when a.ctx is nil (e.g. in tests
-	// without a live Wails runtime). revokeRefreshToken applies its own 5s timeout.
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.auth.refresh.Lock()
-	a.auth.revokeRefreshToken(ctx) // best-effort; logs on failure; 5s bounded
-	a.auth.tokens = nil
-	a.auth.email = ""
-	a.auth.name = ""
-	// ARRICKS-24: the next sign-in may be a different account.
-	a.resetSignatureCache()
-	_ = a.auth.keyring.Delete(keyringService, a.auth.keyringUserName()) // ignore ErrNotFound
-	a.auth.refresh.Unlock()
-
-	a.emitAuthChanged()
-	a.SetTrayError("signed out")
-	logInfo("oauth: sign-out complete")
-	return nil
+	return a.SignOutAccount(a.activeSlot())
 }
 
 // bootstrapAuth loads any persisted tokens, triggers a proactive refresh if
@@ -813,18 +788,22 @@ func (a *App) SignOut() error {
 // and wait with a timeout select instead of relying on process-exit timing.
 func (a *App) bootstrapAuth() <-chan struct{} {
 	done := make(chan struct{})
-	if a.auth == nil {
+	// Pinned once: everything below (including the async userinfo goroutine)
+	// must talk to the manager that was active at bootstrap, not whatever
+	// a.auth points at by the time the goroutine runs.
+	am := a.activeAuth()
+	if am == nil {
 		close(done)
 		return done
 	}
-	if err := a.auth.LoadFromKeyring(); err != nil {
+	if err := am.LoadFromKeyring(); err != nil {
 		logError("oauth bootstrap: keyring load: %v", err)
 		a.SetTrayError("credential store unavailable")
 		a.emitAuthChanged()
 		close(done)
 		return done
 	}
-	if a.auth.tokens == nil {
+	if am.tokens == nil {
 		logInfo("oauth bootstrap: no tokens, signed-out state")
 		a.SetTrayError("sign in required")
 		a.emitAuthChanged()
@@ -832,9 +811,9 @@ func (a *App) bootstrapAuth() <-chan struct{} {
 		return done
 	}
 	// Proactive refresh if within 5 minutes of expiry.
-	a.auth.refresh.Lock()
-	err := a.auth.refreshIfNeededLocked(a.ctx)
-	a.auth.refresh.Unlock()
+	am.refresh.Lock()
+	err := am.refreshIfNeededLocked(a.ctx)
+	am.refresh.Unlock()
 	if errors.Is(err, ErrInvalidGrant) {
 		logInfo("oauth bootstrap: invalid_grant — prompting re-sign-in")
 		a.SetTrayError("sign-in expired")
@@ -850,7 +829,7 @@ func (a *App) bootstrapAuth() <-chan struct{} {
 	// Tokens present and valid (or transient-error kept) — tray should show idle
 	// regardless of the async userinfo fetch outcome.
 	a.SetTrayIdle("watching for emails")
-	logInfo("oauth bootstrap: signed in, token expires %s", a.auth.tokens.Expiry.Format(time.RFC3339))
+	logInfo("oauth bootstrap: signed in, token expires %s", am.tokens.Expiry.Format(time.RFC3339))
 	// Kick off async userinfo fetch and emit auth-changed ONCE after it settles.
 	// We deliberately do NOT emit synchronously here — a pre-userinfo emission
 	// would flash an authenticated header with empty email/name. The Svelte
@@ -859,9 +838,9 @@ func (a *App) bootstrapAuth() <-chan struct{} {
 	// The returned done channel is closed when the goroutine completes (WR-02).
 	go func() {
 		defer close(done)
-		a.auth.refresh.Lock()
-		a.auth.fetchUserInfoLocked(a.ctx)
-		a.auth.refresh.Unlock()
+		am.refresh.Lock()
+		am.fetchUserInfoLocked(a.ctx)
+		am.refresh.Unlock()
 		a.emitAuthChanged()    // single emission, email/name populated
 		a.signalTrayRefresh() // tray reads SignedIn from auth.Status() — refresh after auth settles
 	}()
@@ -894,6 +873,23 @@ type AccountInfo struct {
 	Active        bool   `json:"active"`
 }
 
+// activeAuth returns the ACTIVE manager. a.auth is written by
+// SetActiveAccount on the tray/binding goroutines and read by automode,
+// the draft path, the tray refresh and the signature prime — reads and
+// writes go through authMu so the switch is a proper synchronized
+// publication, not a data race (review 2026-08-28).
+func (a *App) activeAuth() *AuthManager {
+	a.authMu.RLock()
+	defer a.authMu.RUnlock()
+	return a.auth
+}
+
+func (a *App) setActiveAuth(am *AuthManager) {
+	a.authMu.Lock()
+	a.auth = am
+	a.authMu.Unlock()
+}
+
 // account returns the manager for slot (0 or 1), nil on out-of-range.
 func (a *App) account(slot int) *AuthManager {
 	if slot < 0 || slot >= len(a.accounts) {
@@ -905,8 +901,9 @@ func (a *App) account(slot int) *AuthManager {
 // activeSlot returns the index a.auth currently points at (0 when unset —
 // the pre-V4 single-account shape used by most tests).
 func (a *App) activeSlot() int {
+	active := a.activeAuth()
 	for i, am := range a.accounts {
-		if am != nil && am == a.auth {
+		if am != nil && am == active {
 			return i
 		}
 	}
@@ -938,7 +935,7 @@ func (a *App) SetActiveAccount(slot int) error {
 	if am == nil {
 		return fmt.Errorf("accounts: no slot %d", slot)
 	}
-	a.auth = am
+	a.setActiveAuth(am)
 	a.settingsMu.Lock()
 	a.settings.ActiveAccount = slot
 	snapshot := a.settings
@@ -947,9 +944,46 @@ func (a *App) SetActiveAccount(slot int) error {
 		logError("accounts: persist active slot: %v", err)
 	}
 	logInfo("accounts: active slot -> %d", slot)
+	// Tray state follows the slot (review 2026-08-28: it used to keep
+	// whatever the previous slot left — a red "sign in required" icon over a
+	// perfectly signed-in account, or idle over an empty one).
+	if am.Status().Authenticated {
+		a.SetTrayIdle("watching for emails")
+	} else {
+		a.SetTrayError("sign in required")
+	}
 	a.emitAuthChanged()
 	a.signalTrayRefresh()
+	// Identity for a slot that was only token-loaded arrives asynchronously
+	// and re-emits — same shape as bootstrapAuth's userinfo fetch.
+	a.hydrateAccount(am)
 	return nil
+}
+
+// hydrateAccount fetches userinfo for a manager that has tokens but no
+// email yet — the inactive slot after startup, or a slot just activated —
+// and re-emits so the tray rows, header and switcher show the address.
+// No-op when there is nothing to fetch or the identity is already known.
+// Async: never blocks the caller (tray goroutine, Wails binding, startup).
+func (a *App) hydrateAccount(am *AuthManager) {
+	if am == nil {
+		return
+	}
+	st := am.Status()
+	if !st.Authenticated || st.Email != "" {
+		return
+	}
+	go func() {
+		ctx := a.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		am.refresh.Lock()
+		am.fetchUserInfoLocked(ctx)
+		am.refresh.Unlock()
+		a.emitAuthChanged()
+		a.signalTrayRefresh()
+	}()
 }
 
 // SignInAccount runs the OAuth flow for a specific slot (Wails binding for
@@ -966,7 +1000,7 @@ func (a *App) SignInAccount(slot int) error {
 		logError("oauth sign-in (slot %d) failed: %v", slot, err)
 		return err
 	}
-	if am == a.auth {
+	if am == a.activeAuth() {
 		a.SetTrayIdle("watching for emails")
 	}
 	a.emitAuthChanged()
@@ -995,7 +1029,7 @@ func (a *App) SignOutAccount(slot int) error {
 	_ = am.keyring.Delete(keyringService, am.keyringUserName())
 	am.refresh.Unlock()
 
-	if am == a.auth {
+	if am == a.activeAuth() {
 		a.SetTrayError("signed out")
 	}
 	a.emitAuthChanged()

@@ -42,10 +42,9 @@ var launchDraftInDedicatedBrowser = launchDedicatedBrowser
 // ARRICKS-21). Lives beside the queue under %LOCALAPPDATA%\DraftHorse; the
 // uninstaller removes both (they hold session cookies).
 func dedicatedBrowserProfileDir(slot int) string {
-	name := "browser-profile"
-	if slot == 1 {
-		name = "browser-profile-2"
-	}
+	// slotSuffix (auth.go) is the ONE per-slot naming rule, shared with the
+	// credential entry — a slot can never fall back onto slot 0's profile.
+	name := "browser-profile" + slotSuffix(slot)
 	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
 		return filepath.Join(localAppData, "DraftHorse", name)
 	}
