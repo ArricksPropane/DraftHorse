@@ -100,8 +100,8 @@ func (a *App) openDraftInBrowser(messageID string) {
 		return
 	}
 	email := ""
-	if a.auth != nil {
-		email = a.auth.Status().Email
+	if am := a.activeAuth(); am != nil {
+		email = am.Status().Email
 	}
 	// V4: the account slot is captured HERE alongside the email so the
 	// async open uses the profile matching the account that owns the draft.

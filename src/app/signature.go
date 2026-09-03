@@ -139,7 +139,7 @@ func (a *App) signatureScopeMissing() bool {
 // Every failure is swallowed: this is a diagnostic, and D-04 says nothing
 // here may ever break drafting.
 func (a *App) primeSignatureCache(ctx context.Context) {
-	if a.auth == nil || !a.auth.Status().Authenticated {
+	if am := a.activeAuth(); am == nil || !am.Status().Authenticated {
 		return
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)

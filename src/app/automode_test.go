@@ -560,3 +560,31 @@ func TestClassifyAutomodeError(t *testing.T) {
 		})
 	}
 }
+
+// Review 2026-08-28: V4 lets the user activate an EMPTY slot to add an
+// account. Scans arriving meanwhile must WAIT, not be demoted to manual
+// forever — ErrNotAuthenticated is a "no token yet", not a dead token.
+func TestAutomodeEmptyActiveSlotWaitsInsteadOfBacklogSkipping(t *testing.T) {
+	gmailHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Gmail must not be called with no token")
+	})
+	tokenHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("token endpoint must not be called with no token")
+	})
+	app, watchDir, cap, am := setupAutomode(t, gmailHandler, tokenHandler)
+	app.auth.tokens = nil // the empty slot is active
+
+	id1 := seedEmailAndWait(t, app.watcher, watchDir, "email1.json", "Email One", "2024-01-01T00:00:00Z")
+	_ = seedEmailAndWait(t, app.watcher, watchDir, "email2.json", "Email Two", "2024-01-02T00:00:00Z")
+
+	am.drain()
+	cap.waitCount(t, 1, 3*time.Second)
+	time.Sleep(100 * time.Millisecond)
+
+	if got := len(cap.all()); got != 1 {
+		t.Fatalf("drain must stop at the first not-authenticated row, got %d events", got)
+	}
+	if app.isBacklogSkipped(id1) {
+		t.Error("a row that failed only because no account is signed in must stay pending, not backlog-skipped")
+	}
+}

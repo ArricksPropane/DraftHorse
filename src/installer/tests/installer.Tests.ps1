@@ -542,6 +542,14 @@ Describe "DraftHorse installer round-trip" {
             # target string always false-positived. A real stored credential
             # is listed as "Target: ...target=<name>"; match that instead.
             $out | Should -Not -Match "target=$([regex]::Escape($script:CredTarget))" -Because "cmdkey should find no credentials under target '$($script:CredTarget)' after uninstall"
+            # V4 two accounts: slot 2 has its own target (review 2026-08-28 —
+            # the uninstaller used to leave it behind).
+            $out2 = & cmdkey /list:"$($script:CredTarget)-2" 2>&1 | Out-String
+            $out2 | Should -Not -Match "target=$([regex]::Escape("$($script:CredTarget)-2"))" -Because 'the slot-2 refresh token must not survive uninstall'
+        }
+
+        It "38. browsed-app row Classes\Applications\DraftHorse.exe is gone after uninstall" {
+            Test-Path 'HKLM:\SOFTWARE\Classes\Applications\DraftHorse.exe' | Should -BeFalse -Because 'a dead Default Apps row is the same bug the V4 block fixes for go-mapi.exe'
         }
 
         # D-21 item 13

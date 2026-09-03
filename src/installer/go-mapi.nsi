@@ -81,7 +81,8 @@ BrandingText "${PRODUCT_DISPLAY} ${PRODUCT_VERSION} — LGPL-3.0"
 
 ; ARRICKS-06: $AutoUpdateFlag / $AutoUpdateCheckboxState removed along with the
 ; auto-update opt-in page and RegisterScheduledTask. This installer never
-; creates the "DraftHorse Auto Update" Scheduled Task. See main.go for why.
+; creates the "go-mapi Auto Update" Scheduled Task (upstream's name — never
+; renamed; un.RemoveScheduledTask still deletes it). See main.go for why.
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${__FILEDIR__}\..\..\LICENSE"
@@ -126,10 +127,35 @@ Section "Install" SecInstall
   ; exist anywhere (post-rollout fleet reimage, realistically never).
 
   ; Old app may be autostarted and running under the old name — close it the
-  ; same way EnsureAppNotRunning closes the new one (WM_CLOSE, no /F).
+  ; same way EnsureAppNotRunning closes the new one (WM_CLOSE, no /F). Gated
+  ; on the old install dir so fresh machines and 4.x→4.x upgrades skip the
+  ; two process spawns and the 2 s wait entirely (review 2026-08-28).
+  IfFileExists "$PROGRAMFILES64\go-mapi\go-mapi.exe" 0 V4NoOldApp
   ExecWait 'taskkill /im "go-mapi.exe"' $0
   Sleep 2000
   ExecWait 'taskkill /f /im "go-mapi.exe"' $0
+V4NoOldApp:
+
+  ; The 3.x resolver value. Left as "go-mapi" it is neither "us" nor empty,
+  ; so BackupPreviousMailClient would record a client that no longer exists
+  ; as the one to restore at uninstall — and the machine's REAL pre-3.x
+  ; default (recorded by the 3.x installer under %ProgramData%\go-mapi) would
+  ; be lost. Carry that backup forward first, then clear the stale pointer
+  ; so the backup function takes its "already have a backup" path.
+  ReadEnvStr $9 PROGRAMDATA
+  IfFileExists "$9\go-mapi\uninst\previous-mail-client.json" 0 V4NoOldBackup
+  IfFileExists "$9\DraftHorse\uninst\previous-mail-client.json" V4NoOldBackup
+  CreateDirectory "$9\DraftHorse\uninst"
+  CopyFiles /SILENT "$9\go-mapi\uninst\previous-mail-client.json" "$9\DraftHorse\uninst\previous-mail-client.json"
+  DetailPrint "carried 3.x previous-mail-client backup forward"
+V4NoOldBackup:
+  RMDir /r "$9\go-mapi"
+  ReadRegStr $0 HKLM "SOFTWARE\Clients\Mail" ""
+  StrCmp $0 "go-mapi" 0 V4ResolverOk
+  ; Pretend the 3.x claim was ours: BackupPreviousMailClient's AlreadyUs path
+  ; preserves the carried-forward backup instead of overwriting it.
+  WriteRegStr HKLM "SOFTWARE\Clients\Mail" "" "DraftHorse"
+V4ResolverOk:
 
   ; Old MAPI client key (WOW64-shared — one delete covers both views).
   DeleteRegKey HKLM "SOFTWARE\Clients\Mail\go-mapi"
@@ -938,6 +964,9 @@ Section "Uninstall"
   ; user), but the ProgID and the Default Apps listing must go.
   DeleteRegKey HKLM "SOFTWARE\Classes\DraftHorse.mailto"
   DeleteRegValue HKLM "SOFTWARE\RegisteredApplications" "DraftHorse"
+  ; Windows' browsed-app auto-registration for OUR exe — same dead-row bug the
+  ; V4 block fixes for go-mapi.exe, now for a 4.x uninstall.
+  DeleteRegKey HKLM "SOFTWARE\Classes\Applications\DraftHorse.exe"
 
   ; 4. Restore (Default) Mail client from backup (D-11)
   Call un.RestorePreviousMailClient
@@ -995,6 +1024,9 @@ Section "Uninstall"
   ; service="DraftHorse" + username="oauth-tokens" (see src/app/auth.go:27-28).
   ExecWait 'cmdkey /delete:DraftHorse:oauth-tokens' $0
   DetailPrint "cmdkey /delete:DraftHorse:oauth-tokens rc=$0"
+  ; V4 two accounts: slot 2 lives under its own credential name (auth.go keyringUser2).
+  ExecWait 'cmdkey /delete:DraftHorse:oauth-tokens-2' $0
+  DetailPrint "cmdkey /delete:DraftHorse:oauth-tokens-2 rc=$0"
 
   ; 9. Binaries (x64 side) — the un.EnsureAppNotRunning call at the start
   ; of this section has already closed any running DraftHorse.exe so these

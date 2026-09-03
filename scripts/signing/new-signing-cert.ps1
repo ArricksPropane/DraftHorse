@@ -63,8 +63,10 @@ Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $pwd1 | Out-Null
 Export-Certificate    -Cert $cert -FilePath $cer | Out-Null
 [IO.File]::WriteAllText($b64, [Convert]::ToBase64String([IO.File]::ReadAllBytes($pfx)))
 
-# Private key now lives only in the PFX.
-Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($cert.Thumbprint)" -Force
+# Private key now lives only in the PFX. -DeleteKey is what actually removes
+# the CNG key container; without it only the certificate object goes and the
+# exportable key stays recoverable under %APPDATA%\Microsoft\Crypto\Keys.
+Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($cert.Thumbprint)" -DeleteKey -Force
 
 Write-Host ''
 Write-Host "Thumbprint: $($cert.Thumbprint)" -ForegroundColor Green
