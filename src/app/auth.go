@@ -528,10 +528,14 @@ func (a *App) GetAuthStatus() AuthStatus {
 // frontend's binding; the body lives in SignInAccount (review 2026-08-28:
 // the two had drifted — one refreshed the tray rows, the other did not).
 func (a *App) SignIn() error {
-	if a.activeAuth() == nil {
+	am := a.activeAuth()
+	if am == nil {
 		return errors.New("auth manager not initialized")
 	}
-	return a.SignInAccount(a.activeSlot())
+	// By manager, not by slot: tests (and the pre-V4 shape) may install an
+	// active manager that is not in the roster, and activeSlot() would then
+	// resolve to slot 0's manager instead of the one actually active.
+	return a.signInManager(am, a.activeSlot())
 }
 
 // tokenEndpointOverride / revokeEndpointOverride are empty in production
@@ -766,10 +770,11 @@ func (a *App) emitAuthChanged() {
 // SignOut signs the ACTIVE slot out. Body lives in SignOutAccount.
 // Does NOT quit the app (D-16) — watcher keeps running, tray stays.
 func (a *App) SignOut() error {
-	if a.activeAuth() == nil {
+	am := a.activeAuth()
+	if am == nil {
 		return errors.New("auth manager not initialized")
 	}
-	return a.SignOutAccount(a.activeSlot())
+	return a.signOutManager(am, a.activeSlot())
 }
 
 // bootstrapAuth loads any persisted tokens, triggers a proactive refresh if
@@ -994,6 +999,12 @@ func (a *App) SignInAccount(slot int) error {
 	if am == nil {
 		return fmt.Errorf("accounts: no slot %d", slot)
 	}
+	return a.signInManager(am, slot)
+}
+
+// signInManager is the one sign-in body, shared by SignIn (active manager)
+// and SignInAccount (by slot).
+func (a *App) signInManager(am *AuthManager, slot int) error {
 	am.refresh.Lock()
 	defer am.refresh.Unlock()
 	if err := am.signInLocked(a.ctx); err != nil {
@@ -1016,6 +1027,13 @@ func (a *App) SignOutAccount(slot int) error {
 	if am == nil {
 		return fmt.Errorf("accounts: no slot %d", slot)
 	}
+	return a.signOutManager(am, slot)
+}
+
+// signOutManager is the one sign-out body, shared by SignOut (active
+// manager) and SignOutAccount (by slot). slot only selects which signature
+// cache to reset.
+func (a *App) signOutManager(am *AuthManager, slot int) error {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
